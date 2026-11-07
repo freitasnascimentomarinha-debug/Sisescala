@@ -171,6 +171,16 @@ def test_usuario_novo_sem_escala_abre_as_paginas_e_vira_detalhista_ao_criar(app)
 def test_deploy_novo_com_modulos_velhos_na_memoria_recarrega_sem_erro(app):
     """Simula o servidor que já tinha `sisescala` carregado de um deploy anterior (ImportError na nuvem)."""
     import sys
+    guardados = {n: m for n, m in sys.modules.items() if n == "sisescala" or n.startswith("sisescala.")}
+    try:
+        _recarrega_modulos_velhos(app, sys)
+    finally:                      # o app descarta e recarrega os módulos; devolve os originais para não afetar outros testes
+        for n in [n for n in sys.modules if n == "sisescala" or n.startswith("sisescala.")]:
+            del sys.modules[n]
+        sys.modules.update(guardados)
+
+
+def _recarrega_modulos_velhos(app, sys):
     _criar_admin(app)
     sys.modules["sisescala"]._assinatura = -1                         # "módulos de outra versão do código"
     del sys.modules["sisescala.modelos"].PedidoAcesso                  # o que quebrava: classe nova ausente
