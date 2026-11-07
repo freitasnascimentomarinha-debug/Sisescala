@@ -151,6 +151,10 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     g = lambda row, campo: str(row.get(cols[campo], "") or "").strip() if campo in cols else ""  # noqa: E731
     gv = lambda row, campo: row.get(cols[campo]) if campo in cols else None  # noqa: E731
 
+    for e in ctx.escalas:                    # congela a numeração de cada escala: mexer no cadastro não a desloca
+        ctx.numerar_escala(e)
+    previos = {e.id: ctx.ordem_na_escala(e) for e in ctx.escalas}
+    ordem_col: dict[str, int] = {}
     criadas: set[str] = set()
     ordem_planilha: list[str] = []
     vinc: dict[str, set[str]] = {}
@@ -223,7 +227,9 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
             rel.avisos.append(f"Linha {n_lin}: data informada sem escala; ignorada.")
         if "ordem" in cols and g(row, "ordem"):
             try:
-                m.antiguidade = int(float(g(row, "ordem")))
+                ordem_col[m.id] = int(float(g(row, "ordem")))
+                if sobrescrever or m.antiguidade >= 10 ** 6:
+                    m.antiguidade = ordem_col[m.id]
                 continue
             except ValueError:
                 rel.avisos.append(f"Linha {n_lin}: ordem inválida '{g(row, 'ordem')}'.")
@@ -257,6 +263,25 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         for eid, ids in vinc.items():
             esc = ctx.escala(eid)
             esc.membros = [p for p in esc.membros if p.militar_id in ids]
+    # antiguidade DENTRO de cada escala citada: ordem da planilha (ou da coluna Ordem); em escala que já existia e
+    # que o usuário não sobrescreve, quem já estava mantém o lugar e os novos entram depois
+    if "ordem" in cols and ordem_col:
+        ordem_sheet = sorted(ordem_planilha, key=lambda i: (ordem_col.get(i, 10 ** 6), ordem_planilha.index(i)))
+    else:
+        ordem_sheet = ordem_planilha if sentido == "topo_mais_antigo" else list(reversed(ordem_planilha))
+    for eid, ids in vinc.items():
+        esc = ctx.escala(eid)
+        atuais = {p.militar_id for p in esc.membros}
+        da_planilha = [i for i in ordem_sheet if i in ids and i in atuais]
+        previo = [i for i in previos.get(eid, []) if i in atuais]
+        if eid in criadas or sobrescrever or substituir_membros:
+            ordem = da_planilha + [i for i in previo if i not in da_planilha]
+        else:
+            ordem = previo + [i for i in da_planilha if i not in previo]
+        ordem += [i for i in ctx.ordem_na_escala(esc) if i not in ordem]
+        pos = {i: k for k, i in enumerate(ordem, 1)}
+        for p in esc.membros:
+            p.antiguidade = pos[p.militar_id]
     # continuidade a partir do histórico
     if hist:
         ultima = max(d for d, _, _ in hist)
@@ -265,19 +290,18 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
             ult_e = max(d for d, e, _ in hist if e.id == eid)
             ctx.escala(eid).data_base = ult_e + timedelta(days=1)
             rel.datas_base[eid] = ult_e + timedelta(days=1)
-        antig = {m.id: m.antiguidade for m in ctx.militares}
         por_fila: dict[tuple[str, str], dict[date, set[str]]] = {}
         for d, esc, mid in hist:
             por_fila.setdefault((esc.id, fila_do_dia(ctx, esc, d)), {}).setdefault(d, set()).add(mid)
         for (eid, fila), dias in por_fila.items():
             esc = ctx.escala(eid)
             grupo = dias[max(dias)]
-            ordem = sorted((p.militar_id for p in esc.membros), key=lambda i: antig[i])
+            ordem = ctx.ordem_na_escala(esc)
             ultimo = None
             for i, mid in enumerate(ordem):          # último da sequência circular do dia
                 if mid in grupo and ordem[(i + 1) % len(ordem)] not in grupo:
                     ultimo = mid
-            ultimo = ultimo or max(grupo, key=lambda i: antig[i])
+            ultimo = ultimo or max(grupo, key=lambda i: ctx.antig(esc, i))
             esc.ultimo_servico[fila] = ultimo
             rel.continuidade[f"{esc.nome} / {fila}"] = ctx.militar(ultimo).nome
             if (ultima - max(dias)).days > 45:

@@ -20,7 +20,7 @@ nomes_m = P.nomes_m
 eh_editor = pm.eh_detalhista(ctx, uid, esc)
 meu_militar = pp.militar_do_usuario(ctx, uid)
 em_pedido = pp.militares_em_pedido_ativo(ctx)
-membros = sorted({p.militar_id for p in esc.membros}, key=lambda i: ctx.militar(i).antiguidade)
+membros = sorted({p.militar_id for p in esc.membros}, key=lambda i: ctx.antig(esc, i))
 abertas_ = dp.abertas(ctx, res, esc.id)
 
 chips = [ui.chip("Prioridade", esc.prioridade), ui.chip("Escalados/dia", esc.militares_dia),

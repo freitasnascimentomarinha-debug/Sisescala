@@ -71,7 +71,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s")],
-    "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d")],
+    "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
     "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],
     "EscalaRefs": [("escala_id", "s"), ("referencia_id", "s")],
@@ -137,7 +137,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         d["quartos"] = json.dumps([[q.inicio, q.fim] for q in e.quartos])
         add("Escalas", d)
         for p in e.membros:
-            add("EscalaMembros", {"escala_id": e.id, "militar_id": p.militar_id, "inicio": p.inicio, "fim": p.fim})
+            add("EscalaMembros", {"escala_id": e.id, "militar_id": p.militar_id, "inicio": p.inicio, "fim": p.fim,
+                                    "antiguidade": p.antiguidade})
         for mid in e.auxiliares:
             add("EscalaAuxiliares", {"escala_id": e.id, "militar_id": mid})
         for fila, mid in e.ultimo_servico.items():
@@ -227,7 +228,9 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         escalas[e.id] = e
         ctx.escalas.append(e)
     for d in _linhas_de(T, "EscalaMembros"):
-        escalas[d["escala_id"]].membros.append(Pertinencia(d["militar_id"], d["inicio"], d["fim"]))
+        escalas[d["escala_id"]].membros.append(Pertinencia(d["militar_id"], d["inicio"], d["fim"], d["antiguidade"] or 0))
+    for e in ctx.escalas:                              # planilha antiga: cada escala herda a ordem do cadastro uma vez
+        ctx.numerar_escala(e)
     for d in _linhas_de(T, "EscalaAuxiliares"):
         if d["militar_id"] not in escalas[d["escala_id"]].auxiliares:
             escalas[d["escala_id"]].auxiliares.append(d["militar_id"])

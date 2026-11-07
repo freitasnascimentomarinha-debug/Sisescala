@@ -31,8 +31,8 @@ def militares_lancaveis(ctx: Contexto, usuario_id: str) -> list[str]:
     if not u or not u.ativo:
         return []
     base = {p.militar_id for e in ctx.escalas if pode_decidir(ctx, usuario_id, e) for p in e.membros}
-    ordem = {m.id: m.antiguidade for m in ctx.militares}
-    return sorted((m for m in base if m != u.militar_id and m in ordem), key=lambda m: ordem[m])
+    nomes = {m.id: m.nome for m in ctx.militares}
+    return sorted((m for m in base if m != u.militar_id and m in nomes), key=lambda m: nomes[m])
 
 
 def _exigir_militar(ctx: Contexto, usuario_id: str, militar_id: str) -> None:

@@ -183,7 +183,7 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
         out.append((f"Fila {f}: último serviço → próximo",
                     f"{ctx.militar(ult).nome if ult else 'início da fila'} → {prox}"))
     ordem = sorted((ctx.militar(p.militar_id) for p in esc.membros
-                    if p.ativo(hoje) and not ctx.dispensado_na_escala(p.militar_id, esc)), key=lambda m: m.antiguidade)
+                    if p.ativo(hoje) and not ctx.dispensado_na_escala(p.militar_id, esc)), key=lambda m: ctx.antig(esc, m.id))
     out.append((f"Militares na escala ({len(ordem)})", ", ".join(f"{m.posto} {m.nome}".strip() for m in ordem) or "—"))
     nm = lambda mid: ctx.militar(mid).nome if mid else "—"  # noqa: E731
     out.append(("Detalhista da escala", nm(esc.detalhista_id) + (

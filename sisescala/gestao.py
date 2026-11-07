@@ -41,6 +41,7 @@ def criar_escala(ctx: Contexto, usuario_id: str, escala: Escala, referencias=())
     escala.dono_id = usuario_id                       # quem cria vira automaticamente o detalhista da escala
     if not escala.detalhista_id:                      # e o militar dele (pelo vínculo ou pelo NIP) fica fora da escala
         escala.detalhista_id = militar_do_detalhista(ctx, u)
+    ctx.numerar_escala(escala)
     if erros := validar_escala(ctx, escala):
         raise ValueError(" ".join(erros))
     ctx.escalas.append(escala)
@@ -76,9 +77,16 @@ def excluir_escala(ctx: Contexto, usuario_id: str, escala_id: str) -> None:
         o.referencias = [r for r in o.referencias if r != esc.id]
 
 
-def adicionar_militares(ctx: Contexto, usuario_id: str, escala_id: str, ids: list[str], desde=None) -> int:
+def adicionar_militares(ctx: Contexto, usuario_id: str, escala_id: str, ids: list[str], desde=None,
+                        posicao: int | None = None) -> int:
     _exigir_detalhista(ctx, usuario_id, ctx.escala(escala_id))
-    return cd.adicionar_a_escala(ctx, escala_id, ids, desde)
+    return cd.adicionar_a_escala(ctx, escala_id, ids, desde, posicao)
+
+
+def mudar_antiguidade(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, posicao: int) -> None:
+    """A antiguidade vale só dentro da escala; quem muda é o detalhista dela."""
+    _exigir_detalhista(ctx, usuario_id, ctx.escala(escala_id))
+    cd.mover_na_escala(ctx, escala_id, militar_id, posicao)
 
 
 def remover_militares(ctx: Contexto, usuario_id: str, escala_id: str, ids: list[str], a_partir_de=None) -> int:
@@ -131,15 +139,16 @@ def transferir_detalhe(ctx: Contexto, usuario_id: str, escala_id: str, novo_usua
     esta_na_escala = lambda: any(p.militar_id == meu and p.fim is None for p in esc.membros)  # noqa: E731
     if papel == "escalado":
         if not esta_na_escala():
-            esc.membros.append(Pertinencia(meu))
+            esc.membros.append(Pertinencia(meu, None, None, 10 ** 6))
     elif papel == "auxiliar":
         esc.auxiliares.append(meu)
         if concorre and not esta_na_escala():
-            esc.membros.append(Pertinencia(meu))
+            esc.membros.append(Pertinencia(meu, None, None, 10 ** 6))
         if not concorre:
             esc.membros = [p for p in esc.membros if p.militar_id != meu]
     else:                                              # nenhum papel
         esc.membros = [p for p in esc.membros if p.militar_id != meu]
+    ctx.numerar_escala(esc)
     from . import notificacoes as nt
     nt.notificar(ctx, [novo.id], "papeleta", f"Você agora é o detalhista da escala {esc.nome} (entregue por {velho.nome}).", esc.id)
     nt.notificar(ctx, [velho.id], "papeleta", f"Você entregou o detalhe da escala {esc.nome} a {novo.nome} "

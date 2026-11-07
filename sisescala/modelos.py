@@ -60,6 +60,7 @@ class Pertinencia:
     militar_id: str
     inicio: date | None = None
     fim: date | None = None
+    antiguidade: int = 0   # posição NESTA escala (1 = mais antigo); 0 = ainda não numerada (usa a do cadastro)
 
     def ativo(self, d: date) -> bool:
         return (self.inicio is None or d >= self.inicio) and (self.fim is None or d <= self.fim)
@@ -357,6 +358,31 @@ class Contexto:
     def escalaveis(self, esc: "Escala") -> list[str]:
         """Membros da escala que podem ser escalados (sem o detalhista, se ele estiver fora)."""
         return [p.militar_id for p in esc.membros if not self.dispensado_na_escala(p.militar_id, esc)]
+
+    def antig(self, esc: "Escala", mid: str) -> int:
+        """Antiguidade do militar NA ESCALA (cada escala tem a sua numeração, independente das outras)."""
+        pos = [p.antiguidade for p in esc.membros if p.militar_id == mid and p.antiguidade > 0]
+        if pos:
+            return min(pos)
+        m = next((m for m in self.militares if m.id == mid), None)
+        return m.antiguidade if m else 10 ** 6
+
+    def ordem_na_escala(self, esc: "Escala", ids=None) -> list[str]:
+        """Ids (sem repetir) do mais antigo ao mais moderno na escala; `ids` restringe o conjunto."""
+        todos = dict.fromkeys(p.militar_id for p in esc.membros)
+        alvo = [i for i in todos if ids is None or i in set(ids)]
+        return sorted(alvo, key=lambda i: (self.antig(esc, i), i))
+
+    def numerar_escala(self, esc: "Escala") -> None:
+        """Deixa a numeração da escala sequencial (1..n). Quem ainda não tinha número entra depois, pela
+        antiguidade do cadastro; a ordem já definida nunca muda."""
+        def chave(i):
+            pos = [p.antiguidade for p in esc.membros if p.militar_id == i and p.antiguidade > 0]
+            return (0, min(pos), i) if pos else (1, self.antig(esc, i), i)
+        ordem = sorted(dict.fromkeys(p.militar_id for p in esc.membros), key=chave)
+        n = {i: k for k, i in enumerate(ordem, 1)}
+        for p in esc.membros:
+            p.antiguidade = n[p.militar_id]
 
     def base_de(self, esc: "Escala") -> date:
         """Data a partir da qual a escala é calculada (cada escala tem a sua, para uma importação não mexer nas outras)."""

@@ -101,7 +101,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     card = "".join(f"<div class='k'><span>{escape(k)}</span><b>{escape(v)}</b></div>"
                    for k, v in info_escala(ctx, esc))
     linhas, obs = "", []
-    for m in sorted((m for m in ctx.militares if m.id in ids), key=lambda m: m.antiguidade):
+    for m in sorted((m for m in ctx.militares if m.id in ids), key=lambda m: ctx.antig(esc, m.id)):
         cel = ""
         for d in dias:
             tags = []

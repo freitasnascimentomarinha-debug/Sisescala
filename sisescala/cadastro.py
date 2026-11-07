@@ -71,10 +71,9 @@ def editar_militar(ctx: Contexto, mid: str, **campos) -> Militar:
 
 def _anterior_na_escala(ctx: Contexto, esc, mid: str) -> str | None:
     """Quem vem imediatamente antes de `mid` na ordem de antiguidade da escala (mantém a fila)."""
-    ref = ctx.militar(mid).antiguidade
-    cand = [ctx.militar(p.militar_id) for p in esc.membros if p.militar_id != mid]
-    antes = [m for m in cand if m.antiguidade < ref]
-    return max(antes, key=lambda m: m.antiguidade).id if antes else None
+    ref = ctx.antig(esc, mid)
+    antes = [i for i in ctx.ordem_na_escala(esc) if i != mid and ctx.antig(esc, i) < ref]
+    return antes[-1] if antes else None
 
 
 def _desvincular(ctx: Contexto, mid: str) -> None:
@@ -87,6 +86,7 @@ def _desvincular(ctx: Contexto, mid: str) -> None:
                 else:
                     del esc.ultimo_servico[fila]
         esc.membros = [p for p in esc.membros if p.militar_id != mid]
+        ctx.numerar_escala(esc)
 
 
 def excluir_militares(ctx: Contexto, ids: list[str], usuario_id: str | None = None) -> int:
@@ -114,16 +114,43 @@ def excluir_militares(ctx: Contexto, ids: list[str], usuario_id: str | None = No
     return len(ids)
 
 
-def adicionar_a_escala(ctx: Contexto, escala_id: str, ids: list[str], desde: date | None = None) -> int:
+def adicionar_a_escala(ctx: Contexto, escala_id: str, ids: list[str], desde: date | None = None,
+                       posicao: int | None = None) -> int:
+    """Entra na escala no FIM da antiguidade dela (ou na `posicao` pedida, 1 = mais antigo)."""
     esc = ctx.escala(escala_id)
+    ctx.numerar_escala(esc)
     n = 0
     for i in ids:
         ctx.militar(i)
         ativo = [p for p in esc.membros if p.militar_id == i and p.fim is None]
         if not ativo:
-            esc.membros.append(Pertinencia(i, desde))
+            ja = ctx.ordem_na_escala(esc)
+            esc.membros.append(Pertinencia(i, desde, None, 10 ** 6))      # provisório: vai para o fim
             n += 1
+            if i in ja:                                                    # já esteve na escala: mantém o lugar antigo
+                for p in esc.membros:
+                    if p.militar_id == i:
+                        p.antiguidade = ctx.antig(esc, i) if ctx.antig(esc, i) < 10 ** 6 else 0
+            ctx.numerar_escala(esc)
+    if posicao is not None and n:
+        for i in ids:
+            mover_na_escala(ctx, escala_id, i, posicao)
     return n
+
+
+def mover_na_escala(ctx: Contexto, escala_id: str, mid: str, posicao: int) -> None:
+    """Muda a antiguidade do militar NESTA escala (as outras escalas não são afetadas)."""
+    esc = ctx.escala(escala_id)
+    ctx.numerar_escala(esc)
+    ordem = ctx.ordem_na_escala(esc)
+    if mid not in ordem:
+        raise ValueError("o militar não está nesta escala")
+    ordem.remove(mid)
+    ordem.insert(max(1, min(int(posicao), len(ordem) + 1)) - 1, mid)
+    for k, i in enumerate(ordem, 1):
+        for p in esc.membros:
+            if p.militar_id == i:
+                p.antiguidade = k
 
 
 def remover_da_escala(ctx: Contexto, escala_id: str, ids: list[str], a_partir_de: date | None = None) -> int:
@@ -140,4 +167,5 @@ def remover_da_escala(ctx: Contexto, escala_id: str, ids: list[str], a_partir_de
                 if p.militar_id == i and p.fim is None:
                     p.fim = a_partir_de
                     n += 1
+    ctx.numerar_escala(esc)
     return n

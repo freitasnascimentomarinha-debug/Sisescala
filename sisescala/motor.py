@@ -125,8 +125,9 @@ def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
 
 def _sequencia(ctx: Contexto, esc: Escala, d: date, ultimo: str | None) -> list[str]:
     """Militares ativos e disponíveis, em ordem circular depois de `ultimo`."""
-    antig = {m.id: m.antiguidade for m in ctx.militares}
-    ativos = sorted((m for m in esc.membros_ativos(d) if not ctx.dispensado_na_escala(m, esc)), key=lambda m: antig[m])
+    antig = {p.militar_id: ctx.antig(esc, p.militar_id) for p in esc.membros}
+    ativos = sorted(dict.fromkeys(m for m in esc.membros_ativos(d) if not ctx.dispensado_na_escala(m, esc)),
+                    key=lambda m: antig[m])
     ref = antig.get(ultimo, 0) if ultimo else 0
     ordem = [m for m in ativos if antig[m] > ref] + [m for m in ativos if antig[m] <= ref]
     return [m for m in ordem if not _impedido(ctx, m, d)]

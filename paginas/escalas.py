@@ -73,12 +73,13 @@ def dialogo_nova():
     _cand = [m for m in nomes_m if user.admin or m in _vis]
     membros = st.multiselect("Militares da escala (você também pode adicionar depois, em Militares)", _cand,
                              format_func=nomes_m.get, key="nova_mem",
-                             help="O detalhista fica fora da escala, a menos que você marque que ele concorre.")
+                             help="A ordem em que você escolhe define a antiguidade NESTA escala (o 1º é o mais antigo). "
+                                  "O detalhista fica fora da escala, a menos que você marque que ele concorre.")
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
     if st.button("Criar escala", type="primary", use_container_width=True):
         nova = Escala(f"e{max([int(e.id[1:]) for e in ctx.escalas if e.id[1:].isdigit()] + [0]) + 1}", v["nome"],
-                      membros=[Pertinencia(m) for m in membros], **{k: x for k, x in v.items() if k != "nome"})
+                      membros=[Pertinencia(m, None, None, k) for k, m in enumerate(membros, 1)], **{k: x for k, x in v.items() if k != "nome"})
         agir(lambda: gestao.criar_escala(ctx, uid, nova, refs), "Escala criada.")
 
 

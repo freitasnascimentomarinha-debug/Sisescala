@@ -26,6 +26,9 @@ def contexto_demo(base: date | None = None) -> Contexto:
     ]
     eventos = [Evento("pal", date(base.year, base.month, min(base.day + 3, 28)),
                       "Palestra de segurança do trabalho", "10h", "Auditório")]
-    return Contexto(
+    ctx = Contexto(
         mil, escalas, base, eventos=eventos,
         roxas=[PeriodoRoxa("fa", "Recesso de fim de ano", date(base.year, 12, 24), date(base.year + 1, 1, 2))])
+    for e in ctx.escalas:
+        ctx.numerar_escala(e)
+    return ctx

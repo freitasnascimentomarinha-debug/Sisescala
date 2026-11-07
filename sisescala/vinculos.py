@@ -28,7 +28,7 @@ def militares_livres(ctx: Contexto, escala_id: str) -> list[str]:
     ocupados = {u.militar_id for u in ctx.usuarios if u.militar_id}
     ocupados |= {v.militar_id for v in ctx.vinculos if v.status == "pendente"}
     ids = set(ctx.escalaveis(esc))           # detalhista não é escalado: não há persona de serviço para vincular
-    return sorted((m for m in ids if m not in ocupados), key=lambda i: ctx.militar(i).antiguidade)
+    return sorted((m for m in ids if m not in ocupados), key=lambda i: ctx.antig(esc, i))
 
 
 def pendente_do_usuario(ctx: Contexto, usuario_id: str) -> Vinculo | None:
