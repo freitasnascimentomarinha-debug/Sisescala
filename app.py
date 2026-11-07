@@ -8,6 +8,7 @@ from datetime import date, datetime
 import streamlit as st
 
 from sisescala import auth, ui
+from sisescala import acessos as ac
 from sisescala import notificacoes as nt
 from sisescala import papeletas as pp
 from sisescala import permissoes as pm
@@ -18,7 +19,7 @@ from sisescala.demo import contexto_demo
 from sisescala.motor import gerar
 from sisescala.persistencia import ConflitoDeVersao, Repositorio, criar_repositorio
 from sisescala.previa import periodo
-from sisescala.telas import tela_login
+from sisescala.telas import tela_login, tela_troca_senha
 
 st.set_page_config(page_title="SisEscala", page_icon="⚓", layout="wide", initial_sidebar_state="expanded")
 ui.aplicar_tema()
@@ -81,6 +82,28 @@ def _gravar():
 
 _sincronizar()
 ctx = st.session_state.ctx
+
+
+def _config_admin() -> tuple[str, str | None]:
+    """NIP e senha do administrador criado automaticamente: segredos do deploy, depois ambiente, depois padrão."""
+    try:
+        seg = dict(st.secrets["admin"]) if "admin" in st.secrets else {}
+    except Exception:
+        seg = {}
+    return (seg.get("nip") or os.environ.get("SISESCALA_ADMIN_NIP") or "admin",
+            seg.get("senha") or os.environ.get("SISESCALA_ADMIN_SENHA") or None)
+
+
+if not any(u.admin for u in ctx.usuarios):
+    # O sistema cria o administrador sozinho. Sem senha configurada, gera uma provisória forte e a escreve no log do
+    # servidor (Manage app → Logs, no Community Cloud); o primeiro acesso exige a troca.
+    _nip_adm, _senha_adm = _config_admin()
+    _adm, _gerada = auth.garantir_admin(ctx, _nip_adm, _senha_adm)
+    if _gerada:
+        print(f"[SisEscala] Administrador criado. NIP: {_nip_adm}  Senha provisória: {_gerada}  "
+              f"(troque no primeiro acesso)", flush=True)
+    _gravar()
+
 user = ctx.usuario(st.session_state.get("uid", ""))
 if user is None or not user.ativo:
     st.session_state.pop("uid", None)
@@ -88,13 +111,21 @@ if user is None or not user.ativo:
     _gravar()
     st.stop()
 
+if user.trocar_senha:                       # senha provisória (administrador gerado ou redefinida): troca obrigatória
+    tela_troca_senha(ctx, user)
+    _gravar()
+    st.stop()
+
 # ---------------------------------------------------------------- estado desta execução
 uid = user.id
-gerir = user.perfil == "detalhista"
 nt.podar(ctx)
 dp.podar(ctx)
 visiveis = pm.escalas_visiveis(ctx, uid)
 n_pend, n_vinc, n_novas = len(pp.pedidos_pendentes(ctx, uid)), len(vc.pendentes_para(ctx, uid)), nt.nao_lidas(ctx, uid)
+n_acessos = len(ac.pendentes_para(ctx, uid))
+n_cad = len(auth.pendentes(ctx)) if user.admin else 0
+e_detalhista = any(pm.eh_detalhista(ctx, uid, e) for e in ctx.escalas)
+e_auxiliar = bool(user.militar_id) and any(user.militar_id in e.auxiliares for e in ctx.escalas)
 
 
 def _pg(arq, titulo, icone, url, padrao=False):
@@ -109,32 +140,31 @@ menu = {
     "Início": [_pg("painel", "Painel", "dashboard", "painel", True)],
     "Operação": [_pg("escala", "Escala", "calendar_month", "escala"),
                  _pg("papeletas", "Papeletas" + _c(n_pend), "swap_horiz", "papeletas"),
-                 _pg("devolucoes", "Devoluções", "undo", "devolucoes")],
+                 _pg("devolucoes", "Devoluções", "undo", "devolucoes"),
+                 _pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos")],
     "Documentos": [_pg("detalhe", "Detalhe de serviço", "description", "detalhe"),
                    _pg("regras", "Regras da escala", "menu_book", "regras")],
+    # todo usuário aprovado cria ou importa escalas (e vira o detalhista delas) e busca as de outros
+    "Minhas escalas": [_pg("escalas", "Escalas", "tune", "escalas"),
+                       _pg("importar", "Importar planilha", "upload_file", "importar"),
+                       _pg("buscar", "Buscar escalas", "search", "buscar")],
 }
-if gerir:
-    menu["Gestão"] = [_pg("escalas", "Escalas", "tune", "escalas"),
-                      _pg("militares", "Militares", "group", "militares"),
-                      _pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos"),
-                      _pg("importar", "Importar planilha", "upload_file", "importar"),
-                      _pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos")]
+if e_detalhista or e_auxiliar:
+    gestao_pgs = [_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos")]
+    if e_detalhista:
+        gestao_pgs = [_pg("militares", "Militares", "group", "militares")] + gestao_pgs + [
+            _pg("acessos", "Pedidos de acesso" + _c(n_acessos), "how_to_reg", "acessos")]
+    menu["Gestão"] = gestao_pgs
 if user.admin:
-    menu["Administração"] = [_pg("usuarios", "Usuários", "admin_panel_settings", "usuarios")]
-if not gerir and user.militar_id and any(user.militar_id in e.auxiliares for e in ctx.escalas):
-    menu["Operação"].append(_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos"))   # auxiliar também lança
-    menu["Operação"].append(_pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos"))        # e decide vínculos
-conta = [_pg("notificacoes", "Notificações" + _c(n_novas), "notifications", "notificacoes"),
-         _pg("conta", "Minha conta", "manage_accounts", "conta")]
-if not gerir and not user.militar_id:
-    conta.insert(0, _pg("vinculos", "Vincular-me ao meu nome", "link", "vinculos"))
-menu["Conta"] = conta
+    menu["Administração"] = [_pg("usuarios", "Usuários" + _c(n_cad), "admin_panel_settings", "usuarios")]
+menu["Conta"] = [_pg("notificacoes", "Notificações" + _c(n_novas), "notifications", "notificacoes"),
+                 _pg("conta", "Minha conta", "manage_accounts", "conta")]
 
 atual = st.navigation(menu, expanded=True)
 st.logo(str(ui.RAIZ / "assets" / "logo.svg"), size="large")
 
 with st.sidebar:
-    papel = ("Administrador" if user.admin else "Detalhista" if gerir else "Militar")
+    papel = ("Administrador" if user.admin else "Detalhista" if e_detalhista else "Auxiliar" if e_auxiliar else "Usuário")
     st.html(f'<div class="usercard">{ui.avatar(user.nome)}<div><b>{ui.esc(user.nome)}</b><small>{papel}</small></div></div>')
     if st.button("Sair", icon=":material/logout:", use_container_width=True):
         st.session_state.pop("uid", None)
@@ -152,7 +182,7 @@ per = st.session_state.get("per") or "7 dias"
 dias = periodo(inicio, sessao.PERIODOS[per])
 sessao.definir(sessao.Pagina(ctx=ctx, user=user, esc=ctx.escala(eid) if eid else None, res=gerar(ctx, dias[-1]),
                              dias=dias, inicio=inicio, visiveis=visiveis, n_pend=n_pend, n_vinc=n_vinc,
-                             n_novas=n_novas))
+                             n_novas=n_novas, n_acessos=n_acessos))
 
 if (t := st.session_state.pop("toast", None)):
     st.toast(t, icon="✅")

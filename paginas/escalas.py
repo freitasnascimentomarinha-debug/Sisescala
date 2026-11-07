@@ -1,4 +1,6 @@
 """Gestão das escalas: criar, editar, compartilhar e excluir."""
+from datetime import date
+
 import streamlit as st
 
 from sisescala import gestao
@@ -9,7 +11,7 @@ from sisescala.motor import validar_escala
 from sisescala.sessao import agir, pagina
 
 P = pagina()
-ctx, uid = P.ctx, P.uid
+ctx, uid, user = P.ctx, P.uid, P.user
 nomes_m, nomes_u = P.nomes_m, P.nomes_u
 MODOS = {"corrida": "Corrida (fila única)", "preta_vermelha": "Preta e vermelha", "eventos": "Por evento"}
 QUARTOS = [0, 2, 3, 4, 6]
@@ -21,7 +23,7 @@ def _horas(e):
 
 def _campos(e: Escala | None, k: str):
     """Formulário compartilhado entre criar e editar. Retorna os valores digitados."""
-    d = e or Escala("", "", detalhista_id=ctx.usuario(uid).militar_id)   # quem cria vira o detalhista
+    d = e or Escala("", "", data_base=date.today())   # quem cria vira o detalhista
     a, b, c = st.columns(3)
     nome = a.text_input("Nome", d.nome, key=f"{k}_nome")
     tipo = b.text_input("Tipo (ex.: Diária, Pernoite)", d.tipo, key=f"{k}_tipo")
@@ -67,7 +69,10 @@ def _campos(e: Escala | None, k: str):
 @st.dialog("Nova escala", width="large")
 def dialogo_nova():
     v = _campos(None, "nova")
-    membros = st.multiselect("Militares da escala", list(nomes_m), format_func=nomes_m.get, key="nova_mem",
+    _vis = {p.militar_id for e in P.visiveis for p in e.membros}
+    _cand = [m for m in nomes_m if user.admin or m in _vis]
+    membros = st.multiselect("Militares da escala (você também pode adicionar depois, em Militares)", _cand,
+                             format_func=nomes_m.get, key="nova_mem",
                              help="O detalhista fica fora da escala, a menos que você marque que ele concorre.")
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
@@ -112,7 +117,7 @@ for e in minhas:
                 if not outros:
                     st.caption("Não há outros usuários cadastrados.")
                 else:
-                    com = st.selectbox("Usuário", outros, format_func=lambda u: f"{nomes_u[u]} (@{ctx.usuario(u).login})", key=f"u{e.id}")
+                    com = st.selectbox("Usuário", outros, format_func=lambda u: f"{nomes_u[u]} (NIP {ctx.usuario(u).login})", key=f"u{e.id}")
                     niv = st.selectbox("Acesso", ["leitura", "revogar"], key=f"n{e.id}",
                                        format_func={"leitura": "Leitura", "revogar": "Revogar acesso"}.get)
                     st.caption("Leitura permite ver a escala. Quem decide e lança são o detalhista e os auxiliares "
@@ -122,11 +127,11 @@ for e in minhas:
                              "Acesso atualizado.")
             with b4.popover("Entregar o detalhe", icon=":material/swap_horiz:"):
                 st.caption("Passa o detalhe desta escala a outra pessoa. Você não fica sem detalhista: é preciso designar outro.")
-                cand = [u.id for u in ctx.usuarios if u.perfil == "detalhista" and u.ativo and u.id != uid]
+                cand = [u.id for u in ctx.usuarios if u.ativo and u.id != uid]
                 if not cand:
-                    st.warning("Não há outra conta de detalhista. Peça ao administrador para criar uma em Usuários.")
+                    st.warning("Não há outro usuário ativo para receber o detalhe.")
                 else:
-                    novo_det = st.selectbox("Novo detalhista", cand, format_func=lambda u: f"{nomes_u[u]} (@{ctx.usuario(u).login})",
+                    novo_det = st.selectbox("Novo detalhista", cand, format_func=lambda u: f"{nomes_u[u]} (NIP {ctx.usuario(u).login})",
                                             key=f"td_{e.id}")
                     papel = st.radio("Depois de entregar, eu serei", list(gestao.PAPEIS), format_func=gestao.PAPEIS.get, key=f"tp_{e.id}")
                     meu_mil = ctx.usuario(uid).militar_id or e.detalhista_id

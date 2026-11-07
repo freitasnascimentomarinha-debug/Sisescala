@@ -1,4 +1,4 @@
-"""Administração de contas."""
+"""Administração de contas: aprovar cadastros, editar, bloquear/desbloquear, redefinir senha e excluir."""
 import pandas as pd
 import streamlit as st
 
@@ -7,63 +7,75 @@ from sisescala.sessao import agir, pagina
 
 P = pagina()
 ctx, user, uid = P.ctx, P.user, P.uid
-nomes_m = P.nomes_m
-ui.cabecalho("Usuários", "Crie contas, redefina senhas e controle quem pode entrar.", "shield",
-             [ui.chip("Contas", len(ctx.usuarios))])
+pend = auth.pendentes(ctx)
+ui.cabecalho("Usuários", "Aprove cadastros e controle quem pode entrar no sistema.", "shield",
+             [ui.chip("Contas", len(ctx.usuarios)), ui.chip("Pendentes", len(pend))])
 
 with st.container(border=True):
-    ctx.cadastro_aberto = st.toggle("Permitir que militares criem a própria conta (tela de login)", ctx.cadastro_aberto)
-    st.caption("Conta nova não enxerga nenhuma escala até o detalhista compartilhar uma e aprovar o vínculo.")
+    ctx.cadastro_aberto = st.toggle("Permitir que militares peçam cadastro (tela de login)", ctx.cadastro_aberto)
+    st.caption("Todo cadastro novo fica pendente até você aprovar.")
+
+with st.container(border=True):
+    ui.secao("Cadastros aguardando aprovação")
+    if not pend:
+        ui.vazio("Nenhum cadastro pendente", "")
+    for u in pend:
+        c1, c2 = st.columns([3, 1.6])
+        c1.html(ui.pessoa(u.nome, f"NIP {u.nip or u.login} · OM {u.om}", f"✉ {u.email} · ramal {u.ramal} · 📱 {u.celular}"))
+        with c2:
+            a, b = st.columns(2)
+            if a.button("Aprovar", key=f"ap_{u.id}", type="primary", use_container_width=True):
+                agir(lambda u=u: auth.aprovar_usuario(ctx, uid, u.id), "Cadastro aprovado.")
+            if b.button("Rejeitar", key=f"rj_{u.id}", use_container_width=True):
+                agir(lambda u=u: auth.rejeitar_usuario(ctx, uid, u.id), "Cadastro rejeitado.")
 
 with st.container(border=True):
     ui.secao("Contas")
-    tab = [{"Login": u.login, "Nome": u.nome, "Perfil": u.perfil, "Admin": "sim" if u.admin else "",
-            "Militar": nomes_m.get(u.militar_id, ""), "E-mail": u.email, "Ramal": u.ramal, "Celular": u.celular,
-            "PIN": "sim" if u.pin_hash else "não", "Ativo": "sim" if u.ativo else "não",
+    tab = [{"NIP": u.nip or u.login, "Nome": u.nome, "OM": u.om, "Situação": u.situacao,
+            "Admin": "sim" if u.admin else "", "E-mail": u.email, "Ramal": u.ramal, "Celular": u.celular,
+            "PIN": "sim" if u.pin_hash else "não",
             "Bloqueada até": f"{u.bloqueado_ate:%d/%m %H:%M}" if u.bloqueado_ate else ""} for u in ctx.usuarios]
     st.dataframe(pd.DataFrame(tab), hide_index=True, width="stretch")
 
-esq, dir_ = st.columns(2, gap="large")
-with esq, st.container(border=True):
-    ui.secao("Nova conta")
-    with st.form("novo_usuario", clear_on_submit=True, border=False):
-        a, b = st.columns(2)
-        lg, nm = a.text_input("Login"), b.text_input("Nome")
-        sn = st.text_input("Senha provisória (8+)", type="password")
-        a, b, c = st.columns(3)
-        em, ra, ce = a.text_input("E-mail"), b.text_input("Ramal"), c.text_input("Celular")
-        perfil = st.selectbox("Perfil", list(auth.PERFIS), format_func=str.capitalize)
-        st.caption("O detalhista de cada escala é definido em Gestão → Escalas. Conta de militar nasce sem vínculo: o próprio militar pede para se vincular ao seu nome na escala e o "
-                   "detalhista autoriza. Só militar vinculado pede troca de serviço.")
-        sem_conta = [m.id for m in ctx.militares if not any(u.militar_id == m.id for u in ctx.usuarios)]
-        mil_det = st.selectbox("Militar desta conta (só perfil Detalhista)", [""] + sem_conta, format_func=lambda i: nomes_m.get(i, "—"),
-                               help="Liga o detalhista ao militar dele no cadastro: assim ele fica dispensado de serviço nas escalas "
-                                    "dele e pode continuar nelas como auxiliar ou militar escalado ao entregar o detalhe.")
-        adm = st.checkbox("Administrador")
-        if st.form_submit_button("Criar conta", type="primary", use_container_width=True):
-            try:
-                auth.criar_usuario(ctx, uid, lg, nm, sn, perfil=perfil, admin=adm, email=em, ramal=ra,
-                                   militar_id=mil_det if perfil == "detalhista" else "",
-                                   celular=ce, exigir_contato=True)
-                st.session_state["toast"] = "Conta criada."
-                st.rerun()
-            except (ValueError, PermissionError) as ex:
-                st.error(str(ex))
-with dir_, st.container(border=True):
-    ui.secao("Senha e situação da conta")
-    alvo = st.selectbox("Conta", [u.id for u in ctx.usuarios],
-                        format_func=lambda i: f"{ctx.usuario(i).login} – {ctx.usuario(i).nome}")
-    nova = st.text_input("Nova senha (8+)", type="password", key="rs")
-    if ctx.usuario(alvo).perfil == "detalhista":
-        livres = [""] + [m.id for m in ctx.militares if not any(u.militar_id == m.id and u.id != alvo for u in ctx.usuarios)]
-        atual = ctx.usuario(alvo).militar_id
-        mil_novo = st.selectbox("Militar desta conta de detalhista", livres, livres.index(atual) if atual in livres else 0,
-                                format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"ml_{alvo}")
-        if st.button("Salvar militar do detalhista", key=f"mlb_{alvo}"):
-            agir(lambda: auth.definir_militar_do_detalhista(ctx, uid, alvo, mil_novo), "Militar do detalhista atualizado.")
-    c1, c2 = st.columns(2)
-    if c1.button("Redefinir senha", type="primary"):
-        agir(lambda: auth.redefinir_senha(ctx, uid, alvo, nova), "Senha redefinida.")
-    ativo = ctx.usuario(alvo).ativo
-    if c2.button("Desativar conta" if ativo else "Reativar conta"):
-        agir(lambda: auth.definir_ativo(ctx, uid, alvo, not ativo), "Situação da conta atualizada.")
+with st.container(border=True):
+    ui.secao("Gerenciar uma conta")
+    alvo_id = st.selectbox("Conta", [u.id for u in ctx.usuarios],
+                           format_func=lambda i: f"{ctx.usuario(i).nip or ctx.usuario(i).login} – {ctx.usuario(i).nome}")
+    al = ctx.usuario(alvo_id)
+    esq, dir_ = st.columns(2, gap="large")
+    with esq:
+        with st.form(f"edit_{alvo_id}", border=False):
+            a, b = st.columns(2)
+            nip = a.text_input("NIP", al.nip or al.login)
+            om = b.text_input("OM", al.om)
+            nome = st.text_input("Nome", al.nome)
+            a, b, c = st.columns(3)
+            em, ra, ce = a.text_input("E-mail", al.email), b.text_input("Ramal", al.ramal), c.text_input("Celular", al.celular)
+            adm = st.checkbox("Administrador", al.admin)
+            if st.form_submit_button("Salvar alterações", type="primary", use_container_width=True):
+                agir(lambda: auth.editar_usuario(ctx, uid, alvo_id, nome=nome, nip=nip, om=om, email=em, ramal=ra,
+                                                 celular=ce, admin=adm), "Conta atualizada.")
+    with dir_:
+        if al.situacao == "bloqueado":
+            if st.button("Desbloquear conta", type="primary", use_container_width=True):
+                agir(lambda: auth.desbloquear_usuario(ctx, uid, alvo_id), "Conta desbloqueada.")
+        elif al.situacao == "ativo":
+            if st.button("Bloquear conta", use_container_width=True):
+                agir(lambda: auth.bloquear_usuario(ctx, uid, alvo_id), "Conta bloqueada.")
+        elif al.situacao in ("pendente", "rejeitado"):
+            if st.button("Aprovar cadastro", type="primary", use_container_width=True):
+                agir(lambda: auth.aprovar_usuario(ctx, uid, alvo_id), "Cadastro aprovado.")
+        nova = st.text_input("Senha provisória (8+)", type="password", key=f"rs_{alvo_id}")
+        if st.button("Redefinir senha", use_container_width=True):
+            agir(lambda: auth.redefinir_senha(ctx, uid, alvo_id, nova), "Senha redefinida; a pessoa troca no próximo acesso.")
+        with st.popover("Excluir conta", icon=":material/delete:", use_container_width=True):
+            outros = [u.id for u in ctx.usuarios if u.id != alvo_id and u.ativo]
+            donas = [e for e in ctx.escalas if e.dono_id == alvo_id]
+            if donas:
+                st.warning(f"Esta conta é detalhista de {len(donas)} escala(s). Passe-as a outra conta antes.")
+                novo = st.selectbox("Passar as escalas para", outros, key=f"rt_{alvo_id}",
+                                    format_func=lambda i: ctx.usuario(i).nome)
+                if st.button("Reatribuir escalas", key=f"rb_{alvo_id}"):
+                    agir(lambda: auth.reatribuir_escalas(ctx, uid, alvo_id, novo), "Escalas reatribuídas.")
+            if st.button("Confirmar exclusão", key=f"ex_{alvo_id}", type="primary", disabled=bool(donas)):
+                agir(lambda: auth.excluir_usuario(ctx, uid, alvo_id), "Conta excluída.")

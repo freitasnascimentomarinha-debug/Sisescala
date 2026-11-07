@@ -88,7 +88,7 @@ def itens_configuracao(ctx: Contexto, esc: Escala) -> list[tuple[str, list[Item]
                  "Palestras, cerimônias, cursos, apoio etc. só escalam quem não está de efetivo serviço no dia."),
         ]),
         ("Parâmetros gerais", [
-            Item("UF da OM (feriados)", ctx.uf, str(c_ctx("uf")),
+            Item("UF da OM (feriados)", esc.uf or ctx.uf, str(c_ctx("uf")),
                  "Feriados nacionais e estaduais vêm prontos; municipais e licenças são lançados à mão."),
             Item("Prazo para devolver serviço (dias)", str(ctx.janela_devolucao_dias),
                  str(c_ctx("janela_devolucao_dias")),
@@ -173,8 +173,8 @@ def texto_funcionamento(ctx: Contexto, esc: Escala) -> list[str]:
 
 
 def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list[tuple[str, str]]:
-    hoje = hoje or ctx.data_base
-    out: list[tuple[str, str]] = [("Data-base (a escala continua daqui)", f"{ctx.data_base:%d/%m/%Y}")]
+    hoje = hoje or ctx.base_de(esc)
+    out: list[tuple[str, str]] = [("Data-base (a escala continua daqui)", f"{ctx.base_de(esc):%d/%m/%Y}")]
     filas = [("corrida",)] if esc.modo != "preta_vermelha" else [("preta",), ("vermelha",)]
     for (f,) in filas:
         ult = esc.ultimo_servico.get(f)
@@ -196,7 +196,7 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
     out.append(("Impedimentos lançados", "; ".join(
         f"{ctx.militar(i.militar_id).nome} – {TIPOS_IMPEDIMENTO[i.tipo]} "
         f"{i.inicio:%d/%m}{'–' + format(i.fim, '%d/%m') if i.fim else '→'}" for i in imps) or "nenhum"))
-    esp = [e for e in ctx.dias_especiais]
+    esp = [e for e in ctx.dias_especiais if not e.escala_id or e.escala_id == esc.id]
     out.append(("Dias especiais lançados", "; ".join(
         f"{e.data:%d/%m} {e.descricao or e.tipo}" for e in sorted(esp, key=lambda e: e.data)) or "nenhum"))
     gu = [g for g in ctx.guarnecimentos if g.escala_id == esc.id]

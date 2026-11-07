@@ -83,9 +83,13 @@ def test_auxiliar_nao_lanca_em_escala_de_que_nao_e_auxiliar():
 def test_auxiliar_lanca_dia_especial_guarnecimento_e_evento_nas_escalas_dele():
     c = mk()
     c.escalas[0].funciona_em = "uteis"
-    lc.lancar_dia_especial(c, AUX, DiaEspecial(D + timedelta(days=1), "sem_expediente", "Licença administrativa"))
+    lc.lancar_dia_especial(c, AUX, DiaEspecial(D + timedelta(days=1), "sem_expediente", "Licença administrativa", "A"))
     lc.lancar_guarnecimento(c, AUX, Guarnecimento(D + timedelta(days=1), "A", True))
     assert len(c.dias_especiais) == 1 and len(c.guarnecimentos) == 1
+    with pytest.raises(PermissaoNegada, match="administrador"):                      # para todas as escalas: só o admin
+        lc.lancar_dia_especial(c, AUX, DiaEspecial(D, "feriado", "x"))
+    with pytest.raises(PermissaoNegada):                                             # escala em que ele não decide
+        lc.lancar_dia_especial(c, AUX, DiaEspecial(D, "feriado", "x", "B"))
     c.escalas[1].auxiliares = ["m9", "m2"]                                                # agora também auxiliar da escala por evento
     lc.lancar_evento(c, AUX, Evento("B", D, "Palestra"))
     assert len(c.eventos) == 1
@@ -98,7 +102,7 @@ def test_militar_comum_nao_lanca_nada():
     assert lc.escalas_lancaveis(c, M3) == [] and lc.militares_lancaveis(c, M3) == []
     for acao in (lambda: lc.lancar_impedimento(c, M3, imp("m4")),
                  lambda: lc.lancar_dispensa_no_dia(c, M3, Ocorrencia(D, "A", "m4", "x")),
-                 lambda: lc.lancar_dia_especial(c, M3, DiaEspecial(D, "feriado", "x")),
+                 lambda: lc.lancar_dia_especial(c, M3, DiaEspecial(D, "feriado", "x", "A")),
                  lambda: lc.lancar_guarnecimento(c, M3, Guarnecimento(D, "A", True))):
         with pytest.raises(PermissaoNegada):
             acao()
@@ -126,6 +130,6 @@ def test_auxiliar_remove_lancamentos_dos_outros_mas_nao_os_proprios():
     assert c.impedimentos == [proprio]
     lc.lancar_dispensa_no_dia(c, "u1", Ocorrencia(D, "A", "m2", "x"))              # dispensa do próprio auxiliar
     assert not lc.pode_remover(c, AUX, c.ocorrencias[0])
-    lc.lancar_dia_especial(c, AUX, DiaEspecial(D, "feriado", "x"))
+    lc.lancar_dia_especial(c, AUX, DiaEspecial(D, "feriado", "x", "A"))
     lc.remover(c, AUX, c.dias_especiais[0])
     assert c.dias_especiais == []

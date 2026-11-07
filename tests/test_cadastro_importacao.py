@@ -16,7 +16,9 @@ D = date(2027, 3, 1)
 def base(n=6):
     ms = [Militar(f"m{i}", f"M{i}", "CB", i) for i in range(1, n + 1)]
     e = Escala("A", "Pernoite", dono_id="u1", membros=[Pertinencia(m.id) for m in ms])
-    return Contexto(ms, [e], D)
+    c = Contexto(ms, [e], D)
+    c.usuarios = [Usuario("u1", "Detalhista", "1"), Usuario("u9", "Outro", "9")]
+    return c
 
 
 # ------------------------------------------------------------ cadastro
@@ -50,7 +52,7 @@ def test_excluir_apaga_impedimentos_e_respeita_permissao():
     c.impedimentos.append(Impedimento("m2", "ferias", D, D + timedelta(days=5)))
     with pytest.raises(PermissaoNegada):
         cd.excluir_militares(c, ["m2"], usuario_id="u9")
-    cd.excluir_militares(c, ["m2"], usuario_id="u1")
+    cd.excluir_militares(c, ["m2"], usuario_id="u1")                     # detalhista da única escala dele
     assert c.impedimentos == []
 
 

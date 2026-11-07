@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from helpers import cad_ativo
 from sisescala import auth
 from sisescala import papeletas as pp
 from sisescala import vinculos as vc
@@ -21,8 +22,8 @@ def mk():
     c = Contexto(ms, [e], D)
     auth.criar_usuario(c, None, "det", "Detalhista", SENHA, admin=True)                         # u1 (dono)
     auth.criar_usuario(c, "u1", "ed", "Outro detalhista", SENHA)                                # u2
-    sem = auth.cadastrar_se(c, "sem", "Sem vínculo", SENHA, **CONTATO)                          # u3
-    vinc = auth.cadastrar_se(c, "vinc", "Vinculado", SENHA, **CONTATO)                          # u4
+    sem = cad_ativo(c, "sem", "Sem vínculo", SENHA)                          # u3
+    vinc = cad_ativo(c, "vinc", "Vinculado", SENHA)                          # u4
     for u in (c.usuario("u1"), c.usuario("u2"), sem, vinc):
         u.pin_hash = auth.hash_pin(PIN)
     for u in (sem, vinc):
@@ -66,10 +67,7 @@ def test_detalhista_pede_por_qualquer_militar_com_o_proprio_pin():
 
 def test_conta_de_militar_nao_recebe_edicao_nem_decide_nem_ve_pedidos_dos_outros():
     c = mk()
-    with pytest.raises(ValueError, match="só contas de detalhista"):
-        compartilhar(c, "u1", "A", VINC, "edicao")
-    c.escala("A").compartilhado_com[VINC] = "edicao"                # mesmo se estivesse gravado assim (dado antigo)
-    assert pode_editar(c, VINC, c.escala("A")) and not eh_detalhista(c, VINC, c.escala("A"))
+    assert not pode_editar(c, VINC, c.escala("A")) and not eh_detalhista(c, VINC, c.escala("A"))
     p = pedir(c, "u1", x="m3", dx=D + timedelta(days=2), y="m5", dy=D + timedelta(days=4))
     with pytest.raises(PermissaoNegada):
         pp.aprovar(c, VINC, p.id, AGORA)
@@ -99,15 +97,6 @@ def test_vinculo_so_vale_com_autorizacao_do_detalhista():
     assert c.usuario(SEM).militar_id == "m2"
 
 
-def test_editor_com_conta_de_militar_nao_aprova_vinculo():
-    c = mk()
-    c.escala("A").compartilhado_com[VINC] = "edicao"                  # dado antigo
-    v = vc.solicitar(c, SEM, "A", "m2", "2.000", PIN, AGORA)
-    assert vc.pendentes_para(c, VINC) == []
-    with pytest.raises(PermissaoNegada):
-        vc.aprovar(c, VINC, v.id, AGORA)
-
-
 def test_tela_de_usuarios_nao_oferece_vinculo_direto():
     """A conta criada pelo administrador nasce sem vínculo (o vínculo é pedido pelo militar e autorizado depois)."""
     from pathlib import Path
@@ -116,12 +105,13 @@ def test_tela_de_usuarios_nao_oferece_vinculo_direto():
     import os, tempfile
     d = tempfile.mkdtemp()
     os.environ["SISESCALA_ARQUIVO"] = str(Path(d) / "d.json")
+    os.environ["SISESCALA_ADMIN_SENHA"] = "senha-admin-1"
+    os.environ["SISESCALA_ADMIN_NIP"] = "admin"
     st.cache_resource.clear()
     at = AppTest.from_file(str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=120).run()
-    for rot, val in (("Login", "admin"), ("Nome", "Adm"), ("Senha (8+ caracteres)", "senha-admin-1"),
-                     ("E-mail", "a@b.com"), ("Ramal", "2000"), ("Celular (com DDD)", "21999990000")):
-        next(t for t in at.text_input if t.label == rot).input(val)
-    next(b for b in at.button if "Criar administrador" in b.label).click().run()
+    next(t for t in at.text_input if t.label == "NIP").input("admin")
+    next(t for t in at.text_input if t.label == "Senha").input("senha-admin-1")
+    next(b for b in at.button if b.label == "Entrar").click().run()
     at.switch_page("paginas/usuarios.py").run()
     assert not at.exception
     assert not any("Militar" in s.label and "vincula" in s.label.lower() for s in at.selectbox)

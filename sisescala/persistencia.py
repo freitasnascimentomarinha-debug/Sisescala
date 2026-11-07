@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -64,8 +64,9 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                   ("email", "s"), ("ramal", "s"), ("celular", "s")],
     "Usuarios": [("id", "s"), ("nome", "s"), ("login", "s"), ("senha_hash", "s"), ("militar_id", "s"),
                  ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
-                 ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s")],
-    "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("om", "s"), ("detalhista_id", "s"), ("detalhista_escalavel", "b"),
+                 ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s"), ("nip", "s"), ("om", "s"),
+                 ("situacao", "s"), ("trocar_senha", "b")],
+    "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("om", "s"), ("uf", "s"), ("data_base", "d"), ("detalhista_id", "s"), ("detalhista_escalavel", "b"),
                 ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
@@ -77,7 +78,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "EscalaCompart": [("escala_id", "s"), ("usuario_id", "s"), ("nivel", "s")],
     "Impedimentos": [("militar_id", "s"), ("tipo", "s"), ("inicio", "d"), ("fim", "d"), ("motivo", "s"),
                      ("anexo", "s")],
-    "DiasEspeciais": [("data", "d"), ("tipo", "s"), ("descricao", "s")],
+    "DiasEspeciais": [("data", "d"), ("tipo", "s"), ("descricao", "s"), ("escala_id", "s")],
     "Guarnecimentos": [("data", "d"), ("escala_id", "s"), ("guarnece", "b")],
     "Roxas": [("id", "s"), ("nome", "s"), ("inicio", "d"), ("fim", "d")],
     "Ocorrencias": [("data", "d"), ("escala_id", "s"), ("militar_id", "s"), ("motivo", "s")],
@@ -95,6 +96,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                  ("motivo_rejeicao", "s")],
     "Disponibilidades": [("escala_id", "s"), ("militar_id", "s"), ("data", "d"), ("criado_em", "dt"),
                          ("criado_por", "s")],
+    "PedidosAcesso": [("id", "s"), ("usuario_id", "s"), ("escala_id", "s"), ("criado_em", "dt"), ("mensagem", "s"),
+                      ("status", "s"), ("decidido_por", "s"), ("decidido_em", "dt"), ("motivo_rejeicao", "s")],
     "Notificacoes": [("id", "s"), ("usuario_id", "s"), ("tipo", "s"), ("texto", "s"), ("criado_em", "dt"),
                      ("lida", "b"), ("escala_id", "s")],
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
@@ -156,6 +159,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("Disponibilidades", x)
     for n in ctx.notificacoes:
         add("Notificacoes", n)
+    for pa in ctx.pedidos_acesso:
+        add("PedidosAcesso", pa)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -212,6 +217,9 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         janela_troca_dias=int(cfg.get("janela_troca_dias") or 15),
         cadastro_aberto=cfg.get("cadastro_aberto", "1") != "0")
     ctx.usuarios = [Usuario(**d) for d in _linhas_de(T, "Usuarios")]
+    for u in ctx.usuarios:            # contas anteriores ao cadastro por NIP/aprovação: continuam entrando como antes
+        u.situacao = u.situacao or ("ativo" if u.ativo else "bloqueado")
+        u.nip = u.nip or u.login
     escalas = {}
     for d in _linhas_de(T, "Escalas"):
         quartos = [Quarto(a, b) for a, b in json.loads(d.pop("quartos") or "[]")]
@@ -242,6 +250,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.vinculos = [Vinculo(**d) for d in _linhas_de(T, "Vinculos")]
     ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
+    ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
         d["tipo"] = d["tipo"] or "troca"          # planilhas antigas sem a coluna

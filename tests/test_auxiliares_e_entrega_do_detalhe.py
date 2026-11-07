@@ -111,7 +111,7 @@ def test_auxiliar_repetido_ou_igual_ao_detalhista_e_recusado():
 def test_entregar_o_detalhe_exige_designar_outro_detalhista():
     c = mk()
     escala(c)
-    for novo in ("inexistente", DET1, M2):                                  # inexistente, a mesma pessoa, conta de militar
+    for novo in ("inexistente", DET1):                                       # inexistente, a mesma pessoa
         with pytest.raises(ValueError, match="OUTRO detalhista"):
             gestao.transferir_detalhe(c, DET1, "e1", novo, "nenhum")
     assert c.escala("e1").dono_id == DET1
@@ -196,21 +196,6 @@ def test_entrega_notifica_os_dois():
     gestao.transferir_detalhe(c, DET1, "e1", DET2, "nenhum")
     textos = {n.usuario_id: n.texto for n in c.notificacoes}
     assert "agora é o detalhista" in textos[DET2] and "Você entregou o detalhe" in textos[DET1]
-
-
-# ---------------------------------------------------------------- ligar a conta do detalhista ao militar (administrador)
-def test_so_o_administrador_liga_conta_de_detalhista_a_militar():
-    c = mk()
-    auth.definir_militar_do_detalhista(c, "u1", SEM, "m9")
-    assert c.usuario(SEM).militar_id == "m9"
-    with pytest.raises(PermissionError):
-        auth.definir_militar_do_detalhista(c, DET1, SEM, "m8")
-    with pytest.raises(ValueError, match="só conta de detalhista"):
-        auth.definir_militar_do_detalhista(c, "u1", M2, "m8")                 # conta de militar: só pelo vínculo
-    with pytest.raises(ValueError, match="já está ligado"):
-        auth.definir_militar_do_detalhista(c, "u1", SEM, "m1")
-    auth.definir_militar_do_detalhista(c, "u1", SEM, "")
-    assert c.usuario(SEM).militar_id == ""
 
 
 # ---------------------------------------------------------------- persistência

@@ -22,17 +22,25 @@ def _exigir_detalhista(ctx: Contexto, usuario_id: str, esc: Escala) -> None:
         raise PermissaoNegada(NEGADO)
 
 
+def militar_do_detalhista(ctx: Contexto, u) -> str:
+    """Militar do cadastro que é essa pessoa: o vinculado à conta ou, na falta, o de mesmo NIP."""
+    if u.militar_id:
+        return u.militar_id
+    from .auth import normalizar_nip
+    return next((m.id for m in ctx.militares if m.nip and normalizar_nip(m.nip) == u.login), "")
+
+
 def criar_escala(ctx: Contexto, usuario_id: str, escala: Escala, referencias=()) -> Escala:
     u = ctx.usuario(usuario_id)
-    if not (u and u.ativo and u.perfil == "detalhista"):
-        raise PermissaoNegada("somente o detalhista cria escalas")
+    if not (u and u.ativo):
+        raise PermissaoNegada("só usuário com cadastro aprovado cria escalas")
     if not escala.nome.strip():
         raise ValueError("informe o nome da escala")
     if any(e.id == escala.id for e in ctx.escalas):
         raise ValueError("já existe uma escala com esse identificador")
     escala.dono_id = usuario_id                       # quem cria vira automaticamente o detalhista da escala
-    if not escala.detalhista_id and u.militar_id:     # e, se a conta tem militar, é ele o dispensado de serviço
-        escala.detalhista_id = u.militar_id
+    if not escala.detalhista_id:                      # e o militar dele (pelo vínculo ou pelo NIP) fica fora da escala
+        escala.detalhista_id = militar_do_detalhista(ctx, u)
     if erros := validar_escala(ctx, escala):
         raise ValueError(" ".join(erros))
     ctx.escalas.append(escala)
@@ -95,25 +103,25 @@ def transferir_detalhe(ctx: Contexto, usuario_id: str, escala_id: str, novo_usua
     if esc.dono_id != usuario_id or not eh_detalhista(ctx, usuario_id, esc):
         raise PermissaoNegada("só o detalhista atual entrega o detalhe da escala")
     novo = ctx.usuario(novo_usuario_id)
-    if novo is None or not novo.ativo or novo.perfil != "detalhista" or novo.id == usuario_id:
-        raise ValueError("designe OUTRO detalhista (uma conta de detalhista ativa) para receber o detalhe")
+    if novo is None or not novo.ativo or novo.id == usuario_id:
+        raise ValueError("designe OUTRO detalhista (um usuário ativo) para receber o detalhe")
     if papel not in PAPEIS:
         raise ValueError("escolha o que você será nesta escala: militar escalado, auxiliar ou nenhum papel")
     velho = ctx.usuario(usuario_id)
-    meu = militar_anterior or esc.detalhista_id or velho.militar_id
+    meu = militar_anterior or esc.detalhista_id or militar_do_detalhista(ctx, velho)
     if meu and not any(m.id == meu for m in ctx.militares):
         raise ValueError("militar não encontrado no cadastro")
     if papel in ("escalado", "auxiliar") and not meu:
         raise ValueError("indique o seu militar no cadastro para continuar nesta escala como "
                          + ("militar escalado" if papel == "escalado" else "auxiliar"))
-    if novo.militar_id and novo.militar_id == meu:
+    if militar_do_detalhista(ctx, novo) and militar_do_detalhista(ctx, novo) == meu:
         raise ValueError("o novo detalhista e quem entrega não podem ser o mesmo militar")
 
     # --- o novo detalhista: assume, fica fora da escala por padrão e deixa de ser auxiliar/convidado
     esc.dono_id = novo.id
-    esc.detalhista_id = novo.militar_id
+    esc.detalhista_id = militar_do_detalhista(ctx, novo)
     esc.detalhista_escalavel = False
-    esc.auxiliares = [a for a in esc.auxiliares if a != novo.militar_id]
+    esc.auxiliares = [a for a in esc.auxiliares if a != esc.detalhista_id]
     esc.compartilhado_com.pop(novo.id, None)
     # --- quem entregou
     esc.compartilhado_com.pop(velho.id, None)

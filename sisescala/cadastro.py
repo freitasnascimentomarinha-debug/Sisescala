@@ -7,7 +7,7 @@ from datetime import date
 
 from .contatos import normalizar_contato
 from .modelos import Contexto, Militar, Pertinencia
-from .permissoes import PermissaoNegada, pode_editar
+from .permissoes import PermissaoNegada, eh_detalhista
 
 
 def _slug(txt: str) -> str:
@@ -93,10 +93,14 @@ def excluir_militares(ctx: Contexto, ids: list[str], usuario_id: str | None = No
     """Exclui do cadastro (todas as escalas). Se `usuario_id` for informado, só exclui quem
     pertence apenas a escalas que ele pode editar."""
     ids = [i for i in dict.fromkeys(ids) if any(m.id == i for m in ctx.militares)]
-    if usuario_id is not None:
+    u = ctx.usuario(usuario_id) if usuario_id is not None else None
+    if usuario_id is not None and not (u and u.admin and u.ativo):
         for i in ids:
-            for esc in ctx.escalas:
-                if any(p.militar_id == i for p in esc.membros) and not pode_editar(ctx, usuario_id, esc):
+            dele = [esc for esc in ctx.escalas if any(p.militar_id == i for p in esc.membros)]
+            if not dele:
+                raise PermissaoNegada(f"{ctx.militar(i).nome} não está em escala sua: só o administrador exclui")
+            for esc in dele:
+                if not eh_detalhista(ctx, usuario_id, esc):
                     raise PermissaoNegada(
                         f"{ctx.militar(i).nome} está na escala '{esc.nome}', que você não pode editar")
     for i in ids:

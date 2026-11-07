@@ -21,12 +21,13 @@ with esq, st.container(border=True):
     arq = st.file_uploader("Planilha", type=["csv", "xlsx"], label_visibility="collapsed")
     sentido = st.selectbox("Ordem das linhas", ["topo_mais_antigo", "base_mais_antigo"],
                            format_func=lambda x: "1ª linha = mais antigo" if x == "topo_mais_antigo" else "última linha = mais antigo")
-    criar = st.checkbox("Criar escalas que não existirem", True)
+    criar = st.checkbox("Criar escalas que não existirem (você será o detalhista delas)", True)
     subst = st.checkbox("Membros das escalas citadas = os da planilha", False)
     if arq and st.button("Revisar importação", type="primary", icon=":material/fact_check:"):
         try:
             st.session_state.import_prev = importar(ctx, ler_tabela(arq.getvalue(), arq.name), sentido=sentido,
-                                                    criar_escalas=criar, dono_id=uid, substituir_membros=subst)
+                                                    criar_escalas=criar, dono_id=uid, substituir_membros=subst,
+                                                    usuario_id=uid, sobrescrever=P.user.admin)
             st.rerun()
         except Exception as ex:  # planilha malformada
             st.error(f"Não consegui ler a planilha: {ex}")
@@ -40,8 +41,9 @@ with dir_, st.container(border=True):
             st.error(t)
         ui.kpis([("Novos", len(rel.novos), "users", "verde"), ("Atualizados", len(rel.atualizados), "edit", "azul"),
                  ("Vínculos", rel.vinculos, "link", "violeta"), ("Escalas criadas", len(rel.escalas_criadas), "calendar", "ambar")])
-        if rel.data_base:
-            st.info(f"A escala continua em {rel.data_base:%d/%m/%Y}. " + "; ".join(
+        if rel.datas_base:
+            st.info("; ".join(f"{(novo_ctx.escala(k).nome if novo_ctx.escala(k) else k)} continua em {v:%d/%m/%Y}"
+                              for k, v in rel.datas_base.items()) + ". " + "; ".join(
                 f"{k}: último = {v}" for k, v in rel.continuidade.items()))
         for t in rel.avisos:
             st.warning(t)

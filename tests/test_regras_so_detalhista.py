@@ -5,7 +5,7 @@ import pytest
 
 from sisescala import auth, gestao
 from sisescala.modelos import *
-from sisescala.permissoes import PermissaoNegada, compartilhar, referenciar
+from sisescala.permissoes import PermissaoNegada, compartilhar, eh_detalhista, referenciar
 
 D = date(2027, 3, 1)
 SENHA = "senha-forte-1"
@@ -39,8 +39,9 @@ def test_auxiliar_nao_edita_nenhuma_regra_da_escala():
 
 def test_auxiliar_nao_cria_nem_exclui_nem_compartilha_nem_mexe_nos_membros_nem_referencia():
     c = mk()
-    with pytest.raises(PermissaoNegada, match="somente o detalhista cria"):
-        gestao.criar_escala(c, AUX, Escala("e2", "Nova", membros=[Pertinencia("m3")]))
+    # qualquer usuário aprovado cria a sua escala (e vira detalhista dela), mas isso não dá poder sobre a e1
+    nova = gestao.criar_escala(c, AUX, Escala("e2", "Nova", membros=[Pertinencia(m) for m in ("m3", "m4", "m5")]))
+    assert nova.dono_id == AUX and not eh_detalhista(c, AUX, c.escala("e1"))
     with pytest.raises(PermissaoNegada):
         gestao.excluir_escala(c, AUX, "e1")
     with pytest.raises(PermissaoNegada, match="dono"):
@@ -51,20 +52,13 @@ def test_auxiliar_nao_cria_nem_exclui_nem_compartilha_nem_mexe_nos_membros_nem_r
         gestao.remover_militares(c, AUX, "e1", ["m3"])
     with pytest.raises(PermissaoNegada):
         referenciar(c, AUX, "e1", "e1")
-    assert [e.id for e in c.escalas] == ["e1"] and len(c.escala("e1").membros) == 8
+    assert [e.id for e in c.escalas] == ["e1", "e2"] and len(c.escala("e1").membros) == 8
 
 
 def test_conta_de_militar_comum_tambem_nao_edita():
     c = mk()
     with pytest.raises(PermissaoNegada):
         gestao.editar_escala(c, M3, "e1", folgas_minimas=0)
-
-
-def test_conta_de_militar_com_edicao_antiga_gravada_tambem_nao_edita():
-    c = mk()
-    c.escala("e1").compartilhado_com[AUX] = "edicao"                              # dado antigo/incorreto
-    with pytest.raises(PermissaoNegada, match="só o detalhista"):
-        gestao.editar_escala(c, AUX, "e1", folgas_minimas=0)
 
 
 def test_detalhista_dono_edita_as_regras_e_o_auxiliar_ve_o_resultado():

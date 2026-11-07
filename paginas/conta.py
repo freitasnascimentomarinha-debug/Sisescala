@@ -6,7 +6,7 @@ from sisescala.sessao import agir, pagina
 
 P = pagina()
 ctx, user, uid = P.ctx, P.user, P.uid
-ui.cabecalho("Minha conta", f"@{user.login}", "user",
+ui.cabecalho("Minha conta", f"NIP {user.login}" + (f" · {user.om}" if user.om else ""), "user",
              [ui.pill("PIN cadastrado", "verde") if user.pin_hash else ui.pill("Sem PIN", "vermelho")])
 
 esq, dir_ = st.columns(2, gap="large")

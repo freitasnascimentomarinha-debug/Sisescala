@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from helpers import cad_ativo
 from sisescala import auth
 from sisescala import disponibilidade as dp
 from sisescala import notificacoes as nt
@@ -157,7 +158,7 @@ def test_pedido_avisa_a_outra_parte_e_aos_editores_depois_as_decisoes():
 
 def test_vinculo_avisa_editores_e_o_solicitante():
     c = mk()
-    nova = auth.cadastrar_se(c, "novo", "Novo", SENHA, **CONTATO)
+    nova = cad_ativo(c, "novo", "Novo", SENHA)
     compartilhar(c, "u1", "A", nova.id, "leitura")
     v = vc.solicitar(c, nova.id, "A", "m2", "2.000", "1234", AGORA)
     assert [n.usuario_id for n in c.notificacoes if n.tipo == "vinculo"] == ["u1"]

@@ -78,8 +78,10 @@ elif sec == "Dias":
             dd = st.date_input("Data", date.today(), format="DD/MM/YYYY")
             tp = st.selectbox("Tipo", ["feriado", "sem_expediente"], format_func=lambda t: "Feriado" if t == "feriado" else "Sem expediente")
             ds = st.text_input("Descrição", placeholder="Aniversário da cidade, licença administrativa…")
+            alvos = (["", *editaveis] if P.user.admin else editaveis)
+            ee = st.selectbox("Vale para", alvos, format_func=lambda x: ctx.escala(x).nome if x else "Todas as escalas (administrador)")
             if st.form_submit_button("Lançar", type="primary", use_container_width=True):
-                lancar(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(dd, tp, ds)), "Dia lançado.")
+                lancar(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(dd, tp, ds, ee)), "Dia lançado.")
         with st.expander(f"Pontos facultativos de {P.inicio.year} (sugestões)"):
             for d, n in sorted(pontos_facultativos(P.inicio.year, ctx.uf).items()):
                 st.write(f"{d:%d/%m} – {n}")

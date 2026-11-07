@@ -61,7 +61,7 @@ def validar_troca(ctx: Contexto, esc: Escala, x: str, dx: date, y: str, dy: date
         erros.append("escolha outro militar para a troca")
     if dx == dy:
         erros.append("as duas datas devem ser diferentes")
-    if min(dx, dy) < ctx.data_base:
+    if min(dx, dy) < ctx.base_de(esc):
         erros.append("data anterior ao início da escala no sistema")
     if erros:
         return erros, avisos, None
@@ -101,7 +101,7 @@ def validar_devolucao(ctx: Contexto, esc: Escala, x: str, d_origem: date, c: str
         erros.append("escolha outro militar")
     if d2 <= d_origem:
         erros.append("a devolução deve ser em data posterior ao serviço não dado")
-    if d2 < ctx.data_base:
+    if d2 < ctx.base_de(esc):
         erros.append("data anterior ao início da escala no sistema")
     if erros:
         return erros, avisos, None

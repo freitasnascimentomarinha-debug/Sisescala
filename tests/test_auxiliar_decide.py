@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from helpers import cad_ativo
 from sisescala import auth
 from sisescala import papeletas as pp
 from sisescala import vinculos as vc
@@ -136,7 +137,7 @@ def test_auxiliar_recebe_os_avisos_de_decisao_mas_nao_dos_pedidos_dele():
 
 def test_auxiliar_decide_vinculos_mas_nao_o_proprio():
     c = mk()
-    nova = auth.cadastrar_se(c, "nova", "Nova", SENHA, **CONTATO)
+    nova = cad_ativo(c, "nova", "Nova", SENHA)
     compartilhar(c, "u1", "A", nova.id, "leitura")
     v = vc.solicitar(c, nova.id, "A", "m6", "6.000", PIN, AGORA)
     assert [x.id for x in vc.pendentes_para(c, AUX)] == [v.id]
@@ -154,7 +155,7 @@ def test_auxiliar_decide_vinculos_mas_nao_o_proprio():
 
 def test_conta_de_militar_comum_nao_ve_pedidos_de_vinculo():
     c = mk()
-    nova = auth.cadastrar_se(c, "nova", "Nova", SENHA, **CONTATO)
+    nova = cad_ativo(c, "nova", "Nova", SENHA)
     compartilhar(c, "u1", "A", nova.id, "leitura")
     vc.solicitar(c, nova.id, "A", "m6", "6.000", PIN, AGORA)
     assert vc.pendentes_para(c, M3) == []

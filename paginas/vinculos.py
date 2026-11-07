@@ -22,7 +22,7 @@ if P.decide:
             ux, mx = ctx.usuario(v.usuario_id), ctx.militar(v.militar_id)
             with st.container(border=True):
                 c1, c2 = st.columns(2)
-                c1.html(ui.pessoa(ux.nome, f"Conta @{ux.login}", f"✉ {ux.email} · ramal {ux.ramal} · 📱 {ux.celular}",
+                c1.html(ui.pessoa(ux.nome, f"NIP {ux.login}", f"✉ {ux.email} · ramal {ux.ramal} · 📱 {ux.celular}",
                                   ui.pill("pediu", "ambar")))
                 c2.html(ui.pessoa(mx.nome, f"{mx.posto} · NIP {mx.nip or '—'} · OM {mx.om or '—'}",
                                   f"Escala {ctx.escala(v.escala_id).nome}", ui.pill("persona", "azul")))
@@ -54,7 +54,7 @@ if not user.militar_id:
             if st.button("Cancelar pedido de vínculo", icon=":material/block:"):
                 agir(lambda: vc.cancelar(ctx, uid, meu.id), "Pedido cancelado.")
         elif not P.visiveis:
-            ui.vazio("Sem acesso a escalas", f"Peça ao detalhista para compartilhar a escala com o seu login (@{user.login}).", "shield")
+            ui.vazio("Sem acesso a escalas", f"Peça ao detalhista para compartilhar a escala com o seu login (NIP {user.login}).", "shield")
         else:
             ve = st.selectbox("Escala", [e.id for e in P.visiveis], format_func=lambda i: ctx.escala(i).nome)
             livres = vc.militares_livres(ctx, ve)

@@ -17,7 +17,7 @@ ui.cabecalho("Devoluções", "Quem foi dispensado de um serviço escalado devolv
 
 esc_ids = {e.id for e in P.visiveis}
 ed_ids = {e.id for e in P.editaveis()}
-res_dev = gerar(ctx, max([ctx.data_base] + [d.prazo for d in P.res.devolucoes]))
+res_dev = gerar(ctx, max([ctx.data_base] + [d.prazo for d in P.res.devolucoes]))   # fim da simulação
 meu_m = pp.militar_do_usuario(ctx, uid)
 lista = [x for x in pp.devolucoes_em_aberto(ctx, res_dev, esc_ids)
          if x["devolucao"].militar_id == meu_m or x["devolucao"].escala_id in ed_ids]

@@ -24,6 +24,7 @@ class Pagina:
     n_pend: int = 0          # pedidos de troca aguardando decisão (para quem decide)
     n_vinc: int = 0          # pedidos de vínculo aguardando decisão
     n_novas: int = 0         # notificações não lidas
+    n_acessos: int = 0       # pedidos de acesso às escalas dele aguardando decisão
     extras: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -32,7 +33,8 @@ class Pagina:
 
     @property
     def gerir(self) -> bool:
-        return self.user.perfil == "detalhista"
+        """É o detalhista de pelo menos uma escala (quem cria uma escala vira o detalhista dela)."""
+        return any(pm.eh_detalhista(self.ctx, self.uid, e) for e in self.ctx.escalas)
 
     @property
     def decide(self) -> bool:
@@ -95,8 +97,7 @@ def exigir_escala(P: Pagina) -> Escala:
     from . import ui
     if P.esc is None:
         ui.vazio("Nenhuma escala disponível",
-                 "Peça ao detalhista para compartilhar uma escala com você." if not P.gerir
-                 else "Crie a primeira escala em Gestão → Escalas.", "calendar")
+                 "Crie uma escala (ou importe uma planilha) ou busque a escala da sua OM e peça acesso ao detalhista.", "calendar")
         st.stop()
     return P.esc
 

@@ -25,15 +25,12 @@ def escalas_lancaveis(ctx: Contexto, usuario_id: str) -> list[Escala]:
 
 
 def militares_lancaveis(ctx: Contexto, usuario_id: str) -> list[str]:
-    """Militares para quem o usuário pode lançar impedimentos. Detalhista: todos; auxiliar: os das escalas em que é
-    auxiliar. Nunca ele mesmo."""
+    """Militares para quem o usuário pode lançar impedimentos: os das escalas em que ele é o detalhista ou auxiliar.
+    Nunca ele mesmo."""
     u = ctx.usuario(usuario_id)
     if not u or not u.ativo:
         return []
-    if u.perfil == "detalhista":
-        base = {m.id for m in ctx.militares}
-    else:
-        base = {p.militar_id for e in ctx.escalas if eh_auxiliar(ctx, usuario_id, e) for p in e.membros}
+    base = {p.militar_id for e in ctx.escalas if pode_decidir(ctx, usuario_id, e) for p in e.membros}
     ordem = {m.id: m.antiguidade for m in ctx.militares}
     return sorted((m for m in base if m != u.militar_id and m in ordem), key=lambda m: ordem[m])
 
@@ -79,8 +76,21 @@ def lancar_dispensa_no_dia(ctx: Contexto, usuario_id: str, oc: Ocorrencia) -> No
                  f"Você tem um serviço a devolver em até {ctx.janela_devolucao_dias} dias (página Devoluções).", esc.id)
 
 
+def _eh_admin(ctx: Contexto, usuario_id: str) -> bool:
+    u = ctx.usuario(usuario_id)
+    return bool(u and u.ativo and u.admin)
+
+
+def _exigir_dia(ctx: Contexto, usuario_id: str, de: DiaEspecial) -> None:
+    """Dia especial vale para UMA escala (detalhista ou auxiliar dela) ou, sem escala, para todas (só o administrador)."""
+    if de.escala_id:
+        _exigir_escala(ctx, usuario_id, de.escala_id)
+    elif not _eh_admin(ctx, usuario_id):
+        raise PermissaoNegada("dia especial para todas as escalas só o administrador lança; escolha uma escala sua")
+
+
 def lancar_dia_especial(ctx: Contexto, usuario_id: str, de: DiaEspecial) -> None:
-    _exigir_alguma_escala(ctx, usuario_id)
+    _exigir_dia(ctx, usuario_id, de)
     ctx.dias_especiais.append(de)
 
 
@@ -112,7 +122,7 @@ def remover(ctx: Contexto, usuario_id: str, item) -> None:
     elif isinstance(item, (Guarnecimento, Evento)):
         _exigir_escala(ctx, usuario_id, item.escala_id)
     else:
-        _exigir_alguma_escala(ctx, usuario_id)
+        _exigir_dia(ctx, usuario_id, item)
     _lista_do(ctx, item).remove(item)
 
 
@@ -126,7 +136,7 @@ def pode_remover(ctx: Contexto, usuario_id: str, item) -> bool:
         elif isinstance(item, (Guarnecimento, Evento)):
             _exigir_escala(ctx, usuario_id, item.escala_id)
         else:
-            _exigir_alguma_escala(ctx, usuario_id)
+            _exigir_dia(ctx, usuario_id, item)
         return True
     except PermissaoNegada:
         return False

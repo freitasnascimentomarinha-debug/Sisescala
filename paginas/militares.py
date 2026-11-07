@@ -12,7 +12,11 @@ from sisescala.sessao import agir, pagina
 
 P = pagina()
 ctx, uid = P.ctx, P.uid
-nomes_m = P.nomes_m
+admin = P.user.admin
+# O cadastro é global; cada detalhista enxerga e edita apenas os militares das escalas dele (o administrador, todos).
+meus_ids = {p.militar_id for e in P.editaveis() for p in e.membros} if not admin else {m.id for m in ctx.militares}
+meus_mil = [m for m in ctx.militares if m.id in meus_ids]
+nomes_m = {m.id: m.nome for m in meus_mil}
 
 
 @st.dialog("Adicionar militar", width="large")
@@ -24,8 +28,15 @@ def dialogo_novo():
     em = c.text_input("E-mail")
     a, b = st.columns(2)
     ra, ce = a.text_input("Ramal"), b.text_input("Celular")
+    ed_esc = [e.id for e in P.editaveis()]
+    esc_id = st.selectbox("Escala que receberá o militar", ed_esc, format_func=lambda i: ctx.escala(i).nome) if ed_esc else ""
     if st.button("Adicionar", type="primary", use_container_width=True):
-        agir(lambda: cd.adicionar_militar(ctx, nm, pt, nip, om, ant or None, em, ra, ce), "Militar adicionado.")
+        def _novo():
+            if not esc_id:
+                raise ValueError("crie uma escala antes de adicionar militares")
+            m = cd.adicionar_militar(ctx, nm, pt, nip, om, ant or None, em, ra, ce)
+            gestao.adicionar_militares(ctx, uid, esc_id, [m.id], date.today())
+        agir(_novo, "Militar adicionado.")
 
 
 @st.dialog("Vincular à escala", width="large")
@@ -47,7 +58,7 @@ def dialogo_vincular():
 
 
 ui.cabecalho("Militares", "Cadastro único: antiguidade, contato e vínculo com as escalas.", "users",
-             [ui.chip("Total", len(ctx.militares))])
+             [ui.chip("Total", len(meus_mil))])
 b1, b2, b3 = st.columns([1.1, 1.2, 4])
 if b1.button("Adicionar", type="primary", icon=":material/person_add:"):
     dialogo_novo()
@@ -57,10 +68,10 @@ busca = st.text_input("Buscar", placeholder="Nome, posto, NIP ou OM", label_visi
 
 linhas = [{"Excluir": False, "id": m.id, "Antiguidade": m.antiguidade, "Nome de guerra": m.nome, "Posto/Grad.": m.posto,
            "NIP": m.nip, "OM": m.om, "E-mail": m.email, "Ramal": m.ramal, "Celular": m.celular}
-          for m in sorted(ctx.militares, key=lambda m: m.antiguidade)
+          for m in sorted(meus_mil, key=lambda m: m.antiguidade)
           if not busca or busca.lower() in f"{m.nome} {m.posto} {m.nip} {m.om}".lower()]
-if not ctx.militares:
-    ui.vazio("Nenhum militar cadastrado", "Adicione militares ou importe uma planilha.", "users")
+if not meus_mil:
+    ui.vazio("Nenhum militar nas suas escalas", "Adicione militares ou importe uma planilha.", "users")
 else:
     with st.container(border=True):
         ed = st.data_editor(pd.DataFrame(linhas), hide_index=True, width="stretch", disabled=["id"], key="mil_editor",
@@ -78,6 +89,6 @@ else:
             agir(_salvar, "Cadastro atualizado.")
         with c2.popover("Excluir marcados", icon=":material/delete:"):
             marcados = list(ed.loc[ed["Excluir"], "id"])
-            st.warning(f"{len(marcados)} militar(es) marcado(s). A exclusão vale para o cadastro e todas as escalas.")
+            st.warning(f"{len(marcados)} militar(es) marcado(s). Só é possível excluir quem está apenas nas suas escalas.")
             if marcados and st.button("Confirmar exclusão", key="mil_del"):
                 agir(lambda: cd.excluir_militares(ctx, marcados, uid), "Militares excluídos.")

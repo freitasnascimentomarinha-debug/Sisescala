@@ -22,6 +22,7 @@ from .cadastro import novo_id, renumerar
 from .contatos import normalizar_contato
 from .modelos import Contexto, Escala, Militar, Pertinencia
 from .motor import fila_do_dia
+from .permissoes import eh_detalhista
 
 SINONIMOS = {
     "nome": {"nome de guerra", "nome guerra", "guerra", "nome", "militar"},
@@ -104,7 +105,8 @@ class Relatorio:
     vinculos: int = 0
     escalas_criadas: list[str] = field(default_factory=list)
     continuidade: dict[str, str] = field(default_factory=dict)   # "escala / fila" -> militar
-    data_base: date | None = None
+    data_base: date | None = None             # a mais recente entre as escalas com histórico
+    datas_base: dict[str, date] = field(default_factory=dict)   # escala -> dia em que ela continua
     avisos: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
 
@@ -130,7 +132,8 @@ def _achar_militar(ctx: Contexto, nome: str, posto: str, nip: str) -> Militar | 
 
 def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_antigo",
              criar_escalas: bool = True, dono_id: str = "",
-             substituir_membros: bool = False) -> tuple[Contexto, Relatorio]:
+             substituir_membros: bool = False, usuario_id: str | None = None,
+             sobrescrever: bool = True) -> tuple[Contexto, Relatorio]:
     """Aplica a planilha sobre uma CÓPIA do contexto (use para pré-visualizar; aceite trocando o ctx).
 
     sentido: "topo_mais_antigo" (1ª linha = mais antigo) ou "base_mais_antigo" (última = mais antigo).
@@ -148,6 +151,7 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     g = lambda row, campo: str(row.get(cols[campo], "") or "").strip() if campo in cols else ""  # noqa: E731
     gv = lambda row, campo: row.get(cols[campo]) if campo in cols else None  # noqa: E731
 
+    criadas: set[str] = set()
     ordem_planilha: list[str] = []
     vinc: dict[str, set[str]] = {}
     hist: list[tuple[date, Escala, str]] = []
@@ -170,15 +174,17 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
             ctx.militares.append(m)
             rel.novos.append(nome)
         else:
-            mudou = [k for k, v in (("nome", nome), ("posto", posto), ("nip", nip), ("om", om))
-                     if v and getattr(m, k) != v]
-            for k, v in (("nome", nome), ("posto", posto), ("nip", nip), ("om", om),
-                         ("email", email_), ("ramal", ramal_), ("celular", cel_)):
+            campos = (("nome", nome), ("posto", posto), ("nip", nip), ("om", om),
+                      ("email", email_), ("ramal", ramal_), ("celular", cel_))
+            if not sobrescrever:        # usuário comum: completa o que está vazio, sem alterar dados já existentes
+                campos = tuple((k, v) for k, v in campos if not getattr(m, k))
+            mudou = [k for k, v in campos if v and getattr(m, k) != v and k in ("nome", "posto", "nip", "om")]
+            for k, v in campos:
                 if v:
                     setattr(m, k, v)
             if mudou and m.nome not in rel.atualizados:
                 rel.atualizados.append(m.nome)
-        eh_detalhista = "detalhista" in cols and _norm(g(row, "detalhista")) in {"sim", "s", "x", "1", "true", "verdadeiro"}
+        marcado_detalhista = "detalhista" in cols and _norm(g(row, "detalhista")) in {"sim", "s", "x", "1", "true", "verdadeiro"}
         if m.id not in ordem_planilha:
             ordem_planilha.append(m.id)
         # escalas citadas
@@ -187,16 +193,25 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         d_ult = parse_data(gv(row, "ultimo"))
         for nome_esc in escalas_txt:
             esc = _achar_escala(ctx, nome_esc)
+            if esc is not None and usuario_id is not None and not eh_detalhista(ctx, usuario_id, esc):
+                aviso = f"A escala '{esc.nome}' é de outro detalhista: peça acesso a ele; linha ignorada nessa escala."
+                if aviso not in rel.avisos:
+                    rel.avisos.append(aviso)
+                continue
             if esc is None:
                 if not criar_escalas:
                     rel.avisos.append(f"Linha {n_lin}: escala '{nome_esc}' não existe.")
                     continue
-                esc = Escala(_slug_escala(ctx, nome_esc), nome_esc,
-                             dono_id=dono_id)
+                esc = Escala(_slug_escala(ctx, nome_esc), nome_esc, dono_id=dono_id)
+                dono = ctx.usuario(dono_id)
+                if dono is not None:                         # quem importa vira o detalhista da escala criada
+                    from .gestao import militar_do_detalhista
+                    esc.detalhista_id = militar_do_detalhista(ctx, dono)
+                criadas.add(esc.id)
                 ctx.escalas.append(esc)
                 rel.escalas_criadas.append(nome_esc)
             vinc.setdefault(esc.id, set()).add(m.id)
-            if eh_detalhista and not esc.detalhista_id:        # um só detalhista por escala (o primeiro marcado)
+            if marcado_detalhista and not esc.detalhista_id:        # um só detalhista por escala (o primeiro marcado)
                 esc.detalhista_id = m.id
             if not any(p.militar_id == m.id and p.fim is None for p in esc.membros):
                 esc.membros.append(Pertinencia(m.id))
@@ -212,19 +227,32 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
                 continue
             except ValueError:
                 rel.avisos.append(f"Linha {n_lin}: ordem inválida '{g(row, 'ordem')}'.")
+    if not sobrescrever:
+        # usuário comum: os militares que já existiam mantêm a antiguidade; os novos entram depois, na ordem da planilha
+        ultimo_n = max([m.antiguidade for m in ctx.militares if m.antiguidade < 10 ** 6] + [0])
+        novos = [ctx.militar(i) for i in ordem_planilha if ctx.militar(i).antiguidade >= 10 ** 6]
+        if sentido != "topo_mais_antigo":
+            novos.reverse()
+        for k, m in enumerate(novos, 1):
+            m.antiguidade = ultimo_n + k
+        renumerar(ctx)
+        tem_ordem = None
     # antiguidade: ordem explícita (se houver) senão a ordem das linhas; quem não está na planilha segue depois
     tem_ordem = "ordem" in cols
     na_planilha = [ctx.militar(i) for i in ordem_planilha]
-    if tem_ordem:
+    if not sobrescrever:
+        pass
+    elif tem_ordem:
         sem = [m for m in na_planilha if m.antiguidade >= 10 ** 6]
         com = sorted((m for m in na_planilha if m.antiguidade < 10 ** 6), key=lambda m: m.antiguidade)
         base = com + sem
     else:
         base = na_planilha if sentido == "topo_mais_antigo" else list(reversed(na_planilha))
-    resto = sorted((m for m in ctx.militares if m.id not in {x.id for x in base}), key=lambda m: m.antiguidade)
-    for i, m in enumerate(base + resto, 1):
-        m.antiguidade = i
-    renumerar(ctx)
+    if sobrescrever:
+        resto = sorted((m for m in ctx.militares if m.id not in {x.id for x in base}), key=lambda m: m.antiguidade)
+        for i, m in enumerate(base + resto, 1):
+            m.antiguidade = i
+        renumerar(ctx)
     if substituir_membros:
         for eid, ids in vinc.items():
             esc = ctx.escala(eid)
@@ -233,7 +261,10 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     if hist:
         ultima = max(d for d, _, _ in hist)
         rel.data_base = ultima + timedelta(days=1)
-        ctx.data_base = rel.data_base
+        for eid in {e.id for _, e, _ in hist}:               # cada escala continua do dia seguinte ao SEU último serviço
+            ult_e = max(d for d, e, _ in hist if e.id == eid)
+            ctx.escala(eid).data_base = ult_e + timedelta(days=1)
+            rel.datas_base[eid] = ult_e + timedelta(days=1)
         antig = {m.id: m.antiguidade for m in ctx.militares}
         por_fila: dict[tuple[str, str], dict[date, set[str]]] = {}
         for d, esc, mid in hist:
@@ -253,6 +284,9 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
                 rel.avisos.append(f"{esc.nome} / {fila}: último serviço há mais de 45 dias da data-base.")
     else:
         rel.avisos.append("Sem datas na planilha: a escala recomeça do mais antigo na data-base atual.")
+    for eid in criadas:                                      # escala nova sem histórico começa hoje, do topo da fila
+        if ctx.escala(eid).data_base is None:
+            ctx.escala(eid).data_base = date.today()
     return ctx, rel
 
 

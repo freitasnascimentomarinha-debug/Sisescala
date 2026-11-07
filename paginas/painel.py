@@ -17,7 +17,7 @@ meu_m = pp.militar_do_usuario(ctx, uid)
 saud = "Bom dia" if datetime.now().hour < 12 else "Boa tarde" if datetime.now().hour < 18 else "Boa noite"
 dia_sem = "segunda terça quarta quinta sexta sábado domingo".split()[hoje.weekday()]
 ui.cabecalho(f"{saud}, {user.nome.split()[0]}", f"{dia_sem}-feira, {hoje:%d/%m/%Y}".replace("sábado-feira", "sábado").replace("domingo-feira", "domingo"),
-             "home", [ui.chip("Perfil", "Administrador" if user.admin else "Detalhista" if P.gerir else "Militar")])
+             "home", [ui.chip("Perfil", "Administrador" if user.admin else "Detalhista" if P.gerir else "Auxiliar" if P.decide else "Usuário")])
 
 # ------------------------------------------------------------------ números
 esc_ids = {e.id for e in P.visiveis}
@@ -58,6 +58,11 @@ with esq:
             itens.append(("paginas/papeletas.py", f"{P.n_pend} pedido(s) de troca aguardando decisão", ":material/swap_horiz:"))
         if P.decide and P.n_vinc:
             itens.append(("paginas/vinculos.py", f"{P.n_vinc} pedido(s) de vínculo aguardando decisão", ":material/link:"))
+        if P.n_acessos:
+            itens.append(("paginas/acessos.py", f"{P.n_acessos} pedido(s) de acesso às suas escalas", ":material/how_to_reg:"))
+        if not P.visiveis:
+            itens.append(("paginas/escalas.py", "Crie uma escala ou importe uma planilha", ":material/add:"))
+            itens.append(("paginas/buscar.py", "Busque a escala da sua OM e peça acesso", ":material/search:"))
         if a_assinar:
             itens.append(("paginas/papeletas.py", f"{len(a_assinar)} papeleta(s) aguardando a sua assinatura", ":material/draw:"))
         if devs:

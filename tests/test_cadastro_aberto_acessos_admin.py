@@ -1,0 +1,195 @@
+"""Usuário comum cria/importa escala, busca e pede acesso; admin automático aprova e gerencia contas; NIP e OM."""
+from datetime import date, datetime, timedelta
+
+import pytest
+
+from sisescala import acessos as ac
+from sisescala import auth, gestao, lancamentos as lc
+from sisescala import importacao as imp
+from sisescala.calendario import dia_util
+from sisescala.modelos import *
+from sisescala.motor import gerar
+from sisescala.permissoes import PermissaoNegada, eh_detalhista, pode_ver
+
+D = date(2027, 3, 1)
+SENHA = "senha-forte-1"
+AGORA = datetime(2027, 2, 27, 9, 0)
+
+
+def mundo():
+    ms = [Militar(f"m{i}", f"M{i}", "CB", i, nip=f"1000000{i}") for i in range(1, 7)]
+    c = Contexto(ms, [], D)
+    adm, senha = auth.garantir_admin(c, "admin", SENHA)
+    return c, adm
+
+
+def aprovado(c, adm, nip, nome="Fulano", om="CAAML"):
+    u = auth.cadastrar_se(c, nip, nome, SENHA, "a@b.com", "2345", "21987654321", om=om)
+    auth.aprovar_usuario(c, adm.id, u.id)
+    return u
+
+
+def nova_escala(c, uid, eid="e1", nome="Portaria", n=4, **kw):
+    mem = [Pertinencia(f"m{i}") for i in range(1, n + 1)]
+    return gestao.criar_escala(c, uid, Escala(eid, nome, om="CAAML", membros=mem, data_base=D, **kw))
+
+
+# ---------------------------------------------------------------- admin automático
+def test_admin_automatico_com_senha_configurada_ou_provisoria():
+    c = Contexto([], [], D)
+    adm, gerada = auth.garantir_admin(c, "admin", SENHA)
+    assert adm.admin and gerada is None and not adm.trocar_senha
+    assert auth.garantir_admin(c, "admin", SENHA) == (None, None) or len([u for u in c.usuarios if u.admin]) == 1
+    c2 = Contexto([], [], D)
+    adm2, gerada2 = auth.garantir_admin(c2)
+    assert gerada2 and len(gerada2) >= 12 and adm2.trocar_senha
+    assert auth.entrar(c2, "admin", gerada2).id == adm2.id
+    auth.trocar_senha(c2, adm2.id, gerada2, "outra-senha-99")
+    assert not adm2.trocar_senha
+    with pytest.raises(ValueError):
+        auth.trocar_senha(c2, adm2.id, "outra-senha-99", "outra-senha-99")
+
+
+# ---------------------------------------------------------------- cadastro, NIP e login
+def test_login_por_nip_com_pontuacao_e_mensagens():
+    c, adm = mundo()
+    u = auth.cadastrar_se(c, "12.3456.78", "Fulano", SENHA, "a@b.com", "2345", "21987654321", om="CAAML")
+    with pytest.raises(auth.AutenticacaoErro, match="aprova"):
+        auth.entrar(c, "12345678", SENHA)
+    with pytest.raises(auth.AutenticacaoErro, match="NIP ou senha incorretos"):
+        auth.entrar(c, "12345678", "errada-errada")
+    auth.rejeitar_usuario(c, adm.id, u.id)
+    with pytest.raises(auth.AutenticacaoErro, match="não foi aprovado"):
+        auth.entrar(c, "12345678", SENHA)
+
+
+def test_admin_bloqueia_desbloqueia_edita_e_exclui():
+    c, adm = mundo()
+    u = aprovado(c, adm, "12345678")
+    outro = aprovado(c, adm, "87654321", "Outro")
+    for f in (auth.bloquear_usuario, auth.aprovar_usuario):
+        with pytest.raises(PermissionError):
+            f(c, u.id, outro.id)                                   # usuário comum não administra
+    auth.bloquear_usuario(c, adm.id, u.id)
+    with pytest.raises(auth.AutenticacaoErro, match="bloquead"):
+        auth.entrar(c, "12345678", SENHA)
+    auth.desbloquear_usuario(c, adm.id, u.id)
+    assert auth.entrar(c, "12345678", SENHA).id == u.id
+    auth.editar_usuario(c, adm.id, u.id, nome="Novo Nome", om="COPAB", nip="11223344")
+    assert (u.nome, u.om, u.login) == ("Novo Nome", "COPAB", "11223344")
+    with pytest.raises(ValueError):
+        auth.editar_usuario(c, adm.id, u.id, nip="87654321")      # NIP de outro
+    with pytest.raises(ValueError):
+        auth.bloquear_usuario(c, adm.id, adm.id)                  # nem a si mesmo
+    auth.redefinir_senha(c, adm.id, u.id, "provisoria-123")
+    assert auth.entrar(c, "11223344", "provisoria-123").trocar_senha
+    auth.excluir_usuario(c, adm.id, outro.id)
+    assert c.usuario(outro.id) is None
+    with pytest.raises(ValueError):
+        auth.excluir_usuario(c, adm.id, adm.id)
+
+
+def test_excluir_conta_dona_de_escala_exige_reatribuir():
+    c, adm = mundo()
+    u, v = aprovado(c, adm, "12345678"), aprovado(c, adm, "87654321", "Outro")
+    nova_escala(c, u.id)
+    with pytest.raises(ValueError):
+        auth.excluir_usuario(c, adm.id, u.id)
+    assert auth.reatribuir_escalas(c, adm.id, u.id, v.id) == 1
+    auth.excluir_usuario(c, adm.id, u.id)
+    assert c.escala("e1").dono_id == v.id
+
+
+# ---------------------------------------------------------------- criar escala e virar detalhista
+def test_usuario_comum_cria_escala_e_vira_o_detalhista_dela():
+    c, adm = mundo()
+    u = aprovado(c, adm, "10000001")
+    e = nova_escala(c, u.id, n=4)
+    assert e.dono_id == u.id and eh_detalhista(c, u.id, e)
+    assert e.detalhista_id == "m1"                           # o militar do NIP fica dispensado
+    outro = aprovado(c, adm, "87654321", "Outro")
+    assert not eh_detalhista(c, outro.id, e) and not pode_ver(c, outro.id, e)
+    with pytest.raises(PermissaoNegada):
+        gestao.editar_escala(c, outro.id, "e1", nome="X")
+
+
+# ---------------------------------------------------------------- buscar e pedir acesso
+def test_busca_pedido_aprovacao_e_rejeicao():
+    c, adm = mundo()
+    det, req = aprovado(c, adm, "10000001"), aprovado(c, adm, "87654321", "Beltrano")
+    nova_escala(c, det.id)
+    assert [e.id for e in ac.buscar(c, req.id, "portaria")] == ["e1"]
+    assert [e.id for e in ac.buscar(c, req.id, "caaml")] == ["e1"]
+    assert ac.buscar(c, req.id, "inexistente") == [] and ac.buscar(c, det.id) == []   # a própria não aparece
+    p = ac.pedir_acesso(c, req.id, "e1", "sou da OM", AGORA)
+    with pytest.raises(ValueError):
+        ac.pedir_acesso(c, req.id, "e1")                                   # já pendente
+    assert [x.id for x in ac.pendentes_para(c, det.id)] == [p.id] and ac.pendentes_para(c, req.id) == []
+    assert any(n.usuario_id == det.id for n in c.notificacoes)
+    with pytest.raises(PermissaoNegada):
+        ac.aprovar(c, req.id, p.id)                                         # só o detalhista decide
+    ac.aprovar(c, det.id, p.id, AGORA)
+    assert pode_ver(c, req.id, c.escala("e1")) and p.status == "aprovado"
+    assert ac.buscar(c, req.id, "portaria") == []                           # agora já enxerga
+
+    outro = aprovado(c, adm, "55555555", "Ciclano")
+    p2 = ac.pedir_acesso(c, outro.id, "e1")
+    with pytest.raises(ValueError, match="motivo"):
+        ac.rejeitar(c, det.id, p2.id, " ")
+    ac.rejeitar(c, det.id, p2.id, "não é da OM")
+    assert p2.status == "rejeitado" and not pode_ver(c, outro.id, c.escala("e1"))
+    ac.pedir_acesso(c, outro.id, "e1")                                      # pode pedir de novo
+
+
+# ---------------------------------------------------------------- escopo por escala
+def test_dia_especial_so_vale_na_escala_dele_e_global_so_admin():
+    c, adm = mundo()
+    u1, u2 = aprovado(c, adm, "10000001"), aprovado(c, adm, "10000002", "Dois")
+    nova_escala(c, u1.id, "e1")
+    nova_escala(c, u2.id, "e2", "Outra")
+    d = D + timedelta(days=1)
+    lc.lancar_dia_especial(c, u1.id, DiaEspecial(d, "sem_expediente", "x", "e1"))
+    assert not dia_util(d, c, c.escala("e1")) and dia_util(d, c, c.escala("e2"))
+    with pytest.raises(PermissaoNegada):
+        lc.lancar_dia_especial(c, u1.id, DiaEspecial(d, "feriado", "x", "e2"))
+    with pytest.raises(PermissaoNegada):
+        lc.lancar_dia_especial(c, u1.id, DiaEspecial(d, "feriado", "x"))
+    lc.lancar_dia_especial(c, adm.id, DiaEspecial(d, "feriado", "todos"))
+    assert not dia_util(d, c, c.escala("e2"))
+
+
+def test_data_base_por_escala_nao_atrapalha_outra():
+    c, adm = mundo()
+    u1, u2 = aprovado(c, adm, "10000001"), aprovado(c, adm, "10000002", "Dois")
+    nova_escala(c, u1.id, "e1")
+    e2 = nova_escala(c, u2.id, "e2", "Outra")
+    e2.data_base = D + timedelta(days=10)
+    r = gerar(c, D + timedelta(days=12))
+    assert r.dia(D, "e1").efetivos and not r.dia(D, "e2").efetivos
+    assert r.dia(D + timedelta(days=10), "e2").efetivos
+
+
+def test_excluir_militar_so_se_for_so_das_escalas_do_detalhista():
+    c, adm = mundo()
+    u1, u2 = aprovado(c, adm, "10000001"), aprovado(c, adm, "10000002", "Dois")
+    nova_escala(c, u1.id, "e1", n=4)                                        # m1..m4
+    gestao.criar_escala(c, u2.id, Escala("e2", "Outra", membros=[Pertinencia(m) for m in ("m4", "m5", "m6")], data_base=D))
+    with pytest.raises(PermissaoNegada):
+        from sisescala import cadastro as cd
+        cd.excluir_militares(c, ["m4"], u1.id)                              # m4 também está na e2
+    from sisescala import cadastro as cd
+    assert cd.excluir_militares(c, ["m1"], u1.id) == 1
+    with pytest.raises(PermissaoNegada):
+        cd.excluir_militares(c, ["m5"], u1.id)
+
+
+def test_importacao_nao_sobrescreve_dados_de_escala_de_outro_detalhista():
+    c, adm = mundo()
+    u1, u2 = aprovado(c, adm, "10000001"), aprovado(c, adm, "10000002", "Dois")
+    nova_escala(c, u1.id, "e1", n=4)
+    c.militar("m2").om = "CAAML"
+    linhas = [{"Nome de guerra": "Trocado", "NIP": "10000002", "OM": "XYZ", "Escala": "Portaria", "Ordem": "1"}]
+    novo, rel = imp.importar(c, linhas, usuario_id=u2.id, dono_id=u2.id,
+                             sobrescrever=False)
+    assert novo.militar("m2").nome == "M2" and novo.militar("m2").om == "CAAML"   # só preenche vazios
+    assert c.militar("m2").nome == "M2"                                      # original intacto

@@ -96,6 +96,8 @@ class Escala:
     sigla: str = ""
     dono_id: str = ""              # usuário que criou a escala
     om: str = ""                   # Organização Militar que gerencia a escala (cabeçalho dos documentos)
+    uf: str = ""                   # UF da OM (feriados estaduais); vazio = padrão do sistema
+    data_base: date | None = None  # a partir daqui `ultimo_servico` vale; vazio = data-base do sistema
     detalhista_id: str = ""        # militar que é o detalhista desta escala (um só por escala)
     detalhista_escalavel: bool = False  # padrão: o detalhista fica FORA da escala; True = concorre como os demais
     auxiliares: list[str] = field(default_factory=list)  # auxiliares do detalhista (militares): vários, concorrendo ou não
@@ -176,6 +178,10 @@ class Usuario:
     ramal: str = ""
     celular: str = ""
     pin_hash: str = ""            # PIN de assinatura (bcrypt), criado ao pedir o vínculo
+    nip: str = ""                 # NIP informado no cadastro (o login é o NIP normalizado)
+    om: str = ""                  # OM informada no cadastro
+    situacao: str = "ativo"       # pendente (aguarda o administrador) | ativo | bloqueado | rejeitado
+    trocar_senha: bool = False    # senha provisória: precisa ser trocada no primeiro acesso
 
 
 @dataclass
@@ -184,6 +190,7 @@ class DiaEspecial:
     data: date
     tipo: str = "sem_expediente"  # "feriado" | "sem_expediente"
     descricao: str = ""
+    escala_id: str = ""           # vazio = vale para todas as escalas (só o administrador cria); senão, só para essa escala
 
 
 @dataclass
@@ -257,6 +264,20 @@ class Disponibilidade:
 
 
 @dataclass
+class PedidoAcesso:
+    """Pedido de um usuário para enxergar uma escala de outro detalhista (o detalhista aprova ou rejeita)."""
+    id: str
+    usuario_id: str
+    escala_id: str
+    criado_em: datetime
+    mensagem: str = ""
+    status: str = "pendente"      # pendente | aprovado | rejeitado | cancelado
+    decidido_por: str = ""
+    decidido_em: datetime | None = None
+    motivo_rejeicao: str = ""
+
+
+@dataclass
 class Notificacao:
     """Aviso dentro do sistema para um usuário."""
     id: str
@@ -320,6 +341,7 @@ class Contexto:
     vinculos: list[Vinculo] = field(default_factory=list)
     disponibilidades: list[Disponibilidade] = field(default_factory=list)
     notificacoes: list[Notificacao] = field(default_factory=list)
+    pedidos_acesso: list[PedidoAcesso] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
@@ -335,6 +357,10 @@ class Contexto:
     def escalaveis(self, esc: "Escala") -> list[str]:
         """Membros da escala que podem ser escalados (sem o detalhista, se ele estiver fora)."""
         return [p.militar_id for p in esc.membros if not self.dispensado_na_escala(p.militar_id, esc)]
+
+    def base_de(self, esc: "Escala") -> date:
+        """Data a partir da qual a escala é calculada (cada escala tem a sua, para uma importação não mexer nas outras)."""
+        return esc.data_base or self.data_base
 
     def militar(self, mid: str) -> Militar:
         return next(m for m in self.militares if m.id == mid)

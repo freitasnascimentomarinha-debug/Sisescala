@@ -45,7 +45,7 @@ with st.container(border=True):
 
 
 def dias_servico(mid):
-    return sorted(d for (d, e), de in res.dias.items() if e == esc.id and d >= ctx.data_base
+    return sorted(d for (d, e), de in res.dias.items() if e == esc.id and d >= ctx.base_de(esc)
                   for a in de.alocacoes if a.militar_id == mid and a.origem == "normal")
 
 

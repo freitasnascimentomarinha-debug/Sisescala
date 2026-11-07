@@ -23,7 +23,7 @@ def test_primeira_conta_vira_admin_e_depois_so_admin_cria():
     u = auth.criar_usuario(c, adm.id, "mil1", "Militar 1", "umasenha123", perfil="militar", militar_id="m1")
     with pytest.raises(PermissionError):
         auth.criar_usuario(c, u.id, "y", "Y", "umasenha123")            # militar não cria contas
-    with pytest.raises(ValueError, match="já existe"):
+    with pytest.raises(ValueError, match="já está cadastrado"):
         auth.criar_usuario(c, adm.id, "ADMIN", "Z", "umasenha123")
     with pytest.raises(ValueError, match="8"):
         auth.criar_usuario(c, adm.id, "curta", "C", "123")

@@ -108,7 +108,7 @@ def funciona(ctx: Contexto, esc: Escala, d: date) -> bool:
         return manual.guarnece
     if esc.participa_roxa and roxa_do_dia(d, ctx):
         return True
-    return esc.funciona_em == "todos" or dia_util(d, ctx)
+    return esc.funciona_em == "todos" or dia_util(d, ctx, esc)
 
 
 def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
@@ -120,7 +120,7 @@ def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
             return f"roxa:{r.id}"
     if esc.modo == "corrida":
         return "corrida"
-    return "preta" if dia_util(d, ctx) else "vermelha"
+    return "preta" if dia_util(d, ctx, esc) else "vermelha"
 
 
 def _sequencia(ctx: Contexto, esc: Escala, d: date, ultimo: str | None) -> list[str]:
@@ -196,16 +196,21 @@ def prevalece(ctx: Contexto, a: Escala, b: Escala) -> Escala:
 
 
 # ------------------------------------------------------------------ geração base
+def _inicio(ctx: Contexto) -> date:
+    """Primeiro dia a simular: a menor data-base entre as escalas (ou a do sistema, sem escalas)."""
+    return min([ctx.base_de(e) for e in ctx.escalas] or [ctx.data_base])
+
+
 def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
     res = Resultado(dias={})
     ultimo: dict[tuple[str, str], str | None] = {
         (e.id, f): m for e in ctx.escalas for f, m in e.ultimo_servico.items()}
     ultimo_dia: dict[tuple[str, str], date] = {}
     pendentes: dict[tuple[str, str], list[str]] = {}
-    d = ctx.data_base
+    d = _inicio(ctx)
     while d <= fim:
         for esc in sorted(ctx.escalas, key=lambda e: (e.categoria != "servico", -e.prioridade, e.id)):
-            if not funciona(ctx, esc, d):
+            if d < ctx.base_de(esc) or not funciona(ctx, esc, d):      # antes da data-base da escala: nada
                 res.dias[(d, esc.id)] = DiaEscala(esc.id, d, False)
                 continue
             evs = _eventos(ctx, esc, d)
@@ -330,7 +335,7 @@ def _resolver_conflitos(ctx: Contexto, res: Resultado, fim: date) -> None:
     def nome(m):
         return ctx.militar(m).nome
     ignorados: set[tuple[date, str, str]] = set()
-    d = ctx.data_base
+    d = _inicio(ctx)
     while d <= fim:
         while True:
             por_militar: dict[str, list[Alocacao]] = {}
@@ -409,11 +414,11 @@ def _substituto_retem(ctx, res, esc: Escala, d: date, aloc: Alocacao) -> str | N
 
 def _parceiro_troca(ctx, res, esc: Escala, d: date, baixo: Alocacao, fim: date) -> Alocacao | None:
     x = baixo.militar_id
-    util_d = dia_util(d, ctx)
+    util_d = dia_util(d, ctx, esc)
     melhores: list[tuple[tuple, Alocacao]] = []
     for delta in range(-ctx.janela_troca_dias, ctx.janela_troca_dias + 1):
         d2 = d + timedelta(days=delta)
-        if delta == 0 or d2 < ctx.data_base or d2 > fim:
+        if delta == 0 or d2 < ctx.base_de(esc) or d2 > fim:
             continue
         dia2 = res.dia(d2, esc.id)
         if not dia2 or not dia2.funciona:
@@ -424,14 +429,14 @@ def _parceiro_troca(ctx, res, esc: Escala, d: date, baixo: Alocacao, fim: date) 
             if (_livre(ctx, res, a.militar_id, d, esc) and _livre(ctx, res, x, d2, esc)
                     and _descansado(res, esc, a.militar_id, d, ignorar=d2)
                     and _descansado(res, esc, x, d2, ignorar=d)):
-                chave = (dia_util(d2, ctx) != util_d, abs(delta), delta < 0)
+                chave = (dia_util(d2, ctx, esc) != util_d, abs(delta), delta < 0)
                 melhores.append((chave, a))
     return min(melhores, key=lambda t: t[0])[1] if melhores else None
 
 
 # ------------------------------------------------------------------ API pública
 def gerar(ctx: Contexto, fim: date) -> Resultado:
-    """Gera todas as escalas de `ctx.data_base` até `fim`.
+    """Gera todas as escalas, cada uma a partir da sua data-base, até `fim`.
 
     Internamente vai até `fim + janela_troca_dias` para que o resultado de um dia não dependa
     do tamanho da prévia pedida (7, 15 ou 30 dias).

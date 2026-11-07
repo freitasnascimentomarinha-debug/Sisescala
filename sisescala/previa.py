@@ -81,11 +81,11 @@ def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
     return inf
 
 
-def _cabecalho_dias(ctx: Contexto, dias: list[date]) -> str:
+def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None) -> str:
     cab = ""
     for d in dias:
-        nome = nome_dia_nao_util(d, ctx)
-        classe = "roxa" if roxa_do_dia(d, ctx) else ("util" if dia_util(d, ctx) else "folga")
+        nome = nome_dia_nao_util(d, ctx, esc)
+        classe = "roxa" if roxa_do_dia(d, ctx) else ("util" if dia_util(d, ctx, esc) else "folga")
         dow = "SEG TER QUA QUI SEX SÁB DOM".split()[d.weekday()]
         cab += (f'<th class="{classe}" title="{escape(nome or "")}">{d:%d/%m}<br>{dow}'
                 f'{"<br><small>" + escape(nome) + "</small>" if nome else ""}</th>')
@@ -171,7 +171,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
-<div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias)}</tr>{linhas}
+<div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias, esc)}</tr>{linhas}
 <tr><th colspan="{len(dias) + 1}" style="background:#1F2817;color:#9AA183;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
 <tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
