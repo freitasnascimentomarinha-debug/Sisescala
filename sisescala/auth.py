@@ -48,7 +48,10 @@ def tem_usuarios(ctx: Contexto) -> bool:
 def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, senha: str, *,
                   perfil: str = "detalhista", militar_id: str = "", admin: bool = False,
                   email: str = "", ramal: str = "", celular: str = "", exigir_contato: bool = False) -> Usuario:
-    """Só administrador cria contas; a primeira conta do sistema nasce administradora."""
+    """Só administrador cria contas; a primeira conta do sistema nasce administradora.
+
+    `militar_id` existe só para migração e testes: o app NÃO o expõe, porque o vínculo da conta com um militar
+    exige a autorização do detalhista (ver `vinculos.py`)."""
     primeiro = not ctx.usuarios
     if not primeiro:
         quem = ctx.usuario(quem_id or "")

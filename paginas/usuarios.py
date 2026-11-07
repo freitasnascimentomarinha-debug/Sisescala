@@ -32,14 +32,13 @@ with esq, st.container(border=True):
         sn = st.text_input("Senha provisória (8+)", type="password")
         a, b, c = st.columns(3)
         em, ra, ce = a.text_input("E-mail"), b.text_input("Ramal"), c.text_input("Celular")
-        a, b = st.columns(2)
-        perfil = a.selectbox("Perfil", list(auth.PERFIS), format_func=str.capitalize)
-        sem_conta = [m.id for m in ctx.militares if not any(u.militar_id == m.id for u in ctx.usuarios)]
-        mil = b.selectbox("Militar (vazio = a pessoa se vincula depois)", [""] + sem_conta, format_func=lambda i: nomes_m.get(i, "—"))
+        perfil = st.selectbox("Perfil", list(auth.PERFIS), format_func=str.capitalize)
+        st.caption("Conta de militar nasce sem vínculo: o próprio militar pede para se vincular ao seu nome na escala e o "
+                   "detalhista autoriza. Só militar vinculado pede troca de serviço.")
         adm = st.checkbox("Administrador")
         if st.form_submit_button("Criar conta", type="primary", use_container_width=True):
             try:
-                auth.criar_usuario(ctx, uid, lg, nm, sn, perfil=perfil, militar_id=mil, admin=adm, email=em, ramal=ra,
+                auth.criar_usuario(ctx, uid, lg, nm, sn, perfil=perfil, admin=adm, email=em, ramal=ra,
                                    celular=ce, exigir_contato=True)
                 st.session_state["toast"] = "Conta criada."
                 st.rerun()

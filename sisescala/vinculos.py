@@ -12,7 +12,7 @@ from datetime import datetime
 from . import notificacoes as nt
 from .auth import hash_pin
 from .modelos import Contexto, Vinculo
-from .permissoes import PermissaoNegada, pode_editar, pode_ver
+from .permissoes import PermissaoNegada, eh_detalhista, pode_ver
 
 
 def _obter(ctx: Contexto, vid: str) -> Vinculo:
@@ -62,7 +62,7 @@ def solicitar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, n
 
 
 def _exigir_editor(ctx: Contexto, usuario_id: str, v: Vinculo) -> None:
-    if not pode_editar(ctx, usuario_id, ctx.escala(v.escala_id)):
+    if not eh_detalhista(ctx, usuario_id, ctx.escala(v.escala_id)):
         raise PermissaoNegada("somente o detalhista e os editores da escala decidem o vínculo")
 
 
@@ -110,4 +110,4 @@ def cancelar(ctx: Contexto, usuario_id: str, vid: str) -> None:
 
 def pendentes_para(ctx: Contexto, usuario_id: str) -> list[Vinculo]:
     return [v for v in ctx.vinculos if v.status == "pendente"
-            and pode_editar(ctx, usuario_id, ctx.escala(v.escala_id))]
+            and eh_detalhista(ctx, usuario_id, ctx.escala(v.escala_id))]

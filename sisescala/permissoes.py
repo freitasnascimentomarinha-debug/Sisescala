@@ -31,6 +31,15 @@ def pode_editar(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
     return ORDEM[nivel(ctx, usuario_id, esc)] >= ORDEM["edicao"]
 
 
+def eh_detalhista(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
+    """Detalhista da escala: conta de perfil detalhista com poder de edição (dono ou editor).
+
+    É quem decide papeletas e vínculos, pede troca por qualquer militar e vê todos os pedidos. Conta de
+    militar nunca decide, mesmo que alguém lhe tenha dado "edição" por engano."""
+    u = ctx.usuario(usuario_id)
+    return bool(u and u.ativo and u.perfil == "detalhista" and pode_editar(ctx, usuario_id, esc))
+
+
 def escalas_visiveis(ctx: Contexto, usuario_id: str) -> list[Escala]:
     return [e for e in ctx.escalas if pode_ver(ctx, usuario_id, e)]
 
@@ -45,6 +54,9 @@ def compartilhar(ctx: Contexto, quem_id: str, escala_id: str, com_id: str, novo_
     if novo_nivel is None:
         esc.compartilhado_com.pop(com_id, None)
     elif novo_nivel in NIVEIS:
+        alvo = ctx.usuario(com_id)
+        if novo_nivel == "edicao" and alvo is not None and alvo.perfil != "detalhista":
+            raise ValueError("só contas de detalhista podem ter acesso de edição; a conta de militar fica em leitura")
         esc.compartilhado_com[com_id] = novo_nivel
     else:
         raise ValueError(f"nível inválido: {novo_nivel}")

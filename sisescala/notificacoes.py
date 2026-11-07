@@ -37,7 +37,7 @@ def usuarios_do_militar(ctx: Contexto, militar_id: str) -> list[str]:
 def editores_da_escala(ctx: Contexto, escala_id: str) -> list[str]:
     esc = ctx.escala(escala_id)
     ids = [esc.dono_id] + [u for u, n in esc.compartilhado_com.items() if n == "edicao"]
-    return [i for i in ids if i]
+    return [i for i in ids if i and (ctx.usuario(i) is None or ctx.usuario(i).perfil == "detalhista")]
 
 
 def usuarios_da_escala(ctx: Contexto, escala_id: str) -> list[str]:

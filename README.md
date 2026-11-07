@@ -59,6 +59,9 @@ O menu mostra só o que o perfil pode usar. Código: `app.py` (login, navegaçã
 - **O militar cria a própria conta** (aba "Criar conta" no login) com login, senha e **e-mail, ramal e celular obrigatórios**. Conta nova não enxerga nada.
 - O detalhista **compartilha a escala** com o login do militar (aba Escalas → Compartilhar acesso). O militar então abre a aba **Vínculos**, escolhe quem ele é na lista da escala, confirma o NIP (se já cadastrado) e **cria um PIN** (4 a 6 dígitos). O detalhista/editores **aprovam ou rejeitam** (com motivo). Aprovado, a conta passa a ser daquele militar e o contato dela completa o cadastro dele.
 - **PIN:** todo usuário cadastra o seu em **Minha conta** (exige a senha). **Pedir troca/devolução e assinar exigem o PIN** de quem faz a ação (o detalhista que pede por um militar usa o próprio PIN). 5 erros seguidos bloqueiam a conta por 5 minutos.
+- **Quem pede troca de serviço:** só **militar vinculado** (e só para o próprio serviço) ou o **detalhista da escala** (por qualquer militar). Conta sem vínculo não pede, mesmo com acesso à escala.
+- **A vinculação precisa da autorização do detalhista.** O militar pede (com NIP e PIN); a conta só passa a ser dele depois da aprovação. O administrador **não** cria contas já vinculadas.
+- **Detalhista da escala** = conta de perfil detalhista com poder de edição. Só ele decide papeletas e vínculos e vê os pedidos de todos. Conta de militar não recebe "edição".
 - **Detalhista:** cria e edita escalas, cadastro, importação e lançamentos. **Militar:** vê (leitura) as escalas em que está, pede troca para si e sinaliza disponibilidade.
 - Senhas e PINs só como hash bcrypt (senha com 8+ caracteres).
 

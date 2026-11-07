@@ -7,7 +7,7 @@ from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, quartos_padrao
 from sisescala.motor import validar_escala
-from sisescala.sessao import pagina
+from sisescala.sessao import agir, pagina
 
 P = pagina()
 ctx, uid = P.ctx, P.uid
@@ -117,10 +117,11 @@ for e in minhas:
                     com = st.selectbox("Usuário", outros, format_func=lambda u: f"{nomes_u[u]} (@{ctx.usuario(u).login})", key=f"u{e.id}")
                     niv = st.selectbox("Acesso", ["leitura", "edicao", "revogar"], key=f"n{e.id}",
                                        format_func={"leitura": "Leitura", "edicao": "Edição", "revogar": "Revogar acesso"}.get)
+                    st.caption("Edição vale só para contas de detalhista (decidem papeletas e vínculos). "
+                               "Conta de militar fica em leitura.")
                     if st.button("Aplicar", key=f"b{e.id}", type="primary"):
-                        pm.compartilhar(ctx, uid, e.id, com, None if niv == "revogar" else niv)
-                        st.session_state["toast"] = "Acesso atualizado."
-                        st.rerun()
+                        agir(lambda: pm.compartilhar(ctx, uid, e.id, com, None if niv == "revogar" else niv),
+                             "Acesso atualizado.")
             with b3.popover("Excluir", icon=":material/delete:"):
                 st.warning("Isso apaga a escala e as referências a ela.")
                 if st.button("Confirmar exclusão", key=f"del_{e.id}"):

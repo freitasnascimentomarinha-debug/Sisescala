@@ -27,7 +27,7 @@ from . import auth
 from . import notificacoes as nt
 from .modelos import Assinatura, Contexto, Escala, Militar, Papeleta, Troca
 from .motor import Devolucao, Resultado, _achar, _descansado, _impedido, gerar
-from .permissoes import PermissaoNegada, pode_editar, pode_ver
+from .permissoes import PermissaoNegada, eh_detalhista, pode_ver
 
 ABERTAS = ("pendente", "aprovada")
 TIPOS = {"troca": "troca de serviço", "devolucao": "devolução de serviço"}
@@ -175,9 +175,20 @@ def militares_em_pedido_ativo(ctx: Contexto) -> dict[str, Papeleta]:
 def pode_pedir_por(ctx: Contexto, usuario_id: str, escala_id: str, solicitante_id: str) -> bool:
     """Editores pedem por qualquer militar da escala; o militar pede só para si (mesmo em leitura)."""
     esc = ctx.escala(escala_id)
-    if pode_editar(ctx, usuario_id, esc):
+    if eh_detalhista(ctx, usuario_id, esc):
         return True
     return pode_ver(ctx, usuario_id, esc) and militar_do_usuario(ctx, usuario_id) == solicitante_id
+
+
+def _exigir_pode_pedir(ctx: Contexto, usuario_id: str, escala_id: str, solicitante_id: str) -> None:
+    """Só militar vinculado pede para si; só o detalhista da escala pede por qualquer militar."""
+    if pode_pedir_por(ctx, usuario_id, escala_id, solicitante_id):
+        return
+    esc = ctx.escala(escala_id)
+    if not militar_do_usuario(ctx, usuario_id) and not eh_detalhista(ctx, usuario_id, esc):
+        raise PermissaoNegada("só militar vinculado pode pedir troca: peça o vínculo ao detalhista "
+                              "(a vinculação precisa da autorização dele)")
+    raise PermissaoNegada("você só pode pedir troca para o seu próprio serviço; só o detalhista pede por outro militar")
 
 
 def e_parte(ctx: Contexto, usuario_id: str, p: Papeleta) -> bool:
@@ -237,8 +248,7 @@ def criar(ctx: Contexto, usuario_id: str, escala_id: str, solicitante_id: str, d
     """Pedido de troca. Exige o PIN de quem está pedindo."""
     agora = agora or datetime.now()
     esc = ctx.escala(escala_id)
-    if not pode_pedir_por(ctx, usuario_id, escala_id, solicitante_id):
-        raise PermissaoNegada("você só pode pedir troca para o seu próprio serviço, em uma escala em que está")
+    _exigir_pode_pedir(ctx, usuario_id, escala_id, solicitante_id)
     erros, _, _ = validar_troca(ctx, esc, solicitante_id, data_solicitante, outro_id, data_outro)
     _erros_de_pedido(ctx, esc, solicitante_id, outro_id, (data_solicitante, data_outro), agora, motivo, erros)
     if erros:
@@ -253,8 +263,7 @@ def criar_devolucao(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: 
     """Pedido de devolução: `militar_id` assume o serviço de `colega_id` em `data_devolucao`."""
     agora = agora or datetime.now()
     esc = ctx.escala(escala_id)
-    if not pode_pedir_por(ctx, usuario_id, escala_id, militar_id):
-        raise PermissaoNegada("você só pode pedir a devolução do seu próprio serviço")
+    _exigir_pode_pedir(ctx, usuario_id, escala_id, militar_id)
     erros, _, _ = validar_devolucao(ctx, esc, militar_id, data_origem, colega_id, data_devolucao)
     motivo = motivo.strip() or f"Devolução do serviço de {data_origem:%d/%m/%Y}"
     _erros_de_pedido(ctx, esc, militar_id, colega_id, (data_devolucao, data_devolucao), agora, motivo, erros)
@@ -273,7 +282,7 @@ def _obter(ctx: Contexto, pid: str) -> Papeleta:
 
 def _exigir_editor(ctx: Contexto, usuario_id: str, p: Papeleta) -> Escala:
     esc = ctx.escala(p.escala_id)
-    if not pode_editar(ctx, usuario_id, esc):
+    if not eh_detalhista(ctx, usuario_id, esc):
         raise PermissaoNegada("somente o detalhista e os editores da escala decidem papeletas")
     return esc
 
@@ -327,7 +336,7 @@ def cancelar(ctx: Contexto, usuario_id: str, pid: str, motivo: str = "", agora: 
     esc = ctx.escala(p.escala_id)
     desfeita = False
     if p.status == "pendente":
-        if not (usuario_id == p.criado_por or e_parte(ctx, usuario_id, p) or pode_editar(ctx, usuario_id, esc)):
+        if not (usuario_id == p.criado_por or e_parte(ctx, usuario_id, p) or eh_detalhista(ctx, usuario_id, esc)):
             raise PermissaoNegada("sem permissão para cancelar")
     elif p.status in ("aprovada", "confirmada"):
         _exigir_editor(ctx, usuario_id, p)
@@ -403,7 +412,7 @@ def situacao_partes(ctx: Contexto, p: Papeleta) -> list[dict]:
 def papeletas_visiveis(ctx: Contexto, usuario_id: str, escala_id: str) -> list[Papeleta]:
     """Editores veem todas da escala; os demais, só as que os envolvem (parte ou quem criou)."""
     esc = ctx.escala(escala_id)
-    editor = pode_editar(ctx, usuario_id, esc)
+    editor = eh_detalhista(ctx, usuario_id, esc)
     return sorted((p for p in ctx.papeletas if p.escala_id == escala_id
                    and (editor or e_parte(ctx, usuario_id, p) or p.criado_por == usuario_id)),
                   key=lambda p: -p.numero)
@@ -430,7 +439,7 @@ def confirmar(ctx: Contexto, usuario_id: str, pid: str, agora: datetime | None =
 # ------------------------------------------------------------------ caixa de pedidos
 def pedidos_pendentes(ctx: Contexto, usuario_id: str) -> list[Papeleta]:
     """Pedidos aguardando decisão nas escalas em que o usuário é dono ou editor."""
-    editaveis = {e.id for e in ctx.escalas if pode_editar(ctx, usuario_id, e)}
+    editaveis = {e.id for e in ctx.escalas if eh_detalhista(ctx, usuario_id, e)}
     return [p for p in ctx.papeletas if p.status == "pendente" and p.escala_id in editaveis]
 
 

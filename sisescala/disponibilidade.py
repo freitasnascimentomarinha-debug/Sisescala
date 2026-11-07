@@ -12,7 +12,7 @@ from . import notificacoes as nt
 from .modelos import Contexto, Disponibilidade
 from .motor import Resultado
 from .papeletas import antecedencia_ok, militar_do_usuario, militares_em_pedido_ativo
-from .permissoes import PermissaoNegada, pode_editar
+from .permissoes import PermissaoNegada, eh_detalhista
 
 
 def _alocacao(res: Resultado, d: date, escala_id: str, mid: str):
@@ -33,7 +33,7 @@ def alternar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, da
     """Abre ou fecha a disponibilidade. Retorna True se ficou aberta."""
     agora = agora or datetime.now()
     esc = ctx.escala(escala_id)
-    if not (pode_editar(ctx, usuario_id, esc) or militar_do_usuario(ctx, usuario_id) == militar_id):
+    if not (eh_detalhista(ctx, usuario_id, esc) or militar_do_usuario(ctx, usuario_id) == militar_id):
         raise PermissaoNegada("você só pode sinalizar disponibilidade para o seu próprio serviço")
     atual = next((x for x in ctx.disponibilidades
                   if (x.escala_id, x.militar_id, x.data) == (escala_id, militar_id, data)), None)

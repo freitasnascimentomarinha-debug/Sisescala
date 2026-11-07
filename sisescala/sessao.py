@@ -43,7 +43,7 @@ class Pagina:
         return {u.id: u.nome for u in self.ctx.usuarios}
 
     def editaveis(self) -> list[Escala]:
-        return [e for e in self.visiveis if pm.pode_editar(self.ctx, self.uid, e)]
+        return [e for e in self.visiveis if pm.eh_detalhista(self.ctx, self.uid, e)]
 
 
 def definir(p: Pagina) -> None:

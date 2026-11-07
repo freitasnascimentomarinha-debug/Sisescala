@@ -17,7 +17,7 @@ P = pagina()
 ctx, user, uid, res, dias = P.ctx, P.user, P.uid, P.res, P.dias
 esc = exigir_escala(P)
 nomes_m = P.nomes_m
-eh_editor = pm.pode_editar(ctx, uid, esc)
+eh_editor = pm.eh_detalhista(ctx, uid, esc)
 meu_militar = pp.militar_do_usuario(ctx, uid)
 em_pedido = pp.militares_em_pedido_ativo(ctx)
 membros = sorted({p.militar_id for p in esc.membros}, key=lambda i: ctx.militar(i).antiguidade)
@@ -81,7 +81,11 @@ with col_troca:
         bloq = [ctx.militar(m).nome for m in membros if m in em_pedido]
         if bloq:
             st.caption("Em pedido ativo (não podem ser selecionados): " + ", ".join(bloq))
-        if not quem_pede:
+        if not meu_militar and not eh_editor:
+            ui.vazio("Só militar vinculado pede troca",
+                     "A sua conta ainda não está vinculada a um militar. A vinculação precisa da autorização do detalhista.", "link")
+            st.page_link("paginas/vinculos.py", label="Pedir vínculo ao meu nome", icon=":material/link:")
+        elif not quem_pede:
             ui.vazio("Pedido indisponível", "Só quem está na escala e sem pedido ativo pode pedir.", "swap")
         else:
             t1, t2 = st.columns(2)
