@@ -268,12 +268,32 @@ def test_compartilhamento_leitura_e_edicao():
     assert [e.id for e in pm.escalas_visiveis(c, "u2")] == ["D"]
 
 
-def test_palestra_no_dia_do_pernoite_substitui_e_gera_devolucao():
-    per = esc("P", ["m1", "m2", "m3", "m4"], prioridade=5)
+def test_palestra_nunca_tem_prioridade_sobre_servico():
+    per = esc("P", ["m1", "m2", "m3", "m4"], prioridade=1)
     pal = esc("PAL", ["m1", "m2", "m3", "m4", "m5", "m6"], categoria="palestra", modo="eventos",
-              militares_dia=1, retem_qtd=0, prioridade=1)
-    c = ctx([per, pal], n=6, eventos=[Evento("PAL", D, "Palestra")])
-    r = gerar(c, D + timedelta(days=1))
+              militares_dia=1, retem_qtd=0, prioridade=99)         # prioridade alta não adianta
+    c = ctx([per, pal], n=6, eventos=[Evento("PAL", D, "Palestra 1"),
+                                      Evento("PAL", D + timedelta(days=7), "Palestra 2")])
+    r = gerar(c, D + timedelta(days=8))
+    assert quem(r, D, "P") == ["m1"]
     a = r.dia(D, "PAL").efetivos[0]
-    assert a.militar_id != "m1" and a.sigla == "PAL (TF)" and "TF" in a.obs
-    assert [(d.militar_id, d.escala_id) for d in r.devolucoes] == [("m1", "PAL")]
+    assert a.militar_id == "m2" and a.origem == "normal"       # pulou m1 (de serviço), sem TF
+    # m1 foi pulado por estar de serviço: não perde a vez e entra na palestra seguinte
+    assert quem(r, D + timedelta(days=7), "PAL") == ["m1"]
+
+
+def test_palestra_pode_escalar_quem_esta_de_reten():
+    per = esc("P", ["m1", "m2", "m3", "m4"])
+    pal = esc("PAL", ["m2", "m3", "m4", "m5"], categoria="palestra", modo="eventos",
+              militares_dia=1, retem_qtd=0)
+    c = ctx([per, pal], n=6, eventos=[Evento("PAL", D, "Palestra")])
+    r = gerar(c, D)
+    assert quem(r, D, "P", "retem") == ["m2"] and quem(r, D, "PAL") == ["m2"]  # retém não bloqueia
+
+
+def test_servico_prevalece_mesmo_com_dono_diferente_sem_referencia():
+    per = esc("P", ["m1", "m2", "m3", "m4"], dono_id="u1")
+    pal = esc("PAL", ["m1", "m2", "m3"], dono_id="u2", categoria="palestra", modo="eventos",
+              militares_dia=1, retem_qtd=0)
+    r = gerar(ctx([per, pal], n=6, eventos=[Evento("PAL", D, "x")]), D)
+    assert quem(r, D, "PAL") != ["m1"]

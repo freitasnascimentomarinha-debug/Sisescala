@@ -171,10 +171,14 @@ def _ancestrais(ctx: Contexto, esc: Escala) -> set[str]:
 
 
 def relacionadas(ctx: Contexto, a: Escala, b: Escala) -> bool:
+    if (a.categoria == "servico") != (b.categoria == "servico"):
+        return True  # serviço x outra escalação: sempre se influenciam, qualquer dono
     return a.dono_id == b.dono_id or b.id in _ancestrais(ctx, a) or a.id in _ancestrais(ctx, b)
 
 
 def prevalece(ctx: Contexto, a: Escala, b: Escala) -> Escala:
+    if (a.categoria == "servico") != (b.categoria == "servico"):
+        return a if a.categoria == "servico" else b  # serviço sempre prevalece
     if b.id in _ancestrais(ctx, a):
         return b
     if a.id in _ancestrais(ctx, b):
@@ -193,7 +197,7 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
     pendentes: dict[tuple[str, str], list[str]] = {}
     d = ctx.data_base
     while d <= fim:
-        for esc in sorted(ctx.escalas, key=lambda e: (-e.prioridade, e.id)):
+        for esc in sorted(ctx.escalas, key=lambda e: (e.categoria != "servico", -e.prioridade, e.id)):
             if not funciona(ctx, esc, d):
                 res.dias[(d, esc.id)] = DiaEscala(esc.id, d, False)
                 continue
@@ -213,7 +217,12 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
                 u = ultimo_dia.get((esc.id, m))
                 return u is not None and (d - u).days <= folgas
 
-            bloq = [m for m in seq_full if descansando(m)]
+            ocupados: set[str] = set()
+            if esc.categoria != "servico" and esc.respeita_servicos:
+                # escalações que não são serviço nunca têm prioridade sobre serviço
+                ocupados = {a.militar_id for a in res.alocacoes_do_dia(d) if a.papel == "efetivo"
+                            and ctx.escala(a.escala_id).categoria == "servico"}
+            bloq = [m for m in seq_full if descansando(m) or m in ocupados]
             pend = [m for m in pendentes.get(chave, []) if m in seq_full and m not in bloq]
             cands = pend + [m for m in seq_full if m not in bloq and m not in pend]
             efet: list[tuple[str, int]] = []
@@ -327,6 +336,9 @@ def _resolver_conflitos(ctx: Contexto, res: Resultado, fim: date) -> None:
                         e1, e2 = ctx.escala(a1.escala_id), ctx.escala(a2.escala_id)
                         if e1.id == e2.id or not relacionadas(ctx, e1, e2):
                             continue
+                        if ((a1.papel == "retem" and e1.categoria == "servico" and e2.categoria != "servico")
+                                or (a2.papel == "retem" and e2.categoria == "servico" and e1.categoria != "servico")):
+                            continue  # retém de serviço não impede palestra etc.
                         alto, baixo = (a1, a2) if prevalece(ctx, e1, e2).id == e1.id else (a2, a1)
                         if (d, mid, baixo.escala_id) not in ignorados:
                             conflito = (alto, baixo)

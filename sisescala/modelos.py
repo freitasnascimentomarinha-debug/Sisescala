@@ -36,9 +36,11 @@ NIVEIS = ("leitura", "edicao")
 @dataclass
 class Militar:
     id: str
-    nome: str
-    posto: str = ""
-    antiguidade: int = 0  # 1 = mais antigo
+    nome: str                 # nome de guerra
+    posto: str = ""           # posto ou graduação
+    antiguidade: int = 0      # 1 = mais antigo
+    nip: str = ""
+    om: str = ""              # sigla ou código da OM
 
 
 @dataclass
@@ -87,6 +89,7 @@ class Escala:
     tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...
     prioridade: int = 1            # maior prevalece (pernoite > diária)
     modo: str = "corrida"          # "corrida" | "preta_vermelha" | "eventos" (só nos dias de evento)
+    respeita_servicos: bool = True  # categorias que não são serviço só escalam quem não está de efetivo serviço
     folgas_minimas: int = 2        # "2x1": mínimo de folgas entre dois serviços do mesmo militar
     referencias: list[str] = field(default_factory=list)  # escalas (de outros) que prevalecem sobre esta
     compartilhado_com: dict[str, str] = field(default_factory=dict)  # usuario_id -> "leitura"|"edicao"
