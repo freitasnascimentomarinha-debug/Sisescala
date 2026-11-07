@@ -161,7 +161,7 @@ menu["Conta"] = [_pg("notificacoes", "Notificações" + _c(n_novas), "notificati
                  _pg("conta", "Minha conta", "manage_accounts", "conta")]
 
 atual = st.navigation(menu, expanded=True)
-st.logo(str(ui.RAIZ / "assets" / "logo.svg"), size="large")
+st.logo(str(ui.RAIZ / "static" / "logo_menu.png"), size="large")
 
 with st.sidebar:
     papel = ("Administrador" if user.admin else "Detalhista" if e_detalhista else "Auxiliar" if e_auxiliar else "Usuário")

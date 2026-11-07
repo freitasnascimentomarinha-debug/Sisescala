@@ -156,3 +156,9 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stForm"] { border:
 .stApp::before { content:""; position:fixed; top:0; left:0; right:0; height:6px; z-index:1000002;
   background-image:url(app/static/camuflado.svg); background-size:260px; border-bottom:1px solid rgba(0,0,0,.45); }
 .ph-ic { background-image: linear-gradient(135deg, rgba(74,106,39,.92), rgba(122,154,60,.92)), url(app/static/camuflado.svg); background-size: auto, 120px; }
+
+/* logo do menu lateral (PNG sem fundo): maior que o padrão do st.logo, que é pensado para marcas pequenas */
+[data-testid="stSidebarHeader"] { height:auto; padding-top:.9rem; padding-bottom:.5rem; align-items:flex-start; }
+[data-testid="stSidebarHeader"] > div:first-child { flex:1; }
+[data-testid="stSidebarLogo"] { height:auto !important; max-height:none !important; width:100% !important; max-width:215px !important;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.55)); }
