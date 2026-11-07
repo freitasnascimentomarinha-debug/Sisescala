@@ -8,6 +8,18 @@ pytest
 streamlit run app.py
 ```
 
+## Organização do app (páginas, por etapa do trabalho)
+| Seção | Páginas |
+|---|---|
+| Início | **Painel**: pendências, quem está de serviço hoje, meus próximos serviços, atividade recente |
+| Operação | **Escala** (prévia clicável, pedido de troca, disponibilidade), **Papeletas**, **Devoluções** |
+| Documentos | **Detalhe de serviço** (PDF), **Regras da escala** |
+| Gestão (detalhista) | **Escalas**, **Militares**, **Lançamentos**, **Importar planilha**, **Vínculos** |
+| Administração | **Usuários** |
+| Conta | **Notificações**, **Minha conta** (contato, PIN, senha) |
+
+O menu mostra só o que o perfil pode usar. Código: `app.py` (login, navegação, gravação), `paginas/` (uma por tela), `sisescala/ui.py` e `assets/estilo.css` (identidade visual), `sisescala/sessao.py` (estado compartilhado), `sisescala/` (regras de negócio, sem Streamlit).
+
 ## Regras implementadas (todas configuráveis, com padrões)
 - **Uma escala por vez:** prévia e detalhe são de uma escala só; o card mostra categoria, prioridade, escalados/dia, quartos, descanso mínimo, responsável, referências e compartilhamento. Na célula só aparecem a sigla e o horário compacto (`4h/16h`).
 - **Categorias de escalação:** serviço, palestra, curso, visitação religiosa, cerimônia, apoio (destaque em outra OM) e outro (`modo="eventos"`: só funciona nos dias de evento lançados).

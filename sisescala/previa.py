@@ -87,7 +87,8 @@ def _cabecalho_dias(ctx: Contexto, dias: list[date]) -> str:
     return cab
 
 
-def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, abertas=None) -> str:
+def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, abertas=None,
+                com_card: bool = True) -> str:
     abertas = abertas or {}
     esc = ctx.escala(escala_id)
     ids = {p.militar_id for p in esc.membros}
@@ -139,20 +140,24 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     if abertas:
         leg += ' <span class="pisca"></span> aberto a troca de serviço'
     return f"""<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+body,.prev,.card{{font-family:'Inter','Segoe UI',system-ui,sans-serif}}
+body{{font-size:12.5px;color:#334155;margin:0}} p,li{{font-size:12.5px;line-height:1.9}} h4{{font-size:13px;margin:14px 0 4px;color:#0F172A}} ul{{margin:4px 0 0 18px;padding:0}}
+.prev{{border-radius:12px;overflow:hidden}}
 .card{{border:1px solid #d0d7de;border-left:6px solid #1f6feb;border-radius:8px;padding:10px 14px;margin-bottom:10px;font:13px sans-serif;background:#f6f8fa}}
 .card h3{{margin:0 0 6px;font-size:18px}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
 .k span{{display:block;color:#57606a;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
-.prev{{border-collapse:collapse;font:12px sans-serif}} .prev th,.prev td{{border:1px solid #d0d7de;padding:3px 4px;text-align:center;white-space:nowrap}}
-.prev th.util{{background:#f6f8fa}} .prev th.folga{{background:#ffd8d8}} .prev th.roxa{{background:#d8c4f5}}
-.prev th.nome{{text-align:left;background:#f6f8fa;position:sticky;left:0}}
+.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden}} .prev th,.prev td{{border-bottom:1px solid #EEF2F7;border-right:1px solid #EEF2F7;padding:5px 6px;text-align:center;white-space:nowrap}}
+.prev th{{font-weight:700;color:#334155}} .prev th.util{{background:#F8FAFC}} .prev th.folga{{background:#ffd8d8}} .prev th.roxa{{background:#d8c4f5}}
+.prev th.nome{{text-align:left;background:#F8FAFC;position:sticky;left:0;color:#0F172A}}
 .prev td.para{{color:#8b949e;font-style:italic}}
 .prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:#eef6ff}} .prev td.sel{{outline:2px solid #1f6feb;outline-offset:-2px;background:#dbeafe}}
-.t{{display:inline-block;border-radius:4px;padding:1px 5px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
+.t{{display:inline-block;border-radius:7px;padding:2px 7px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
 .t.ref{{opacity:.55;outline:1px dashed #57606a}}
 .pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2da44e;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(45,164,78,.7)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(45,164,78,0)}}}}
 </style>
-<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>
+{f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
 <div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias)}</tr>{linhas}
 <tr><th colspan="{len(dias) + 1}" style="background:#eaeef2;text-align:left">Retém do dia</th></tr>
 <tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
