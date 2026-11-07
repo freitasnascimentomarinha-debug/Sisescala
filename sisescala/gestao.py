@@ -89,6 +89,12 @@ def mudar_antiguidade(ctx: Contexto, usuario_id: str, escala_id: str, militar_id
     cd.mover_na_escala(ctx, escala_id, militar_id, posicao)
 
 
+def definir_ordem_da_escala(ctx: Contexto, usuario_id: str, escala_id: str, ids: list[str]) -> None:
+    """Nova ordem de antiguidade da escala inteira (arrastar e soltar na tela)."""
+    _exigir_detalhista(ctx, usuario_id, ctx.escala(escala_id))
+    cd.definir_ordem(ctx, escala_id, ids)
+
+
 def remover_militares(ctx: Contexto, usuario_id: str, escala_id: str, ids: list[str], a_partir_de=None) -> int:
     """Com data, encerra a participação nessa data; sem data, remove de vez."""
     _exigir_detalhista(ctx, usuario_id, ctx.escala(escala_id))

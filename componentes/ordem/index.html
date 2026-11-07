@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html,body{margin:0;padding:0;background:transparent;font-family:"Source Sans Pro",system-ui,sans-serif;color:#E8EBDD}
+#lista{display:flex;flex-direction:column;gap:6px;padding:2px}
+.it{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:#2A3022;
+    border:1px solid #444D36;cursor:grab;user-select:none;touch-action:none}
+.it.arrasta{opacity:.35}
+.it.sobre{border-color:#9BD06A;box-shadow:0 0 0 1px #9BD06A inset}
+.n{min-width:26px;height:26px;border-radius:50%;background:#3B4530;display:flex;align-items:center;
+   justify-content:center;font-weight:700;font-size:13px;color:#C9D6A3}
+.nm{flex:1;font-size:15px}.nm small{color:#9AA27F;margin-left:6px}
+.al{color:#7C856B;font-size:18px;letter-spacing:-2px}
+button{width:30px;height:30px;border-radius:8px;border:1px solid #444D36;background:#222818;color:#E8EBDD;
+       font-size:16px;cursor:pointer}
+button:hover:not(:disabled){border-color:#9BD06A}button:disabled{opacity:.3;cursor:default}
+.dica{font-size:12.5px;color:#9AA27F;margin:0 2px 6px}
+</style>
+</head>
+<body>
+<p class="dica">Arraste pela linha (ou use as setas) para mudar a antiguidade. O 1º é o mais antigo. Salva na hora.</p>
+<div id="lista"></div>
+<script>
+/* Lista reordenável em JS puro. Recebe {itens:[{id,nome,posto}]}; ao soltar/clicar devolve
+   {base:[ids na ordem recebida], ordem:[ids na nova ordem], ts}. */
+(function () {
+  var lista = document.getElementById("lista");
+  var base = [], atual = [], info = {}, arrastando = null;
+  function enviar(tipo, dados) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, dados), "*");
+  }
+  function altura() { enviar("streamlit:setFrameHeight", { height: document.body.scrollHeight + 6 }); }
+  function mudou() {
+    enviar("streamlit:setComponentValue", { dataType: "json",
+      value: { base: base, ordem: atual.slice(), ts: Date.now() } });
+  }
+  function mover(de, para) {
+    if (para < 0 || para >= atual.length || de === para) return;
+    var x = atual.splice(de, 1)[0];
+    atual.splice(para, 0, x);
+    desenhar(); mudou();
+  }
+  function desenhar() {
+    lista.innerHTML = "";
+    atual.forEach(function (id, i) {
+      var d = document.createElement("div");
+      d.className = "it"; d.draggable = true; d.dataset.i = i;
+      var it = info[id] || { nome: id, posto: "" };
+      d.innerHTML = '<span class="al">⋮⋮</span><span class="n">' + (i + 1) + '</span><span class="nm"></span>';
+      var nm = d.querySelector(".nm");
+      nm.textContent = it.nome; var s = document.createElement("small"); s.textContent = it.posto || ""; nm.appendChild(s);
+      var up = document.createElement("button"); up.textContent = "↑"; up.title = "Subir"; up.disabled = i === 0;
+      var dn = document.createElement("button"); dn.textContent = "↓"; dn.title = "Descer"; dn.disabled = i === atual.length - 1;
+      up.onclick = function () { mover(i, i - 1); }; dn.onclick = function () { mover(i, i + 1); };
+      d.appendChild(up); d.appendChild(dn);
+      d.addEventListener("dragstart", function (e) { arrastando = i; d.classList.add("arrasta");
+        e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(i)); });
+      d.addEventListener("dragend", function () { arrastando = null; d.classList.remove("arrasta");
+        lista.querySelectorAll(".sobre").forEach(function (x) { x.classList.remove("sobre"); }); });
+      d.addEventListener("dragover", function (e) { e.preventDefault(); d.classList.add("sobre"); });
+      d.addEventListener("dragleave", function () { d.classList.remove("sobre"); });
+      d.addEventListener("drop", function (e) { e.preventDefault();
+        if (arrastando !== null) mover(arrastando, i); });
+      lista.appendChild(d);
+    });
+    altura();
+  }
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "streamlit:render") return;
+    var itens = (ev.data.args || {}).itens || [];
+    info = {}; base = itens.map(function (x) { info[x.id] = x; return x.id; });
+    atual = base.slice();
+    desenhar();
+  });
+  window.addEventListener("resize", altura);
+  enviar("streamlit:componentReady", { apiVersion: 1 });
+})();
+</script>
+</body>
+</html>

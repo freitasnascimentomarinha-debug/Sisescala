@@ -138,6 +138,17 @@ def adicionar_a_escala(ctx: Contexto, escala_id: str, ids: list[str], desde: dat
     return n
 
 
+def definir_ordem(ctx: Contexto, escala_id: str, ids: list[str]) -> None:
+    """Grava a ordem de antiguidade da escala (a lista tem de ter exatamente os membros dela)."""
+    esc = ctx.escala(escala_id)
+    ctx.numerar_escala(esc)
+    if sorted(ids) != sorted(ctx.ordem_na_escala(esc)):
+        raise ValueError("a lista não confere com os militares da escala; recarregue a página")
+    pos = {i: k for k, i in enumerate(ids, 1)}
+    for p in esc.membros:
+        p.antiguidade = pos[p.militar_id]
+
+
 def mover_na_escala(ctx: Contexto, escala_id: str, mid: str, posicao: int) -> None:
     """Muda a antiguidade do militar NESTA escala (as outras escalas não são afetadas)."""
     esc = ctx.escala(escala_id)

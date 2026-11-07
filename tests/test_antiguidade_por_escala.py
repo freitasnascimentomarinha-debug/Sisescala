@@ -95,3 +95,24 @@ def test_importacao_ordena_so_as_escalas_citadas():
     nid = next(e.id for e in novo2.escalas if e.nome == "Nova")
     assert [novo2.militar(i).nome for i in ordem(novo2, nid)] == ["Zeta", "Alfa"]     # escala criada: ordem da planilha
     assert ordem(novo2, "e1") == ["m1", "m2", "m3", "m4"]
+
+
+def test_definir_ordem_da_escala_inteira_e_validacoes():
+    c, a, b = mundo()
+    gestao.definir_ordem_da_escala(c, a.id, "e1", ["m3", "m1", "m4", "m2"])
+    assert ordem(c, "e1") == ["m3", "m1", "m4", "m2"] and ordem(c, "e2") == ["m3", "m4", "m5", "m6"]
+    with pytest.raises(PermissaoNegada):
+        gestao.definir_ordem_da_escala(c, b.id, "e1", ["m1", "m2", "m3", "m4"])
+    with pytest.raises(ValueError, match="não confere"):
+        gestao.definir_ordem_da_escala(c, a.id, "e1", ["m1", "m2"])
+
+
+def test_componente_ignora_valor_velho(monkeypatch):
+    from sisescala import componente
+    itens = [{"id": i, "nome": i, "posto": ""} for i in ("a", "b", "c")]
+    monkeypatch.setattr(componente, "_ordem", lambda **kw: {"base": ["a", "b", "c"], "ordem": ["b", "a", "c"]})
+    assert componente.ordem_interativa(itens, "k") == ["b", "a", "c"]
+    monkeypatch.setattr(componente, "_ordem", lambda **kw: {"base": ["c", "a", "b"], "ordem": ["b", "a", "c"]})
+    assert componente.ordem_interativa(itens, "k") is None            # a ordem já mudou por outro caminho
+    monkeypatch.setattr(componente, "_ordem", lambda **kw: None)
+    assert componente.ordem_interativa(itens, "k") is None

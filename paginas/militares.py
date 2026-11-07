@@ -8,6 +8,7 @@ from sisescala import cadastro as cd
 from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
+from sisescala.componente import ordem_interativa
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -69,6 +70,12 @@ esc_sel = st.selectbox("Escala", ed_ids, format_func=lambda i: ctx.escala(i).nom
 esc_obj = ctx.escala(esc_sel) if esc_sel else None
 if esc_obj:
     meus_mil = [ctx.militar(i) for i in ctx.ordem_na_escala(esc_obj)]
+if esc_obj and len(meus_mil) > 1:
+    with st.expander("Mudar a antiguidade (arraste os nomes)", expanded=True, icon=":material/swap_vert:"):
+        nova = ordem_interativa([{"id": m.id, "nome": m.nome, "posto": m.posto} for m in meus_mil],
+                                key=f"ord_{esc_obj.id}")
+        if nova:
+            agir(lambda: gestao.definir_ordem_da_escala(ctx, uid, esc_obj.id, nova), "Antiguidade atualizada.")
 busca = st.text_input("Buscar", placeholder="Nome, posto, NIP ou OM", label_visibility="collapsed", key="mil_busca")
 
 linhas = [{"Excluir": False, "id": m.id, "Antiguidade": ctx.antig(esc_obj, m.id) if esc_obj else m.antiguidade, "Nome de guerra": m.nome, "Posto/Grad.": m.posto,
@@ -79,19 +86,15 @@ if not meus_mil:
     ui.vazio("Nenhum militar nas suas escalas", "Adicione militares ou importe uma planilha.", "users")
 else:
     with st.container(border=True):
-        ed = st.data_editor(pd.DataFrame(linhas), hide_index=True, width="stretch", disabled=["id"], key="mil_editor",
+        ed = st.data_editor(pd.DataFrame(linhas), hide_index=True, width="stretch", disabled=["id", "Antiguidade"], key="mil_editor",
                             column_config={"id": None, "Excluir": st.column_config.CheckboxColumn(width="small"),
-                                           "Antiguidade": st.column_config.NumberColumn("Antiguidade na escala", width="small")})
+                                           "Antiguidade": st.column_config.NumberColumn("Nº na escala", width="small")})
         c1, c2, _ = st.columns([1, 2, 3])
         if c1.button("Salvar edições", type="primary", icon=":material/save:"):
             def _salvar():
                 for _, r in ed.iterrows():
                     cd.editar_militar(ctx, r["id"], nome=r["Nome de guerra"], posto=r["Posto/Grad."] or "", nip=r["NIP"] or "",
                                       om=r["OM"] or "", email=r["E-mail"] or "", ramal=r["Ramal"] or "", celular=r["Celular"] or "")
-                if esc_obj:
-                    for _, r in ed.sort_values("Antiguidade").iterrows():
-                        if ctx.antig(esc_obj, r["id"]) != int(r["Antiguidade"]):
-                            gestao.mudar_antiguidade(ctx, uid, esc_obj.id, r["id"], int(r["Antiguidade"]))
             agir(_salvar, "Cadastro atualizado.")
         with c2.popover("Excluir marcados", icon=":material/delete:"):
             marcados = list(ed.loc[ed["Excluir"], "id"])
