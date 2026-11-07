@@ -109,7 +109,8 @@ LOGICA_FIXA = [
     "vaga na fila nem na contagem de militares. Se a escala permitir (opção rara), ele concorre como qualquer militar. "
     "O auxiliar do detalhista concorre à escala normalmente e também aprova papeletas e vínculos e faz lançamentos "
     "(dispensas, dias especiais, guarnecimento, eventos) desta escala, mas nunca para si mesmo: ninguém decide a própria "
-    "troca nem lança dispensa ou impedimento para si; nesse caso outro responsável faz.",
+    "troca nem lança dispensa ou impedimento para si; nesse caso outro responsável faz. Só o detalhista edita as regras "
+    "da escala; o auxiliar não.",
     "Quem está de férias, curso, dispensado (inclusive por baixa ou falta, com a justificativa lançada pelo detalhista), destaque (DTQ) ou desembarcado é pulado sem perder o seu lugar na ordem; "
     "desembarcado sai da fila.",
     "O retém do dia é o próximo da fila depois dos escalados. Se um escalado for dispensado do serviço (baixa ou falta, "

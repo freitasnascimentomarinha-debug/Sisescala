@@ -247,6 +247,10 @@ def test_compartilhamento_leitura_e_edicao():
     per = esc("P", ["m1", "m2", "m3"], dono_id="u1")
     dia = esc("D", ["m4", "m5", "m6"], dono_id="u2")
     c = ctx([per, dia])
+    from sisescala import auth                      # contas reais de detalhista: u1, u2 e u3
+    auth.criar_usuario(c, None, "d1", "D1", "senha-forte-1")
+    for lg in ("d2", "d3"):
+        auth.criar_usuario(c, "u1", lg, lg.upper(), "senha-forte-1")
     assert not pm.pode_ver(c, "u2", per)
     with pytest.raises(pm.PermissaoNegada):
         pm.referenciar(c, "u2", "D", "P")                  # ainda não compartilhada

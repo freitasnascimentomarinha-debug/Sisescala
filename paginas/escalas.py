@@ -1,8 +1,7 @@
 """Gestão das escalas: criar, editar, compartilhar e excluir."""
-import dataclasses
-
 import streamlit as st
 
+from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, quartos_padrao
@@ -73,18 +72,9 @@ def dialogo_nova():
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
     if st.button("Criar escala", type="primary", use_container_width=True):
-        nova = Escala(f"e{max([int(e.id[1:]) for e in ctx.escalas if e.id[1:].isdigit()] + [0]) + 1}", v["nome"], dono_id=uid,
+        nova = Escala(f"e{max([int(e.id[1:]) for e in ctx.escalas if e.id[1:].isdigit()] + [0]) + 1}", v["nome"],
                       membros=[Pertinencia(m) for m in membros], **{k: x for k, x in v.items() if k != "nome"})
-        if not v["nome"].strip():
-            st.error("Informe o nome da escala.")
-        elif erros := validar_escala(ctx, nova):
-            st.error(" ".join(erros))
-        else:
-            ctx.escalas.append(nova)
-            for r in refs:
-                pm.referenciar(ctx, uid, nova.id, r)
-            st.session_state["toast"] = "Escala criada."
-            st.rerun()
+        agir(lambda: gestao.criar_escala(ctx, uid, nova, refs), "Escala criada.")
 
 
 @st.dialog("Editar escala", width="large")
@@ -92,16 +82,10 @@ def dialogo_editar(eid: str):
     e = ctx.escala(eid)
     v = _campos(e, f"ed_{eid}")
     if st.button("Salvar alterações", type="primary", use_container_width=True):
-        novo = dataclasses.replace(e, **v)
-        if erros := validar_escala(ctx, novo):
-            st.error(" ".join(erros))
-        else:
-            ctx.escalas[ctx.escalas.index(e)] = novo
-            st.session_state["toast"] = "Escala atualizada."
-            st.rerun()
+        agir(lambda: gestao.editar_escala(ctx, uid, eid, **v), "Escala atualizada.")
 
 
-ui.cabecalho("Escalas", "Crie, ajuste as regras e compartilhe o acesso das escalas que você gerencia.", "sliders")
+ui.cabecalho("Escalas", "Só o detalhista cria, ajusta as regras e compartilha o acesso das escalas. O auxiliar não edita regras.", "sliders")
 if st.button("Nova escala", type="primary", icon=":material/add:"):
     dialogo_nova()
 
@@ -139,8 +123,4 @@ for e in minhas:
             with b3.popover("Excluir", icon=":material/delete:"):
                 st.warning("Isso apaga a escala e as referências a ela.")
                 if st.button("Confirmar exclusão", key=f"del_{e.id}"):
-                    ctx.escalas.remove(e)
-                    for o in ctx.escalas:
-                        o.referencias = [r for r in o.referencias if r != e.id]
-                    st.session_state["toast"] = "Escala excluída."
-                    st.rerun()
+                    agir(lambda: gestao.excluir_escala(ctx, uid, e.id), "Escala excluída.")

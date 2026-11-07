@@ -80,7 +80,7 @@ def referenciar(ctx: Contexto, usuario_id: str, escala_id: str, referencia_id: s
     `escala_id` (que o usuário precisa poder editar): quem estiver de serviço nela é considerado
     ao formar a outra, como se fossem escalas do próprio usuário."""
     esc, ref = ctx.escala(escala_id), ctx.escala(referencia_id)
-    if not pode_editar(ctx, usuario_id, esc):
+    if not eh_detalhista(ctx, usuario_id, esc):
         raise PermissaoNegada("sem permissão de edição na escala")
     if not pode_ver(ctx, usuario_id, ref):
         raise PermissaoNegada("a escala de referência não foi compartilhada com você")
@@ -92,7 +92,7 @@ def referenciar(ctx: Contexto, usuario_id: str, escala_id: str, referencia_id: s
 
 def remover_referencia(ctx: Contexto, usuario_id: str, escala_id: str, referencia_id: str) -> None:
     esc = ctx.escala(escala_id)
-    if not pode_editar(ctx, usuario_id, esc):
+    if not eh_detalhista(ctx, usuario_id, esc):
         raise PermissaoNegada("sem permissão de edição na escala")
     if referencia_id in esc.referencias:
         esc.referencias.remove(referencia_id)

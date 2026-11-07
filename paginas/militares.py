@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from sisescala import cadastro as cd
+from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.sessao import agir, pagina
@@ -38,11 +39,11 @@ def dialogo_vincular():
     data_v = st.date_input("A partir de / até (mudança de escala)", date.today(), format="DD/MM/YYYY")
     c1, c2, c3 = st.columns(3)
     if c1.button("Adicionar", type="primary"):
-        agir(lambda: cd.adicionar_a_escala(ctx, alvo, sel, data_v), "Militares adicionados à escala.")
+        agir(lambda: gestao.adicionar_militares(ctx, uid, alvo, sel, data_v), "Militares adicionados à escala.")
     if c2.button("Encerrar na data"):
-        agir(lambda: cd.remover_da_escala(ctx, alvo, sel, data_v), "Participação encerrada.")
+        agir(lambda: gestao.remover_militares(ctx, uid, alvo, sel, data_v), "Participação encerrada.")
     if c3.button("Remover de vez"):
-        agir(lambda: cd.remover_da_escala(ctx, alvo, sel), "Militares removidos da escala.")
+        agir(lambda: gestao.remover_militares(ctx, uid, alvo, sel), "Militares removidos da escala.")
 
 
 ui.cabecalho("Militares", "Cadastro único: antiguidade, contato e vínculo com as escalas.", "users",
