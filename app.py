@@ -1,12 +1,13 @@
 """SisEscala – app Streamlit (protótipo). Rodar: streamlit run app.py"""
 import dataclasses
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
 import pandas as pd
 
 from sisescala import cadastro as cd
+from sisescala import papeletas as pp
 from sisescala import permissoes as pm
 from sisescala.importacao import MODELO_CSV, importar, ler_tabela
 from sisescala.calendario import pontos_facultativos
@@ -14,7 +15,7 @@ from sisescala.demo import contexto_demo
 from sisescala.modelos import (CATEGORIAS, TIPOS_IMPEDIMENTO, DiaEspecial, Escala, Evento, Guarnecimento,
                                Impedimento, Ocorrencia, Pertinencia, quartos_padrao)
 from sisescala.motor import gerar, validar_escala
-from sisescala.pdf import gerar_pdf
+from sisescala.pdf import gerar_pdf, pdf_papeleta
 from sisescala.previa import html_previa, periodo
 from sisescala.relatorio import html_regras, pdf_regras
 
@@ -34,6 +35,9 @@ with st.sidebar:
         st.info("Você ainda não tem escalas. Crie uma na aba Escalas.")
     eid = st.selectbox("Escala", [e.id for e in visiveis], format_func=lambda i: ctx.escala(i).nome) \
         if visiveis else None
+    n_pend = len(pp.pedidos_pendentes(ctx, uid))
+    if n_pend:
+        st.warning(f"🔔 {n_pend} pedido(s) de troca de serviço aguardando sua decisão (aba Papeletas).")
     st.divider()
     ctx.uf = st.text_input("UF da OM (feriados)", ctx.uf, max_chars=2).upper()
     ctx.janela_devolucao_dias = st.number_input("Prazo de devolução (dias)", 1, 365, ctx.janela_devolucao_dias)
@@ -44,8 +48,8 @@ with st.sidebar:
 dias = periodo(inicio, dias_n)
 res = gerar(ctx, dias[-1])
 esc = ctx.escala(eid) if eid else None
-aba_prev, aba_pdf, aba_reg, aba_lanc, aba_esc, aba_mil, aba_imp = st.tabs(
-    ["Prévia", "Detalhe (PDF)", "Regras da escala", "Lançamentos", "Escalas", "Militares", "Importar planilha"])
+aba_prev, aba_pdf, aba_pap, aba_reg, aba_lanc, aba_esc, aba_mil, aba_imp = st.tabs(
+    ["Prévia", "Detalhe (PDF)", f"Papeletas{f' ({n_pend})' if n_pend else ''}", "Regras da escala", "Lançamentos", "Escalas", "Militares", "Importar planilha"])
 
 with aba_prev:
     if esc:
@@ -58,6 +62,137 @@ with aba_prev:
             st.subheader("Serviços a devolver")
             for dv in pend:
                 st.write(f"{nomes_m[dv.militar_id]} – origem {dv.data_origem:%d/%m}, prazo {dv.prazo:%d/%m}")
+
+with aba_prev:
+    if esc:
+        st.divider()
+        st.subheader("Solicitar troca de serviço (papeleta)")
+        membros = sorted({p.militar_id for p in esc.membros}, key=lambda i: ctx.militar(i).antiguidade)
+
+        def dias_servico(mid):
+            return sorted(d for (d, e), de in res.dias.items() if e == esc.id and d >= ctx.data_base
+                          for a in de.alocacoes if a.militar_id == mid and a.origem == "normal")
+
+        fmt_d = lambda d: f"{d:%d/%m/%Y} ({'seg ter qua qui sex sáb dom'.split()[d.weekday()]})"  # noqa: E731
+        t1, t2 = st.columns(2)
+        sx = t1.selectbox("Militar que pede a troca", membros, format_func=nomes_m.get, key="pp_x")
+        ddx = dias_servico(sx)
+        dx = t1.selectbox("Dia do serviço dele", ddx, format_func=fmt_d, key="pp_dx") if ddx else None
+        sy = t2.selectbox("Trocar com", [m for m in membros if m != sx], format_func=nomes_m.get, key="pp_y")
+        ddy = dias_servico(sy)
+        dy = t2.selectbox("Dia do serviço do outro", ddy, format_func=fmt_d, key="pp_dy") if ddy else None
+        mot = st.text_input("Motivo da troca", key="pp_mot")
+        if dx and dy:
+            erros, avisos, _ = pp.validar_troca(ctx, esc, sx, dx, sy, dy)
+            agora = datetime.now()
+            if not erros and not pp.antecedencia_ok(esc, dx, dy, agora):
+                erros.append(f"mínimo de {esc.antecedencia_horas}h de antecedência do primeiro serviço")
+            st.info(f"{nomes_m[sx]} dará o serviço de {fmt_d(dy)} e {nomes_m[sy]} dará o de {fmt_d(dx)}.")
+            for t in erros:
+                st.error(t)
+            for t in avisos:
+                st.warning(t)
+            if not erros and pm.pode_ver(ctx, uid, esc) and st.button("Confirmar e gerar papeleta"):
+                try:
+                    novo = pp.criar(ctx, uid, esc.id, sx, dx, sy, dy, mot, agora)
+                    st.success(f"Papeleta {novo.numero:04d} criada. Colete as assinaturas e acompanhe na aba Papeletas.")
+                    st.download_button("Baixar documento (PDF)", pdf_papeleta(ctx, novo), f"papeleta_{novo.numero:04d}.pdf",
+                                       "application/pdf", key=f"dl_novo_{novo.id}")
+                except (ValueError, pm.PermissaoNegada) as ex:
+                    st.error(str(ex))
+        else:
+            st.caption("Os dois militares precisam ter serviço (efetivo ou retém) no período para a troca.")
+
+with aba_pap:
+    if esc:
+        pode_decidir = pm.pode_editar(ctx, uid, esc)
+        lista = sorted((p for p in ctx.papeletas if p.escala_id == esc.id), key=lambda p: -p.numero)
+        if pode_decidir:
+            st.subheader("Pedidos aguardando decisão")
+            pend = [p for p in lista if p.status == "pendente"]
+            if not pend:
+                st.caption("Nenhum pedido pendente nesta escala.")
+        ROT = {"pendente": "🟡 pendente", "aprovada": "🟢 aprovada (aguardando assinaturas)", "rejeitada": "🔴 rejeitada",
+               "confirmada": "✅ confirmada", "cancelada": "⚪ cancelada"}
+        for p in lista:
+            x, y = ctx.militar(p.solicitante_id), ctx.militar(p.outro_id)
+            with st.expander(f"Nº {p.numero:04d} · {ROT[p.status]} · {x.nome} ↔ {y.nome}", expanded=p.status == "pendente"):
+                st.write(f"**Pedido em** {p.criado_em:%d/%m/%Y às %H:%M} · **Escala:** {esc.nome} · "
+                         f"**Pedido por:** {nomes_u.get(p.criado_por, p.criado_por)}")
+                st.write(f"**{x.nome}** (serviço em {p.data_solicitante:%d/%m/%Y}) troca com **{y.nome}** "
+                         f"(serviço em {p.data_outro:%d/%m/%Y}). Motivo: {p.motivo or '—'}")
+                st.write("**Assinaturas:** " + "; ".join(
+                    f"{ctx.militar(m).nome}: " + (f"✔ {p.assinaturas[m].em:%d/%m %H:%M} ({'eletrônica' if p.assinaturas[m].metodo == 'pin' else 'externa'})"
+                                                  if m in p.assinaturas else "pendente")
+                    for m in (p.solicitante_id, p.outro_id)))
+                if p.motivo_rejeicao:
+                    st.write(f"**Motivo da rejeição:** {p.motivo_rejeicao}")
+                st.download_button("Baixar documento (PDF)", pdf_papeleta(ctx, p), f"papeleta_{p.numero:04d}.pdf",
+                                   "application/pdf", key=f"dl_{p.id}")
+                msg = lambda f: _acao(f)  # noqa: E731
+
+                def _acao(f):
+                    try:
+                        r = f()
+                        for w in (r or []):
+                            st.warning(w)
+                        st.rerun()
+                    except (ValueError, pm.PermissaoNegada) as ex:
+                        st.error(str(ex))
+
+                if pode_decidir and p.status == "pendente":
+                    b1, b2 = st.columns(2)
+                    if b1.button("Aprovar e trocar", key=f"ap_{p.id}"):
+                        msg(lambda: pp.aprovar(ctx, uid, p.id))
+                    rej = b2.text_input("Motivo da rejeição", key=f"rjm_{p.id}")
+                    if b2.button("Rejeitar", key=f"rj_{p.id}"):
+                        msg(lambda: pp.rejeitar(ctx, uid, p.id, rej))
+                if p.status in pp.ABERTAS:
+                    with st.form(f"as_{p.id}", clear_on_submit=True):
+                        st.caption("Assinatura eletrônica (NIP + PIN)")
+                        a1, a2, a3 = st.columns(3)
+                        quem = a1.selectbox("Militar", [m for m in (p.solicitante_id, p.outro_id) if m not in p.assinaturas],
+                                            format_func=nomes_m.get) if len(p.assinaturas) < 2 else None
+                        nipv, pinv = a2.text_input("NIP"), a3.text_input("PIN", type="password")
+                        if st.form_submit_button("Assinar") and quem:
+                            try:
+                                pp.assinar(ctx, p.id, quem, nipv, pinv); st.rerun()
+                            except (ValueError, pm.PermissaoNegada) as ex:
+                                st.error(str(ex))
+                    if pode_decidir:
+                        with st.form(f"ext_{p.id}", clear_on_submit=True):
+                            st.caption("Registrar documento assinado fora do sistema (gov.br, ICP, papel)")
+                            e1, e2 = st.columns(2)
+                            quem2 = e1.selectbox("Militar ", [p.solicitante_id, p.outro_id], format_func=nomes_m.get)
+                            ref = e2.text_input("Link ou nº do documento")
+                            if st.form_submit_button("Registrar"):
+                                try:
+                                    pp.registrar_assinatura_externa(ctx, uid, p.id, quem2, ref); st.rerun()
+                                except (ValueError, pm.PermissaoNegada) as ex:
+                                    st.error(str(ex))
+                if pode_decidir and p.status == "aprovada":
+                    c1, c2 = st.columns(2)
+                    if c1.button("Confirmar (assinaturas recebidas)", key=f"cf_{p.id}"):
+                        msg(lambda: pp.confirmar(ctx, uid, p.id))
+                    if c2.button("Cancelar e desfazer a troca", key=f"cc_{p.id}"):
+                        msg(lambda: pp.cancelar(ctx, uid, p.id, "não assinada"))
+                if p.status == "pendente" and (uid == p.criado_por) and not pode_decidir:
+                    if st.button("Cancelar pedido", key=f"cp_{p.id}"):
+                        msg(lambda: pp.cancelar(ctx, uid, p.id))
+                st.caption("Histórico: " + " → ".join(f"{h[0]:%d/%m %H:%M} {h[2]}" for h in p.historico))
+        with st.expander("Definir ou alterar o PIN de assinatura"):
+            with st.form("pin", clear_on_submit=True):
+                p1, p2, p3, p4 = st.columns(4)
+                mpin = p1.selectbox("Militar", sorted({q.militar_id for q in esc.membros}), format_func=nomes_m.get)
+                npin, pin1, pin0 = p2.text_input("NIP"), p3.text_input("Novo PIN (4+ dígitos)", type="password"), \
+                    p4.text_input("PIN atual (se já tiver)", type="password")
+                if st.form_submit_button("Salvar PIN"):
+                    try:
+                        pp.definir_pin(ctx, mpin, npin, pin1, pin0 or None); st.success("PIN definido.")
+                    except ValueError as ex:
+                        st.error(str(ex))
+        st.caption("Assinatura eletrônica simples (NIP + PIN, com data/hora e código de verificação do documento). "
+                   "Não substitui certificado ICP-Brasil; para isso registre o documento assinado externamente.")
 
 with aba_pdf:
     if esc:
@@ -223,6 +358,7 @@ with aba_esc:
                 opcoes_q = [0, 2, 3, 4, 6]
                 hq_n = g4.selectbox("Quartos", opcoes_q, opcoes_q.index(hq_atual) if hq_atual in opcoes_q else 0,
                                     format_func=lambda h: "sem quartos" if h == 0 else f"de {h}h")
+                ant_n = st.number_input("Antecedência mínima da papeleta de troca (horas)", 0, 720, e.antecedencia_horas)
                 h1, h2 = st.columns(2)
                 rox_n = h1.checkbox("Participa da escala roxa", e.participa_roxa)
                 resp_n = h2.checkbox("Não-serviço só escala quem não está de serviço", e.respeita_servicos)
@@ -230,7 +366,7 @@ with aba_esc:
                     novo = dataclasses.replace(
                         e, nome=nome_n, tipo=tipo_n, categoria=cat_n, modo=modo_n, funciona_em=func_n,
                         prioridade=prio_n, militares_dia=dia_n, retem_qtd=ret_n, folgas_minimas=fol_n,
-                        quartos=quartos_padrao(hq_n) if hq_n else [], participa_roxa=rox_n, respeita_servicos=resp_n)
+                        quartos=quartos_padrao(hq_n) if hq_n else [], participa_roxa=rox_n, respeita_servicos=resp_n, antecedencia_horas=ant_n)
                     if erros := validar_escala(ctx, novo):
                         st.error(" ".join(erros))
                     else:

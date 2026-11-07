@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 # --- siglas exibidas na prévia -------------------------------------------------
 SVC, SVC_TF, SVC_T = "SVÇ", "SVÇ (TF)", "SVÇ (T)"
@@ -41,6 +41,7 @@ class Militar:
     antiguidade: int = 0      # 1 = mais antigo
     nip: str = ""
     om: str = ""              # sigla ou código da OM
+    pin_hash: str = ""        # PIN da assinatura eletrônica (bcrypt); nunca em texto puro
 
 
 @dataclass
@@ -89,6 +90,7 @@ class Escala:
     tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...
     prioridade: int = 1            # maior prevalece (pernoite > diária)
     modo: str = "corrida"          # "corrida" | "preta_vermelha" | "eventos" (só nos dias de evento)
+    antecedencia_horas: int = 24   # papeleta de troca: antecedência mínima antes do serviço
     respeita_servicos: bool = True  # categorias que não são serviço só escalam quem não está de efetivo serviço
     folgas_minimas: int = 2        # "2x1": mínimo de folgas entre dois serviços do mesmo militar
     referencias: list[str] = field(default_factory=list)  # escalas (de outros) que prevalecem sobre esta
@@ -189,10 +191,43 @@ class Troca:
     aceite_saindo: bool = False
     aceite_entrando: bool = False
     observacao: str = ""
+    papeleta_id: str = ""         # preenchido quando a troca nasce de uma papeleta
 
     @property
     def valida(self) -> bool:
         return self.aceite_saindo and self.aceite_entrando
+
+
+@dataclass
+class Assinatura:
+    militar_id: str
+    em: datetime
+    hash_documento: str
+    metodo: str = "pin"           # "pin" (eletrônica simples) | "externo" (gov.br, ICP, papel)
+    referencia: str = ""          # link/arquivo do documento assinado externamente
+
+
+@dataclass
+class Papeleta:
+    """Pedido de troca de serviço entre dois militares da mesma escala (troca de datas)."""
+    id: str
+    numero: int
+    escala_id: str
+    solicitante_id: str           # militar que pede
+    data_solicitante: date        # dia em que ele estava de serviço
+    outro_id: str                 # militar com quem quer trocar
+    data_outro: date              # dia em que o outro estava de serviço
+    criado_em: datetime
+    criado_por: str               # usuário do sistema que lançou o pedido
+    motivo: str = ""
+    status: str = "pendente"      # pendente | aprovada | rejeitada | confirmada | cancelada
+    decidido_por: str = ""
+    decidido_em: datetime | None = None
+    motivo_rejeicao: str = ""
+    assinaturas: dict[str, Assinatura] = field(default_factory=dict)  # militar_id -> assinatura
+    confirmada_por: str = ""
+    confirmada_em: datetime | None = None
+    historico: list[tuple[datetime, str, str]] = field(default_factory=list)  # (quando, quem, o quê)
 
 
 @dataclass
@@ -210,6 +245,7 @@ class Contexto:
     uf: str = "RJ"
     usuarios: list[Usuario] = field(default_factory=list)
     eventos: list[Evento] = field(default_factory=list)
+    papeletas: list[Papeleta] = field(default_factory=list)
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
 

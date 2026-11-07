@@ -75,6 +75,9 @@ def itens_configuracao(ctx: Contexto, esc: Escala) -> list[tuple[str, list[Item]
                  f"{d('folgas_minimas')} (mínimo {d('folgas_minimas')}x1)",
                  "O mesmo militar nunca dá serviço em dias seguidos nem com menos folgas que isso, "
                  "inclusive entre filas (ex.: sexta preta e sábado vermelha)."),
+            Item("Antecedência mínima da papeleta de troca (horas)", str(esc.antecedencia_horas),
+                 str(d("antecedencia_horas")),
+                 "Quanto tempo antes do primeiro serviço a papeleta de troca precisa ser pedida."),
             Item("Prioridade", str(esc.prioridade), str(d("prioridade")),
                  "Em conflito entre escalas do mesmo responsável, a de maior prioridade prevalece "
                  "(a outra faz a troca forçada)."),
@@ -109,7 +112,10 @@ LOGICA_FIXA = [
     "para que ele dê as duas; o motivo aparece em Observações.",
     "Serviço sempre prevalece sobre palestra, cerimônia, curso, visitação religiosa, apoio e demais escalações. "
     "O retém de serviço não impede essas escalações.",
-    "Troca consensual (T) só vale com papeleta aceita pelas duas partes.",
+    "Troca consensual (T): feita por papeleta. O pedido (data, hora, quem pediu, com quem e em que escala) chega ao "
+    "detalhista e aos editores da escala, que aprovam ou rejeitam. Aprovada, a troca de datas é aplicada "
+    "automaticamente; o detalhista confirma quando as duas partes assinarem. Sem confirmação, pode cancelar e a "
+    "troca é desfeita. Serviços que já vieram de troca (T ou TF) não são trocados de novo.",
     "Escala referenciada (de outro responsável) prevalece sobre a que a referencia; escalas sem referência "
     "entre responsáveis diferentes não se influenciam.",
     "O resultado de um dia não depende do tamanho da prévia (7, 15 ou 30 dias).",
