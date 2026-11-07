@@ -166,3 +166,15 @@ def test_usuario_novo_sem_escala_abre_as_paginas_e_vira_detalhista_ao_criar(app)
             continue
         app.switch_page(f"paginas/{p}.py").run()
         assert not app.exception, (p, [x.value for x in app.exception])
+
+
+def test_deploy_novo_com_modulos_velhos_na_memoria_recarrega_sem_erro(app):
+    """Simula o servidor que já tinha `sisescala` carregado de um deploy anterior (ImportError na nuvem)."""
+    import sys
+    _criar_admin(app)
+    sys.modules["sisescala"]._assinatura = -1                         # "módulos de outra versão do código"
+    del sys.modules["sisescala.modelos"].PedidoAcesso                  # o que quebrava: classe nova ausente
+    app.run()
+    assert not app.exception
+    assert hasattr(sys.modules["sisescala.modelos"], "PedidoAcesso")
+    assert any(b.label == "Entrar" for b in app.button)                # sessão antiga descartada: pede login
