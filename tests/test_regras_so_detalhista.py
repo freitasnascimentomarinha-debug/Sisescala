@@ -15,7 +15,7 @@ AUX, M3, DET2 = "u2", "u3", "u4"
 
 def mk():
     ms = [Militar(f"m{i}", f"M{i}", "CB", i) for i in range(1, 9)]
-    e = Escala("e1", "Portaria", dono_id="u1", detalhista_id="m1", auxiliar_id="m2",
+    e = Escala("e1", "Portaria", dono_id="u1", detalhista_id="m1", auxiliares=["m2"],
                membros=[Pertinencia(f"m{i}") for i in range(1, 9)])
     c = Contexto(ms, [e], D)
     auth.criar_usuario(c, None, "det", "Detalhista", SENHA, admin=True)                                  # u1 (dono)
@@ -29,12 +29,12 @@ def mk():
 def test_auxiliar_nao_edita_nenhuma_regra_da_escala():
     c = mk()
     for campos in ({"folgas_minimas": 1}, {"militares_dia": 2}, {"quartos": []}, {"prioridade": 9},
-                   {"auxiliar_id": ""}, {"detalhista_id": "m2"}, {"detalhista_escalavel": True}, {"nome": "Outra"}):
+                   {"auxiliares": []}, {"detalhista_id": "m2"}, {"detalhista_escalavel": True}, {"nome": "Outra"}):
         with pytest.raises(PermissaoNegada, match="só o detalhista"):
             gestao.editar_escala(c, AUX, "e1", **campos)
     e = c.escala("e1")
-    assert (e.folgas_minimas, e.militares_dia, e.prioridade, e.auxiliar_id, e.detalhista_id, e.nome) == \
-           (2, 1, 1, "m2", "m1", "Portaria")                                      # nada mudou
+    assert (e.folgas_minimas, e.militares_dia, e.prioridade, e.auxiliares, e.detalhista_id, e.nome) == \
+           (2, 1, 1, ["m2"], "m1", "Portaria")                                      # nada mudou
 
 
 def test_auxiliar_nao_cria_nem_exclui_nem_compartilha_nem_mexe_nos_membros_nem_referencia():
@@ -70,8 +70,8 @@ def test_conta_de_militar_com_edicao_antiga_gravada_tambem_nao_edita():
 def test_detalhista_dono_edita_as_regras_e_o_auxiliar_ve_o_resultado():
     c = mk()
     novo = gestao.editar_escala(c, "u1", "e1", folgas_minimas=2, militares_dia=2, antecedencia_horas=48,
-                                auxiliar_id="m4", om="Centro de Operações")
-    assert (novo.folgas_minimas, novo.militares_dia, novo.antecedencia_horas, novo.auxiliar_id) == (2, 2, 48, "m4")
+                                auxiliares=["m4"], om="Centro de Operações")
+    assert (novo.folgas_minimas, novo.militares_dia, novo.antecedencia_horas, novo.auxiliares) == (2, 2, 48, ["m4"])
     assert c.escala("e1").om == "Centro de Operações" and c.escala("e1").membros == novo.membros
 
 
@@ -90,7 +90,7 @@ def test_edicao_e_validada_e_campos_protegidos_nao_passam():
     with pytest.raises(ValueError, match="mínimo"):
         gestao.editar_escala(c, "u1", "e1", militares_dia=8)                      # 8 por dia com 2x1 é impossível
     with pytest.raises(ValueError, match="auxiliar não pode ser o próprio detalhista"):
-        gestao.editar_escala(c, "u1", "e1", auxiliar_id="m1")
+        gestao.editar_escala(c, "u1", "e1", auxiliares=["m1"])
     for campo in ("dono_id", "membros", "compartilhado_com", "referencias", "id"):
         with pytest.raises(ValueError, match="não editável"):
             gestao.editar_escala(c, "u1", "e1", **{campo: "x"})

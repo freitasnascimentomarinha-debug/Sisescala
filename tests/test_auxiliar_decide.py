@@ -19,7 +19,7 @@ CONTATO = dict(email="a@b.com", ramal="2345", celular="21987654321")
 def mk():
     ms = [Militar(f"m{i}", f"M{i}", "CB", i, nip=f"{i}.000") for i in range(1, 9)]
     # m1 = detalhista (fora da escala); m2 = auxiliar (concorre normalmente)
-    e = Escala("A", "Portaria", dono_id="u1", detalhista_id="m1", auxiliar_id="m2",
+    e = Escala("A", "Portaria", dono_id="u1", detalhista_id="m1", auxiliares=["m2"],
                membros=[Pertinencia(m.id) for m in ms])
     c = Contexto(ms, [e], D)
     auth.criar_usuario(c, None, "det", "Detalhista", SENHA, admin=True)                       # u1 detalhista (dono)
@@ -114,7 +114,7 @@ def test_outro_militar_nao_decide_e_auxiliar_so_decide_na_propria_escala():
     with pytest.raises(PermissaoNegada, match="detalhista e o auxiliar"):
         pp.aprovar(c, M4, p.id, AGORA)
     assert pp.pedidos_pendentes(c, M4) == [] and pp.papeletas_visiveis(c, M4, "A") == []
-    c.escalas.append(Escala("B", "Outra", dono_id="u1", detalhista_id="m1", auxiliar_id="m6",
+    c.escalas.append(Escala("B", "Outra", dono_id="u1", detalhista_id="m1", auxiliares=["m6"],
                             membros=[Pertinencia(f"m{i}") for i in range(1, 9)]))
     assert not pode_decidir(c, AUX, c.escala("B"))                                    # m2 é auxiliar só da escala A
 
@@ -145,7 +145,7 @@ def test_auxiliar_decide_vinculos_mas_nao_o_proprio():
     # o auxiliar não decide um vínculo pedido pela própria conta
     c2 = mk()
     c2.usuario(AUX).militar_id = ""                                                   # cenário artificial: auxiliar sem vínculo
-    c2.escala("A").auxiliar_id = "m6"
+    c2.escala("A").auxiliares = ["m6"]
     v2 = Vinculo("v9", AUX, "m7", "A", AGORA, auth.hash_pin(PIN))
     c2.vinculos.append(v2)
     with pytest.raises(PermissaoNegada):

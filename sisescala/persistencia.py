@@ -66,11 +66,12 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                  ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s")],
     "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("om", "s"), ("detalhista_id", "s"), ("detalhista_escalavel", "b"),
-                ("auxiliar_id", "s"), ("categoria", "s"),
+                ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d")],
+    "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],
     "EscalaRefs": [("escala_id", "s"), ("referencia_id", "s")],
     "EscalaCompart": [("escala_id", "s"), ("usuario_id", "s"), ("nivel", "s")],
@@ -134,6 +135,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("Escalas", d)
         for p in e.membros:
             add("EscalaMembros", {"escala_id": e.id, "militar_id": p.militar_id, "inicio": p.inicio, "fim": p.fim})
+        for mid in e.auxiliares:
+            add("EscalaAuxiliares", {"escala_id": e.id, "militar_id": mid})
         for fila, mid in e.ultimo_servico.items():
             add("EscalaUltimo", {"escala_id": e.id, "fila": fila, "militar_id": mid})
         for r in e.referencias:
@@ -182,6 +185,22 @@ def _linhas_de(T: dict, aba: str) -> list[dict]:
     return out
 
 
+def _migrar_auxiliar_unico(T: dict, escalas: dict) -> None:
+    """Planilhas antigas guardavam um único `auxiliar_id` na aba Escalas: passa para a lista de auxiliares."""
+    linhas = T.get("Escalas") or []
+    if not linhas:
+        return
+    cab = [str(c).strip() for c in linhas[0]]
+    if "auxiliar_id" not in cab or "id" not in cab:
+        return
+    ia, ii = cab.index("auxiliar_id"), cab.index("id")
+    for r in linhas[1:]:
+        if len(r) > max(ia, ii) and str(r[ia]).strip() and str(r[ii]).strip() in escalas:
+            esc = escalas[str(r[ii]).strip()]
+            if str(r[ia]).strip() not in esc.auxiliares:
+                esc.auxiliares.append(str(r[ia]).strip())
+
+
 def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     """{aba: linhas} -> Contexto. Abas ausentes viram listas vazias."""
     cfg = {r[0]: (r[1] if len(r) > 1 else "") for r in (T.get("Config") or [])[1:] if r}
@@ -201,6 +220,10 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         ctx.escalas.append(e)
     for d in _linhas_de(T, "EscalaMembros"):
         escalas[d["escala_id"]].membros.append(Pertinencia(d["militar_id"], d["inicio"], d["fim"]))
+    for d in _linhas_de(T, "EscalaAuxiliares"):
+        if d["militar_id"] not in escalas[d["escala_id"]].auxiliares:
+            escalas[d["escala_id"]].auxiliares.append(d["militar_id"])
+    _migrar_auxiliar_unico(T, escalas)
     for d in _linhas_de(T, "EscalaUltimo"):
         escalas[d["escala_id"]].ultimo_servico[d["fila"]] = d["militar_id"]
     for d in _linhas_de(T, "EscalaRefs"):

@@ -150,11 +150,13 @@ def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
         erros.append(
             f"{esc.nome}: {n} militares para {esc.militares_dia} por dia não respeita o mínimo de "
             f"{_folgas(esc)} folga(s) entre serviços (precisa de pelo menos {precisa}).")
-    for rotulo, mid in (("detalhista", esc.detalhista_id), ("auxiliar", esc.auxiliar_id)):
+    for rotulo, mid in [("detalhista", esc.detalhista_id)] + [("auxiliar", a) for a in esc.auxiliares]:
         if mid and not any(m.id == mid for m in ctx.militares):
             erros.append(f"{esc.nome}: {rotulo} não encontrado no cadastro.")
-    if esc.detalhista_id and esc.detalhista_id == esc.auxiliar_id:
+    if esc.detalhista_id and esc.detalhista_id in esc.auxiliares:
         erros.append(f"{esc.nome}: o auxiliar não pode ser o próprio detalhista.")
+    if len(set(esc.auxiliares)) != len(esc.auxiliares):
+        erros.append(f"{esc.nome}: auxiliar repetido.")
     if esc.categoria not in CATEGORIAS:
         erros.append(f"{esc.nome}: categoria inválida.")
     return erros

@@ -38,8 +38,8 @@ def editores_da_escala(ctx: Contexto, escala_id: str) -> list[str]:
     esc = ctx.escala(escala_id)
     ids = [esc.dono_id] + [u for u, n in esc.compartilhado_com.items() if n == "edicao"]
     ids = [i for i in ids if i and (ctx.usuario(i) is None or ctx.usuario(i).perfil == "detalhista")]
-    if esc.auxiliar_id:                       # o auxiliar do detalhista também decide
-        ids += [u.id for u in ctx.usuarios if u.militar_id == esc.auxiliar_id and u.ativo]
+    if esc.auxiliares:                        # os auxiliares do detalhista também decidem
+        ids += [u.id for u in ctx.usuarios if u.militar_id in esc.auxiliares and u.ativo]
     return ids
 
 

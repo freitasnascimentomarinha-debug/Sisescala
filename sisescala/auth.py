@@ -195,6 +195,24 @@ def redefinir_senha(ctx: Contexto, admin_id: str, alvo_id: str, nova: str) -> No
     alvo.senha_hash, alvo.tentativas, alvo.bloqueado_ate = hash_senha(nova), 0, None
 
 
+def definir_militar_do_detalhista(ctx: Contexto, admin_id: str, usuario_id: str, militar_id: str) -> None:
+    """O administrador liga a conta de um detalhista ao militar dele no cadastro (vazio desfaz).
+
+    Só para conta de detalhista (o vínculo de conta de militar é pedido pelo militar e autorizado pelo detalhista).
+    É o que faz o detalhista ser dispensado de serviço nas escalas dele e poder continuar nelas como auxiliar ou
+    militar escalado quando entregar o detalhe."""
+    _exigir_admin(ctx, admin_id)
+    alvo = ctx.usuario(usuario_id)
+    if alvo is None or alvo.perfil != "detalhista":
+        raise ValueError("só conta de detalhista pode ser ligada por aqui")
+    if militar_id:
+        if not any(m.id == militar_id for m in ctx.militares):
+            raise ValueError("militar não encontrado no cadastro")
+        if any(u.militar_id == militar_id and u.id != usuario_id for u in ctx.usuarios):
+            raise ValueError("esse militar já está ligado a outra conta")
+    alvo.militar_id = militar_id
+
+
 def definir_ativo(ctx: Contexto, admin_id: str, alvo_id: str, ativo: bool) -> None:
     _exigir_admin(ctx, admin_id)
     alvo = ctx.usuario(alvo_id)

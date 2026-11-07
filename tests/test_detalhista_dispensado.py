@@ -70,13 +70,13 @@ def test_em_escala_onde_nao_e_detalhista_ele_e_um_militar_como_os_outros():
 
 
 def test_auxiliar_concorre_normalmente():
-    c = mk(auxiliar_id="m2")
+    c = mk(auxiliares=["m2"])
     efet, _ = todos(gerar(c, D + timedelta(days=12)))
     assert "m2" in efet and "m1" not in efet
     assert validar_escala(c, c.escala("A")) == []
-    c.escala("A").auxiliar_id = "m1"                                  # auxiliar não pode ser o próprio detalhista
+    c.escala("A").auxiliares = ["m1"]                                  # auxiliar não pode ser o próprio detalhista
     assert any("auxiliar não pode ser o próprio detalhista" in e for e in validar_escala(c, c.escala("A")))
-    c.escala("A").auxiliar_id = "inexistente"
+    c.escala("A").auxiliares = ["inexistente"]
     assert any("auxiliar não encontrado" in e for e in validar_escala(c, c.escala("A")))
 
 
@@ -128,10 +128,10 @@ def test_detalhista_fora_nao_e_persona_para_vinculo():
 
 
 def test_relatorio_informa_detalhista_auxiliar_e_a_opcao():
-    c = mk(auxiliar_id="m2")
+    c = mk(auxiliares=["m2"])
     sit = dict(situacao_atual(c, c.escala("A")))
     assert sit["Detalhista da escala"] == "M1 (fora da escala, dispensado de serviço)"
-    assert sit["Auxiliar do detalhista"].startswith("M2 (concorre normalmente, decide papeletas e vínculos e faz lançamentos")
+    assert sit["Auxiliares do detalhista"] == "M2 (concorre)"
     assert "M1" not in next(v for k, v in sit.items() if k.startswith("Militares na escala"))
     assert any("M1" in t and "fica fora da escala" in t for t in texto_funcionamento(c, c.escala("A")))
     item = next(i for _, its in itens_configuracao(c, c.escala("A")) for i in its if i.rotulo == "Detalhista concorre à escala")
@@ -142,9 +142,9 @@ def test_relatorio_informa_detalhista_auxiliar_e_a_opcao():
 
 
 def test_campos_persistem():
-    c = mk(auxiliar_id="m2", detalhista_escalavel=True)
+    c = mk(auxiliares=["m2"], detalhista_escalavel=True)
     e = de_tabelas(para_tabelas(c)).escala("A")
-    assert (e.detalhista_id, e.detalhista_escalavel, e.auxiliar_id) == ("m1", True, "m2")
+    assert (e.detalhista_id, e.detalhista_escalavel, e.auxiliares) == ("m1", True, ["m2"])
 
 
 def test_importacao_coluna_detalhista_marca_o_detalhista_da_escala_um_so():

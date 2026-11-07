@@ -17,9 +17,9 @@ AUX, M3 = "u2", "u3"
 
 def mk():
     ms = [Militar(f"m{i}", f"M{i}", "CB", i) for i in range(1, 11)]
-    a = Escala("A", "Portaria", dono_id="u1", detalhista_id="m1", auxiliar_id="m2",
+    a = Escala("A", "Portaria", dono_id="u1", detalhista_id="m1", auxiliares=["m2"],
                membros=[Pertinencia(f"m{i}") for i in range(1, 7)])                      # m1..m6
-    b = Escala("B", "Outra", dono_id="u1", detalhista_id="m1", auxiliar_id="m9",
+    b = Escala("B", "Outra", dono_id="u1", detalhista_id="m1", auxiliares=["m9"],
                membros=[Pertinencia(f"m{i}") for i in (1, 7, 8, 9, 10)], modo="eventos", categoria="palestra",
                retem_qtd=0)
     c = Contexto(ms, [a, b], D)
@@ -86,7 +86,7 @@ def test_auxiliar_lanca_dia_especial_guarnecimento_e_evento_nas_escalas_dele():
     lc.lancar_dia_especial(c, AUX, DiaEspecial(D + timedelta(days=1), "sem_expediente", "Licença administrativa"))
     lc.lancar_guarnecimento(c, AUX, Guarnecimento(D + timedelta(days=1), "A", True))
     assert len(c.dias_especiais) == 1 and len(c.guarnecimentos) == 1
-    c.escalas[1].auxiliar_id = "m2"                                                # agora também auxiliar da escala por evento
+    c.escalas[1].auxiliares = ["m9", "m2"]                                                # agora também auxiliar da escala por evento
     lc.lancar_evento(c, AUX, Evento("B", D, "Palestra"))
     assert len(c.eventos) == 1
     with pytest.raises(ValueError, match="Por evento"):

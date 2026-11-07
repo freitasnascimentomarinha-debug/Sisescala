@@ -35,10 +35,15 @@ with esq, st.container(border=True):
         perfil = st.selectbox("Perfil", list(auth.PERFIS), format_func=str.capitalize)
         st.caption("O detalhista de cada escala é definido em Gestão → Escalas. Conta de militar nasce sem vínculo: o próprio militar pede para se vincular ao seu nome na escala e o "
                    "detalhista autoriza. Só militar vinculado pede troca de serviço.")
+        sem_conta = [m.id for m in ctx.militares if not any(u.militar_id == m.id for u in ctx.usuarios)]
+        mil_det = st.selectbox("Militar desta conta (só perfil Detalhista)", [""] + sem_conta, format_func=lambda i: nomes_m.get(i, "—"),
+                               help="Liga o detalhista ao militar dele no cadastro: assim ele fica dispensado de serviço nas escalas "
+                                    "dele e pode continuar nelas como auxiliar ou militar escalado ao entregar o detalhe.")
         adm = st.checkbox("Administrador")
         if st.form_submit_button("Criar conta", type="primary", use_container_width=True):
             try:
                 auth.criar_usuario(ctx, uid, lg, nm, sn, perfil=perfil, admin=adm, email=em, ramal=ra,
+                                   militar_id=mil_det if perfil == "detalhista" else "",
                                    celular=ce, exigir_contato=True)
                 st.session_state["toast"] = "Conta criada."
                 st.rerun()
@@ -49,6 +54,13 @@ with dir_, st.container(border=True):
     alvo = st.selectbox("Conta", [u.id for u in ctx.usuarios],
                         format_func=lambda i: f"{ctx.usuario(i).login} – {ctx.usuario(i).nome}")
     nova = st.text_input("Nova senha (8+)", type="password", key="rs")
+    if ctx.usuario(alvo).perfil == "detalhista":
+        livres = [""] + [m.id for m in ctx.militares if not any(u.militar_id == m.id and u.id != alvo for u in ctx.usuarios)]
+        atual = ctx.usuario(alvo).militar_id
+        mil_novo = st.selectbox("Militar desta conta de detalhista", livres, livres.index(atual) if atual in livres else 0,
+                                format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"ml_{alvo}")
+        if st.button("Salvar militar do detalhista", key=f"mlb_{alvo}"):
+            agir(lambda: auth.definir_militar_do_detalhista(ctx, uid, alvo, mil_novo), "Militar do detalhista atualizado.")
     c1, c2 = st.columns(2)
     if c1.button("Redefinir senha", type="primary"):
         agir(lambda: auth.redefinir_senha(ctx, uid, alvo, nova), "Senha redefinida.")

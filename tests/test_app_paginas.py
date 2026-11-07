@@ -72,7 +72,7 @@ def test_senha_errada_nao_entra(app):
 def test_paginas_do_auxiliar_que_decide_papeletas_e_vinculos(app):
     _criar_admin(app)
     ctx = app.session_state["ctx"]
-    ctx.escala("per").auxiliar_id = "m2"
+    ctx.escala("per").auxiliares = ["m2"]
     auth.criar_usuario(ctx, "u1", "aux", "Auxiliar", "senha-aux-1234", perfil="militar", militar_id="m2",
                        email="a@x.com", ramal="2345", celular="21988887777")
     app.run()
@@ -90,7 +90,7 @@ def test_paginas_do_auxiliar_que_decide_papeletas_e_vinculos(app):
 def test_auxiliar_abre_a_pagina_de_lancamentos(app):
     _criar_admin(app)
     ctx = app.session_state["ctx"]
-    ctx.escala("per").auxiliar_id = "m2"
+    ctx.escala("per").auxiliares = ["m2"]
     auth.criar_usuario(ctx, "u1", "aux", "Auxiliar", "senha-aux-1234", perfil="militar", militar_id="m2",
                        email="a@x.com", ramal="2345", celular="21988887777")
     app.run()

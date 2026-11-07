@@ -107,7 +107,8 @@ LOGICA_FIXA = [
     "Cada escala tem um só detalhista, que pode ser o mesmo de várias escalas. Por padrão ele é dispensado de serviço "
     "naquela escala: não dá nenhum serviço (efetivo, retém, palestra, cerimônia...), não é escalado para nada e não ocupa "
     "vaga na fila nem na contagem de militares. Se a escala permitir (opção rara), ele concorre como qualquer militar. "
-    "O auxiliar do detalhista concorre à escala normalmente e também aprova papeletas e vínculos e faz lançamentos "
+    "Quem cria a escala vira o detalhista e pode entregar o detalhe a outra pessoa (ficando como militar escalado, auxiliar ou sem papel). "
+    "O detalhista pode ter mais de um auxiliar, concorrendo ou não à escala; o auxiliar também aprova papeletas e vínculos e faz lançamentos "
     "(dispensas, dias especiais, guarnecimento, eventos) desta escala, mas nunca para si mesmo: ninguém decide a própria "
     "troca nem lança dispensa ou impedimento para si; nesse caso outro responsável faz. Só o detalhista edita as regras "
     "da escala; o auxiliar não.",
@@ -156,9 +157,11 @@ def texto_funcionamento(ctx: Contexto, esc: Escala) -> list[str]:
         n = ctx.militar(esc.detalhista_id).nome
         p.append(f"O detalhista desta escala é {n}: " + ("ele também concorre à escala, como os demais militares."
                  if esc.detalhista_escalavel else "ele fica fora da escala e não é escalado para nada."))
-    if esc.auxiliar_id:
-        p.append(f"O auxiliar do detalhista, {ctx.militar(esc.auxiliar_id).nome}, concorre à escala normalmente e também aprova "
-                 f"papeletas e vínculos e faz lançamentos (dispensas e outros), menos os próprios.")
+    if esc.auxiliares:
+        nomes = ", ".join(ctx.militar(a).nome for a in esc.auxiliares)
+        concorrem = [ctx.militar(a).nome for a in esc.auxiliares if any(m.militar_id == a for m in esc.membros)]
+        p.append(f"Auxiliar(es) do detalhista: {nomes}. Eles aprovam papeletas e vínculos e fazem lançamentos desta escala "
+                 f"(menos os próprios)" + (f"; concorrem à escala: {', '.join(concorrem)}." if concorrem else "; nenhum concorre à escala."))
     if esc.categoria != "servico":
         p.append("Esta escalação nunca tem prioridade sobre serviço: "
                  + ("só escala quem não está de efetivo serviço no dia." if esc.respeita_servicos else
@@ -186,7 +189,9 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
     out.append(("Detalhista da escala", nm(esc.detalhista_id) + (
         (" (também concorre à escala)" if esc.detalhista_escalavel else " (fora da escala, dispensado de serviço)")
         if esc.detalhista_id else "")))
-    out.append(("Auxiliar do detalhista", nm(esc.auxiliar_id) + (" (concorre normalmente, decide papeletas e vínculos e faz lançamentos, menos os próprios)" if esc.auxiliar_id else "")))
+    out.append(("Auxiliares do detalhista", (", ".join(
+        ctx.militar(a).nome + (" (concorre)" if any(m.militar_id == a for m in esc.membros) else " (não concorre)")
+        for a in esc.auxiliares)) or "—"))
     imps = [i for i in ctx.impedimentos if i.militar_id in {p.militar_id for p in esc.membros}]
     out.append(("Impedimentos lançados", "; ".join(
         f"{ctx.militar(i.militar_id).nome} – {TIPOS_IMPEDIMENTO[i.tipo]} "

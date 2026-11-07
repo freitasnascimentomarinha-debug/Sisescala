@@ -21,7 +21,7 @@ def _horas(e):
 
 def _campos(e: Escala | None, k: str):
     """Formulário compartilhado entre criar e editar. Retorna os valores digitados."""
-    d = e or Escala("", "")
+    d = e or Escala("", "", detalhista_id=ctx.usuario(uid).militar_id)   # quem cria vira o detalhista
     a, b, c = st.columns(3)
     nome = a.text_input("Nome", d.nome, key=f"{k}_nome")
     tipo = b.text_input("Tipo (ex.: Diária, Pernoite)", d.tipo, key=f"{k}_tipo")
@@ -49,10 +49,10 @@ def _campos(e: Escala | None, k: str):
     det = a.selectbox("Detalhista da escala (um só)", ids, ids.index(d.detalhista_id) if d.detalhista_id in ids else 0,
                       format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_det",
                       help="Pode ser o mesmo detalhista de várias escalas. Por padrão ele fica fora da escala.")
-    aux = b.selectbox("Auxiliar do detalhista", ids, ids.index(d.auxiliar_id) if d.auxiliar_id in ids else 0,
-                      format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_aux",
-                      help="O auxiliar concorre à escala normalmente e também aprova papeletas e vínculos e lança dispensas "
-                           "e outros lançamentos desta escala (menos os próprios). Precisa ter a conta vinculada ao militar.")
+    aux = b.multiselect("Auxiliares do detalhista (vários)", [m for m in ids if m], [m for m in d.auxiliares if m in nomes_m],
+                        format_func=nomes_m.get, key=f"{k}_aux",
+                        help="Os auxiliares aprovam papeletas e vínculos e fazem lançamentos desta escala (menos os próprios), "
+                             "concorrendo ou não à escala. Precisam ter conta ligada ao militar.")
     det_esc = st.checkbox("O detalhista também concorre a esta escala (raro)", d.detalhista_escalavel, key=f"{k}_detesc",
                           help="Desmarcado (padrão): o detalhista não é escalado para nada nesta escala.")
     a, b = st.columns(2)
@@ -61,7 +61,7 @@ def _campos(e: Escala | None, k: str):
     return dict(nome=nome, om=om, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
                 retem_qtd=ret, folgas_minimas=fol, quartos=quartos_padrao(hq) if hq else [], antecedencia_horas=ant,
                 participa_roxa=rox and modo != "eventos", respeita_servicos=resp, detalhista_id=det,
-                detalhista_escalavel=det_esc, auxiliar_id=aux)
+                detalhista_escalavel=det_esc, auxiliares=aux)
 
 
 @st.dialog("Nova escala", width="large")
@@ -96,14 +96,14 @@ for e in minhas:
     dono = e.dono_id == uid
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.1rem;'
-                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else "não definido")}{ui.chip("Auxiliar", nomes_m.get(e.auxiliar_id, "—")) if e.auxiliar_id else ""}{ui.chip("Modo", MODOS[e.modo])}'
+                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else "não definido")}{ui.chip("Auxiliares", ", ".join(nomes_m.get(a, "—") for a in e.auxiliares)) if e.auxiliares else ""}{ui.chip("Modo", MODOS[e.modo])}'
                 f'{ui.chip("Prioridade", e.prioridade)}{ui.chip(str(e.militares_dia) + " por dia")}'
                 f'{ui.chip(str(len(e.membros)) + " militares")}{ui.chip("Descanso", str(e.folgas_minimas) + "x1")}'
                 f'<div style="margin-left:auto">{ui.pill("Responsável: " + nomes_u.get(e.dono_id, e.dono_id or "—"), "azul" if dono else "cinza", False)}</div></div>')
         if e.compartilhado_com:
             st.html('<div style="margin:.5rem 0 0">' + " ".join(
                 ui.pill(f"{nomes_u.get(u, u)} · {n}", "violeta", False) for u, n in e.compartilhado_com.items()) + "</div>")
-        b1, b2, b3, _ = st.columns([1, 1.2, 1, 3])
+        b1, b2, b4, b3, _ = st.columns([1, 1.2, 1.7, 1, 1.2])
         if b1.button("Editar", key=f"ed_{e.id}", icon=":material/edit:"):
             dialogo_editar(e.id)
         if dono:
@@ -113,13 +113,31 @@ for e in minhas:
                     st.caption("Não há outros usuários cadastrados.")
                 else:
                     com = st.selectbox("Usuário", outros, format_func=lambda u: f"{nomes_u[u]} (@{ctx.usuario(u).login})", key=f"u{e.id}")
-                    niv = st.selectbox("Acesso", ["leitura", "edicao", "revogar"], key=f"n{e.id}",
-                                       format_func={"leitura": "Leitura", "edicao": "Edição", "revogar": "Revogar acesso"}.get)
-                    st.caption("Edição vale só para contas de detalhista (decidem papeletas e vínculos). "
-                               "Conta de militar fica em leitura.")
+                    niv = st.selectbox("Acesso", ["leitura", "revogar"], key=f"n{e.id}",
+                                       format_func={"leitura": "Leitura", "revogar": "Revogar acesso"}.get)
+                    st.caption("Leitura permite ver a escala. Quem decide e lança são o detalhista e os auxiliares "
+                               "(defina em Editar → Auxiliares).")
                     if st.button("Aplicar", key=f"b{e.id}", type="primary"):
                         agir(lambda: pm.compartilhar(ctx, uid, e.id, com, None if niv == "revogar" else niv),
                              "Acesso atualizado.")
+            with b4.popover("Entregar o detalhe", icon=":material/swap_horiz:"):
+                st.caption("Passa o detalhe desta escala a outra pessoa. Você não fica sem detalhista: é preciso designar outro.")
+                cand = [u.id for u in ctx.usuarios if u.perfil == "detalhista" and u.ativo and u.id != uid]
+                if not cand:
+                    st.warning("Não há outra conta de detalhista. Peça ao administrador para criar uma em Usuários.")
+                else:
+                    novo_det = st.selectbox("Novo detalhista", cand, format_func=lambda u: f"{nomes_u[u]} (@{ctx.usuario(u).login})",
+                                            key=f"td_{e.id}")
+                    papel = st.radio("Depois de entregar, eu serei", list(gestao.PAPEIS), format_func=gestao.PAPEIS.get, key=f"tp_{e.id}")
+                    meu_mil = ctx.usuario(uid).militar_id or e.detalhista_id
+                    mil_ant = ""
+                    if papel in ("escalado", "auxiliar") and not meu_mil:
+                        mil_ant = st.selectbox("Qual é o seu militar no cadastro?", [""] + list(nomes_m), format_func=lambda i: nomes_m.get(i, "—"),
+                                               key=f"tm_{e.id}")
+                    conc = papel == "auxiliar" and st.checkbox("Continuar concorrendo à escala", key=f"tc_{e.id}")
+                    if st.button("Entregar o detalhe", key=f"tb_{e.id}", type="primary"):
+                        agir(lambda: gestao.transferir_detalhe(ctx, uid, e.id, novo_det, papel, mil_ant, conc),
+                             "Detalhe entregue.")
             with b3.popover("Excluir", icon=":material/delete:"):
                 st.warning("Isso apaga a escala e as referências a ela.")
                 if st.button("Confirmar exclusão", key=f"del_{e.id}"):

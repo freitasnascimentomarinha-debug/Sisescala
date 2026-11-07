@@ -98,7 +98,7 @@ class Escala:
     om: str = ""                   # Organização Militar que gerencia a escala (cabeçalho dos documentos)
     detalhista_id: str = ""        # militar que é o detalhista desta escala (um só por escala)
     detalhista_escalavel: bool = False  # padrão: o detalhista fica FORA da escala; True = concorre como os demais
-    auxiliar_id: str = ""          # auxiliar do detalhista: concorre à escala normalmente
+    auxiliares: list[str] = field(default_factory=list)  # auxiliares do detalhista (militares): vários, concorrendo ou não
     categoria: str = "servico"     # chave de CATEGORIAS
     sigla_evento: str = ""         # sigla própria (categoria "outro" ou personalizada)
     tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...

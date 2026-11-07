@@ -38,7 +38,7 @@ class Pagina:
     def decide(self) -> bool:
         """Detalhista ou auxiliar de alguma escala: decide papeletas e vínculos."""
         return self.gerir or (bool(self.user.militar_id)
-                              and any(e.auxiliar_id == self.user.militar_id for e in self.ctx.escalas))
+                              and any(self.user.militar_id in e.auxiliares for e in self.ctx.escalas))
 
     @property
     def nomes_m(self) -> dict[str, str]:

@@ -18,8 +18,8 @@ def nivel(ctx: Contexto, usuario_id: str, esc: Escala) -> str | None:
     if explicito:
         return explicito
     u = ctx.usuario(usuario_id)
-    if u and u.militar_id and any(p.militar_id == u.militar_id for p in esc.membros):
-        return "leitura"   # o militar sempre enxerga (somente leitura) as escalas em que está
+    if u and u.militar_id and (any(p.militar_id == u.militar_id for p in esc.membros) or u.militar_id in esc.auxiliares):
+        return "leitura"   # o militar enxerga (somente leitura) as escalas em que está e as que ele auxilia
     return None
 
 
@@ -43,7 +43,7 @@ def eh_detalhista(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
 def eh_auxiliar(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
     """Conta ligada ao militar que é o auxiliar do detalhista nesta escala."""
     u = ctx.usuario(usuario_id)
-    return bool(u and u.ativo and u.militar_id and u.militar_id == esc.auxiliar_id)
+    return bool(u and u.ativo and u.militar_id and u.militar_id in esc.auxiliares)
 
 
 def pode_decidir(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
