@@ -33,17 +33,12 @@ with esq, st.container(border=True):
         a, b, c = st.columns(3)
         em, ra, ce = a.text_input("E-mail"), b.text_input("Ramal"), c.text_input("Celular")
         perfil = st.selectbox("Perfil", list(auth.PERFIS), format_func=str.capitalize)
-        st.caption("Detalhista é dispensado de serviço (não é escalado para nada). Conta de militar nasce sem vínculo: o próprio militar pede para se vincular ao seu nome na escala e o "
+        st.caption("O detalhista de cada escala é definido em Gestão → Escalas. Conta de militar nasce sem vínculo: o próprio militar pede para se vincular ao seu nome na escala e o "
                    "detalhista autoriza. Só militar vinculado pede troca de serviço.")
-        sem_conta = [m.id for m in ctx.militares if not any(u.militar_id == m.id for u in ctx.usuarios)]
-        mil_det = st.selectbox("Militar do cadastro (só para perfil Detalhista)", [""] + sem_conta,
-                               format_func=lambda i: nomes_m.get(i, "—"),
-                               help="O detalhista é dispensado de serviço: o militar escolhido nunca é escalado para nada.")
         adm = st.checkbox("Administrador")
         if st.form_submit_button("Criar conta", type="primary", use_container_width=True):
             try:
                 auth.criar_usuario(ctx, uid, lg, nm, sn, perfil=perfil, admin=adm, email=em, ramal=ra,
-                                   militar_id=mil_det if perfil == "detalhista" else "",
                                    celular=ce, exigir_contato=True)
                 st.session_state["toast"] = "Conta criada."
                 st.rerun()

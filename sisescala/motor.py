@@ -89,8 +89,6 @@ def sigla_de(esc: Escala, papel: str, origem: str = "normal") -> str:
 
 # ------------------------------------------------------------------ utilidades
 def _impedido(ctx: Contexto, mid: str, d: date) -> bool:
-    if ctx.dispensado_de_servico(mid):      # detalhista: dispensado de todo serviço, sempre
-        return True
     return any(i.militar_id == mid and i.cobre(d) for i in ctx.impedimentos)
 
 
@@ -128,7 +126,7 @@ def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
 def _sequencia(ctx: Contexto, esc: Escala, d: date, ultimo: str | None) -> list[str]:
     """Militares ativos e disponíveis, em ordem circular depois de `ultimo`."""
     antig = {m.id: m.antiguidade for m in ctx.militares}
-    ativos = sorted(esc.membros_ativos(d), key=lambda m: antig[m])
+    ativos = sorted((m for m in esc.membros_ativos(d) if not ctx.dispensado_na_escala(m, esc)), key=lambda m: antig[m])
     ref = antig.get(ultimo, 0) if ultimo else 0
     ordem = [m for m in ativos if antig[m] > ref] + [m for m in ativos if antig[m] <= ref]
     return [m for m in ordem if not _impedido(ctx, m, d)]
@@ -146,12 +144,17 @@ def _distribuir_quartos(quartos: list[Quarto], efetivos: list[str]) -> dict[str,
 def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
     """Erros de configuração (ex.: 1x1 não permitido)."""
     erros = []
-    n = len(ctx.escalaveis(esc))             # detalhista não conta: não dá serviço
+    n = len(ctx.escalaveis(esc))             # detalhista fora da escala não conta
     precisa = esc.militares_dia * (_folgas(esc) + 1)
     if esc.modo != "eventos" and n < precisa:
         erros.append(
             f"{esc.nome}: {n} militares para {esc.militares_dia} por dia não respeita o mínimo de "
             f"{_folgas(esc)} folga(s) entre serviços (precisa de pelo menos {precisa}).")
+    for rotulo, mid in (("detalhista", esc.detalhista_id), ("auxiliar", esc.auxiliar_id)):
+        if mid and not any(m.id == mid for m in ctx.militares):
+            erros.append(f"{esc.nome}: {rotulo} não encontrado no cadastro.")
+    if esc.detalhista_id and esc.detalhista_id == esc.auxiliar_id:
+        erros.append(f"{esc.nome}: o auxiliar não pode ser o próprio detalhista.")
     if esc.categoria not in CATEGORIAS:
         erros.append(f"{esc.nome}: categoria inválida.")
     return erros
@@ -291,7 +294,7 @@ def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
             res.avisos.append(
                 f"Papeleta em {t.data:%d/%m}: {nome(t.saindo)} não está escalado; ignorada.")
             continue
-        if _impedido(ctx, t.entrando, t.data):
+        if _impedido(ctx, t.entrando, t.data) or ctx.dispensado_na_escala(t.entrando, ctx.escala(t.escala_id)):
             res.avisos.append(
                 f"Papeleta em {t.data:%d/%m}: {nome(t.entrando)} está impedido; ignorada.")
             continue
@@ -303,6 +306,7 @@ def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
 
 def _livre(ctx: Contexto, res: Resultado, mid: str, d: date, esc: Escala) -> bool:
     return (mid in esc.membros_ativos(d)
+            and not ctx.dispensado_na_escala(mid, esc)
             and not _impedido(ctx, mid, d)
             and all(a.militar_id != mid for a in res.alocacoes_do_dia(d)))
 

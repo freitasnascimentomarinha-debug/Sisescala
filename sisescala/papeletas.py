@@ -75,7 +75,7 @@ def validar_troca(ctx: Contexto, esc: Escala, x: str, dx: date, y: str, dy: date
     if erros:
         return erros, avisos, res
     for m, d, d_orig in ((x, dy, dx), (y, dx, dy)):
-        if not any(p.militar_id == m and p.ativo(d) for p in esc.membros):
+        if not any(p.militar_id == m and p.ativo(d) for p in esc.membros) or ctx.dispensado_na_escala(m, esc):
             erros.append(f"{nome(m)} não faz parte da escala em {d:%d/%m/%Y}")
         if _impedido(ctx, m, d):
             erros.append(f"{nome(m)} está impedido (férias, curso, destaque etc.) em {d:%d/%m/%Y}")
@@ -120,7 +120,7 @@ def validar_devolucao(ctx: Contexto, esc: Escala, x: str, d_origem: date, c: str
         erros.append(f"{nome(c)} não está escalado como efetivo em {d2:%d/%m/%Y}")
     elif a.origem != "normal":
         erros.append(f"o serviço de {nome(c)} em {d2:%d/%m/%Y} já veio de uma troca")
-    if not any(p.militar_id == x and p.ativo(d2) for p in esc.membros):
+    if not any(p.militar_id == x and p.ativo(d2) for p in esc.membros) or ctx.dispensado_na_escala(x, esc):
         erros.append(f"{nome(x)} não faz parte da escala em {d2:%d/%m/%Y}")
     if _impedido(ctx, x, d2):
         erros.append(f"{nome(x)} está impedido em {d2:%d/%m/%Y}")

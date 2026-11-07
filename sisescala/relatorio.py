@@ -59,6 +59,8 @@ def itens_configuracao(ctx: Contexto, esc: Escala) -> list[tuple[str, list[Item]
             Item("Funciona em", "nos dias de evento" if esc.modo == "eventos" else FUNCIONA[esc.funciona_em],
                  FUNCIONA[d("funciona_em")],
                  "O comando pode, por dia, mandar guarnecer ou não guarnecer (lançamento manual)."),
+            Item("Detalhista concorre à escala", _sn(esc.detalhista_escalavel), _sn(d("detalhista_escalavel")),
+                 "Padrão: o detalhista fica fora da escala (dispensado de serviço). Ligado, ele concorre como qualquer militar."),
             Item("Participa da escala roxa", _sn(esc.participa_roxa), _sn(d("participa_roxa")),
                  "Em recesso (período roxo) a fila roxa começa do zero e as demais ficam congeladas."),
         ]),
@@ -102,8 +104,10 @@ LOGICA_FIXA = [
     "A ordem da fila vai do mais antigo ao mais moderno, em círculo, a partir de quem deu o último serviço.",
     "Cada escala tem filas independentes (corrida, preta, vermelha, roxa). A fila que não é a do dia fica "
     "congelada e retoma de onde parou. A roxa começa do zero para todos.",
-    "O detalhista é dispensado de serviço: não dá nenhum serviço (efetivo, retém, palestra, cerimônia...), não é escalado "
-    "para nada e não ocupa vaga na fila nem na contagem de militares da escala.",
+    "Cada escala tem um só detalhista, que pode ser o mesmo de várias escalas. Por padrão ele é dispensado de serviço "
+    "naquela escala: não dá nenhum serviço (efetivo, retém, palestra, cerimônia...), não é escalado para nada e não ocupa "
+    "vaga na fila nem na contagem de militares. Se a escala permitir (opção rara), ele concorre como qualquer militar. "
+    "O auxiliar do detalhista concorre à escala normalmente.",
     "Quem está de férias, curso, dispensado (inclusive por baixa ou falta, com a justificativa lançada pelo detalhista), destaque (DTQ) ou desembarcado é pulado sem perder o seu lugar na ordem; "
     "desembarcado sai da fila.",
     "O retém do dia é o próximo da fila depois dos escalados. Se um escalado for dispensado do serviço (baixa ou falta, "
@@ -145,6 +149,12 @@ def texto_funcionamento(ctx: Contexto, esc: Escala) -> list[str]:
     f = _folgas(esc)
     if esc.modo != "eventos":
         p.append(f"Descanso mínimo: {f} folga(s) entre dois serviços do mesmo militar ({f}x1).")
+    if esc.detalhista_id:
+        n = ctx.militar(esc.detalhista_id).nome
+        p.append(f"O detalhista desta escala é {n}: " + ("ele também concorre à escala, como os demais militares."
+                 if esc.detalhista_escalavel else "ele fica fora da escala e não é escalado para nada."))
+    if esc.auxiliar_id:
+        p.append(f"O auxiliar do detalhista, {ctx.militar(esc.auxiliar_id).nome}, concorre à escala normalmente.")
     if esc.categoria != "servico":
         p.append("Esta escalação nunca tem prioridade sobre serviço: "
                  + ("só escala quem não está de efetivo serviço no dia." if esc.respeita_servicos else
@@ -166,11 +176,13 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
         out.append((f"Fila {f}: último serviço → próximo",
                     f"{ctx.militar(ult).nome if ult else 'início da fila'} → {prox}"))
     ordem = sorted((ctx.militar(p.militar_id) for p in esc.membros
-                    if p.ativo(hoje) and not ctx.dispensado_de_servico(p.militar_id)), key=lambda m: m.antiguidade)
-    dispensados = [ctx.militar(p.militar_id).nome for p in esc.membros if ctx.dispensado_de_servico(p.militar_id)]
+                    if p.ativo(hoje) and not ctx.dispensado_na_escala(p.militar_id, esc)), key=lambda m: m.antiguidade)
     out.append((f"Militares na escala ({len(ordem)})", ", ".join(f"{m.posto} {m.nome}".strip() for m in ordem) or "—"))
-    if dispensados:
-        out.append(("Detalhistas (dispensados de serviço)", ", ".join(dispensados)))
+    nm = lambda mid: ctx.militar(mid).nome if mid else "—"  # noqa: E731
+    out.append(("Detalhista da escala", nm(esc.detalhista_id) + (
+        (" (também concorre à escala)" if esc.detalhista_escalavel else " (fora da escala, dispensado de serviço)")
+        if esc.detalhista_id else "")))
+    out.append(("Auxiliar do detalhista", nm(esc.auxiliar_id) + (" (concorre normalmente)" if esc.auxiliar_id else "")))
     imps = [i for i in ctx.impedimentos if i.militar_id in {p.militar_id for p in esc.membros}]
     out.append(("Impedimentos lançados", "; ".join(
         f"{ctx.militar(i.militar_id).nome} – {TIPOS_IMPEDIMENTO[i.tipo]} "

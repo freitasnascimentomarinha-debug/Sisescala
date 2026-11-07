@@ -52,7 +52,6 @@ class Militar:
     email: str = ""
     ramal: str = ""
     celular: str = ""
-    detalhista: bool = False  # detalhista é dispensado de serviço: nunca é escalado para nada
 
 
 @dataclass
@@ -97,6 +96,9 @@ class Escala:
     sigla: str = ""
     dono_id: str = ""              # usuário que criou a escala
     om: str = ""                   # Organização Militar que gerencia a escala (cabeçalho dos documentos)
+    detalhista_id: str = ""        # militar que é o detalhista desta escala (um só por escala)
+    detalhista_escalavel: bool = False  # padrão: o detalhista fica FORA da escala; True = concorre como os demais
+    auxiliar_id: str = ""          # auxiliar do detalhista: concorre à escala normalmente
     categoria: str = "servico"     # chave de CATEGORIAS
     sigla_evento: str = ""         # sigla própria (categoria "outro" ou personalizada)
     tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...
@@ -325,17 +327,14 @@ class Contexto:
     def usuario(self, uid: str) -> Usuario | None:
         return next((u for u in self.usuarios if u.id == uid), None)
 
-    def dispensado_de_servico(self, mid: str) -> bool:
-        """O detalhista não dá nenhum serviço (efetivo, retém, palestra, cerimônia...) e não é escalado.
-
-        Vale para o militar marcado como detalhista no cadastro ou ligado a uma conta de perfil detalhista."""
-        m = next((x for x in self.militares if x.id == mid), None)
-        return bool((m and m.detalhista)
-                    or any(u.militar_id == mid and u.perfil == "detalhista" and u.ativo for u in self.usuarios))
+    def dispensado_na_escala(self, mid: str, esc: "Escala") -> bool:
+        """O detalhista de uma escala não dá nenhum serviço nela (efetivo, retém, palestra...) e não é escalado,
+        a menos que a escala permita que ele concorra. Em outra escala, ele é um militar como os outros."""
+        return bool(esc.detalhista_id and mid == esc.detalhista_id and not esc.detalhista_escalavel)
 
     def escalaveis(self, esc: "Escala") -> list[str]:
-        """Membros da escala que podem ser escalados (sem os detalhistas)."""
-        return [p.militar_id for p in esc.membros if not self.dispensado_de_servico(p.militar_id)]
+        """Membros da escala que podem ser escalados (sem o detalhista, se ele estiver fora)."""
+        return [p.militar_id for p in esc.membros if not self.dispensado_na_escala(p.militar_id, esc)]
 
     def militar(self, mid: str) -> Militar:
         return next(m for m in self.militares if m.id == mid)

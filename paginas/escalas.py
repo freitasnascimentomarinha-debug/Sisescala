@@ -44,20 +44,31 @@ def _campos(e: Escala | None, k: str):
     hq = dd.selectbox("Quartos", QUARTOS, QUARTOS.index(h) if h in QUARTOS else 0, key=f"{k}_q",
                       format_func=lambda x: "sem quartos" if x == 0 else f"de {x}h")
     ant = st.number_input("Antecedência mínima da papeleta de troca (horas)", 0, 720, d.antecedencia_horas, key=f"{k}_ant")
+    st.html('<div class="secao">Detalhista e auxiliar</div>')
+    a, b = st.columns(2)
+    ids = [""] + list(nomes_m)
+    det = a.selectbox("Detalhista da escala (um só)", ids, ids.index(d.detalhista_id) if d.detalhista_id in ids else 0,
+                      format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_det",
+                      help="Pode ser o mesmo detalhista de várias escalas. Por padrão ele fica fora da escala.")
+    aux = b.selectbox("Auxiliar do detalhista", ids, ids.index(d.auxiliar_id) if d.auxiliar_id in ids else 0,
+                      format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_aux",
+                      help="O auxiliar concorre à escala normalmente.")
+    det_esc = st.checkbox("O detalhista também concorre a esta escala (raro)", d.detalhista_escalavel, key=f"{k}_detesc",
+                          help="Desmarcado (padrão): o detalhista não é escalado para nada nesta escala.")
     a, b = st.columns(2)
     rox = a.checkbox("Participa da escala roxa", d.participa_roxa if e else True, key=f"{k}_rox")
     resp = b.checkbox("Não-serviço só escala quem não está de serviço", d.respeita_servicos, key=f"{k}_resp")
     return dict(nome=nome, om=om, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
                 retem_qtd=ret, folgas_minimas=fol, quartos=quartos_padrao(hq) if hq else [], antecedencia_horas=ant,
-                participa_roxa=rox and modo != "eventos", respeita_servicos=resp)
+                participa_roxa=rox and modo != "eventos", respeita_servicos=resp, detalhista_id=det,
+                detalhista_escalavel=det_esc, auxiliar_id=aux)
 
 
 @st.dialog("Nova escala", width="large")
 def dialogo_nova():
     v = _campos(None, "nova")
-    membros = st.multiselect("Militares da escala", [i for i in nomes_m if not ctx.dispensado_de_servico(i)],
-                             format_func=nomes_m.get, key="nova_mem",
-                             help="Detalhistas são dispensados de serviço e não entram em escalas.")
+    membros = st.multiselect("Militares da escala", list(nomes_m), format_func=nomes_m.get, key="nova_mem",
+                             help="O detalhista fica fora da escala, a menos que você marque que ele concorre.")
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
     if st.button("Criar escala", type="primary", use_container_width=True):
@@ -100,7 +111,7 @@ for e in minhas:
     dono = e.dono_id == uid
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.1rem;'
-                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Modo", MODOS[e.modo])}'
+                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else "não definido")}{ui.chip("Auxiliar", nomes_m.get(e.auxiliar_id, "—")) if e.auxiliar_id else ""}{ui.chip("Modo", MODOS[e.modo])}'
                 f'{ui.chip("Prioridade", e.prioridade)}{ui.chip(str(e.militares_dia) + " por dia")}'
                 f'{ui.chip(str(len(e.membros)) + " militares")}{ui.chip("Descanso", str(e.folgas_minimas) + "x1")}'
                 f'<div style="margin-left:auto">{ui.pill("Responsável: " + nomes_u.get(e.dono_id, e.dono_id or "—"), "azul" if dono else "cinza", False)}</div></div>')

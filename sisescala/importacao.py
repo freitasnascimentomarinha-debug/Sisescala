@@ -178,8 +178,7 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
                     setattr(m, k, v)
             if mudou and m.nome not in rel.atualizados:
                 rel.atualizados.append(m.nome)
-        if "detalhista" in cols and g(row, "detalhista"):
-            m.detalhista = _norm(g(row, "detalhista")) in {"sim", "s", "x", "1", "true", "verdadeiro"}
+        eh_detalhista = "detalhista" in cols and _norm(g(row, "detalhista")) in {"sim", "s", "x", "1", "true", "verdadeiro"}
         if m.id not in ordem_planilha:
             ordem_planilha.append(m.id)
         # escalas citadas
@@ -197,6 +196,8 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
                 ctx.escalas.append(esc)
                 rel.escalas_criadas.append(nome_esc)
             vinc.setdefault(esc.id, set()).add(m.id)
+            if eh_detalhista and not esc.detalhista_id:        # um só detalhista por escala (o primeiro marcado)
+                esc.detalhista_id = m.id
             if not any(p.militar_id == m.id and p.fim is None for p in esc.membros):
                 esc.membros.append(Pertinencia(m.id))
                 rel.vinculos += 1

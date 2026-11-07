@@ -67,6 +67,10 @@ def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
         inf.append(("Funciona", "todos os dias" if esc.funciona_em == "todos" else "só em dias úteis"))
     if esc.dono_id:
         inf.append(("Responsável", donos.get(esc.dono_id, esc.dono_id)))
+    if esc.detalhista_id:
+        inf.append(("Detalhista", ctx.militar(esc.detalhista_id).nome + (" (concorre)" if esc.detalhista_escalavel else " (fora da escala)")))
+    if esc.auxiliar_id:
+        inf.append(("Auxiliar do detalhista", ctx.militar(esc.auxiliar_id).nome))
     if esc.referencias:
         nomes = ", ".join(ctx.escala(r).nome for r in esc.referencias if any(e.id == r for e in ctx.escalas))
         inf.append(("Considera (prevalece sobre esta)", nomes))
