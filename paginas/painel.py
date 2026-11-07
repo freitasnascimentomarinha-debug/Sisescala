@@ -58,6 +58,8 @@ with esq:
             itens.append(("paginas/papeletas.py", f"{P.n_pend} pedido(s) de troca aguardando decisão", ":material/swap_horiz:"))
         if P.decide and P.n_vinc:
             itens.append(("paginas/vinculos.py", f"{P.n_vinc} pedido(s) de vínculo aguardando decisão", ":material/link:"))
+        if P.n_convites:
+            itens.append(("paginas/vinculos.py", f"{P.n_convites} convite(s) de vínculo para você responder", ":material/mail:"))
         if P.n_acessos:
             itens.append(("paginas/acessos.py", f"{P.n_acessos} pedido(s) de acesso às suas escalas", ":material/how_to_reg:"))
         if not P.visiveis:

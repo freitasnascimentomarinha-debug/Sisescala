@@ -1,7 +1,8 @@
-"""Vínculos: o detalhista aprova quem é quem; o militar pede para se vincular ao seu nome."""
+"""Vínculos: o militar pede para se vincular ao seu nome (o detalhista aprova) ou o detalhista o convida (o militar aceita)."""
 import streamlit as st
 
-from sisescala import ui
+from sisescala import auth, ui
+from sisescala import permissoes as pm
 from sisescala import vinculos as vc
 from sisescala.sessao import agir, pagina
 
@@ -34,12 +35,66 @@ if P.decide:
                     mrj = st.text_input("Motivo da rejeição", key=f"vrm_{v.id}")
                     if st.button("Confirmar rejeição", key=f"vr_{v.id}"):
                         agir(lambda: vc.rejeitar(ctx, uid, v.id, mrj), "Vínculo rejeitado.")
+    with st.container(border=True):
+        ui.secao("Convidar um usuário para ser um militar da escala")
+        st.caption("Pesquise quem já tem conta (por nome, NIP ou OM, com 3 letras ou mais) e escolha o militar da escala. "
+                   "A pessoa recebe o convite e confirma com o NIP e o PIN dela; só então o vínculo vale. "
+                   "Aqui aparecem só nome e OM.")
+        minhas = [e.id for e in ctx.escalas if pm.pode_decidir(ctx, uid, e)]
+        ce = st.selectbox("Escala", minhas, format_func=lambda i: ctx.escala(i).nome, key="conv_esc")
+        termo = st.text_input("Pesquisar usuário", placeholder="Nome, NIP ou OM", key="conv_termo")
+        achados = vc.buscar_usuarios(ctx, uid, ce, termo) if ce else []
+        if termo and len(termo.strip()) >= 3 and not achados:
+            st.caption("Nenhum usuário disponível com esse termo (só aparecem contas ativas, sem vínculo e sem convite pendente).")
+        livres_c = vc.militares_livres(ctx, ce) if ce else []
+        if achados:
+            cu = st.selectbox("Usuário", [u.id for u in achados], key="conv_user",
+                              format_func=lambda i: f"{ctx.usuario(i).nome} · OM {ctx.usuario(i).om or '—'}")
+            cm = st.selectbox("Quem ele é nesta escala", livres_c, key="conv_mil",
+                              format_func=lambda i: f"{ctx.militar(i).posto} {ctx.militar(i).nome}") if livres_c else None
+            if not livres_c:
+                st.warning("Todos os militares desta escala já estão vinculados ou com pedido pendente.")
+            if cm and st.button("Enviar convite", type="primary", icon=":material/send:"):
+                agir(lambda: vc.convidar(ctx, uid, cu, cm, ce), "Convite enviado.")
+        enviados = vc.convites_enviados(ctx, uid)
+        if enviados:
+            st.markdown("**Convites aguardando resposta**")
+        for c in enviados:
+            a, b = st.columns([4, 1])
+            a.write(f"{ctx.usuario(c.usuario_id).nome} → {ctx.militar(c.militar_id).nome} ({ctx.escala(c.escala_id).nome}) "
+                    f"· {c.criado_em:%d/%m %H:%M}")
+            if b.button("Cancelar", key=f"cc_{c.id}"):
+                agir(lambda c=c: vc.cancelar_convite(ctx, uid, c.id), "Convite cancelado.")
     with st.expander("Histórico de decisões"):
         dec = [v for v in ctx.vinculos if v.status != "pendente"]
         if not dec:
             st.caption("Sem decisões ainda.")
         for v in dec:
             st.write(f"{ctx.usuario(v.usuario_id).nome} → {ctx.militar(v.militar_id).nome}: **{v.status}**")
+
+if not user.militar_id and vc.convites_do_usuario(ctx, uid):
+    with st.container(border=True):
+        ui.secao("Convites recebidos")
+        st.caption("Um detalhista convidou você para ser reconhecido como um militar da escala dele. Para aceitar, confirme o seu "
+                   "NIP e crie um PIN (usado para pedir trocas e assinar papeletas).")
+        for c in vc.convites_do_usuario(ctx, uid):
+            mx, de = ctx.militar(c.militar_id), ctx.usuario(c.convidado_por)
+            with st.container(border=True):
+                st.html(ui.pessoa(f"{mx.posto} {mx.nome}".strip(), f"Escala {ctx.escala(c.escala_id).nome}",
+                                  f"Convite de {de.nome if de else '—'} em {c.criado_em:%d/%m/%Y %H:%M}", ui.pill("convite", "azul")))
+                k1, k2, k3 = st.columns(3)
+                cnip = k1.text_input("Seu NIP", key=f"cn_{c.id}")
+                cpin = k2.text_input("Crie um PIN (4 a 6 dígitos)", type="password", key=f"cp_{c.id}")
+                cpin2 = k3.text_input("Repita o PIN", type="password", key=f"cq_{c.id}")
+                b1, b2, _ = st.columns([1, 1, 2])
+                if b1.button("Aceitar convite", key=f"ca_{c.id}", type="primary", icon=":material/check:"):
+                    if cpin != cpin2:
+                        st.error("Os PINs não são iguais.")
+                    else:
+                        agir(lambda c=c: (auth.validar_pin(cpin), vc.aceitar_convite(ctx, uid, c.id, cnip, cpin)),
+                             "Convite aceito: sua conta agora está vinculada.")
+                if b2.button("Recusar", key=f"cr_{c.id}", icon=":material/close:"):
+                    agir(lambda c=c: vc.recusar_convite(ctx, uid, c.id), "Convite recusado.")
 
 if not user.militar_id:
     with st.container(border=True):

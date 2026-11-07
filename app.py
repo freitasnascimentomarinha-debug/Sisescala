@@ -139,6 +139,7 @@ dp.podar(ctx)
 visiveis = pm.escalas_visiveis(ctx, uid)
 n_pend, n_vinc, n_novas = len(pp.pedidos_pendentes(ctx, uid)), len(vc.pendentes_para(ctx, uid)), nt.nao_lidas(ctx, uid)
 n_acessos = len(ac.pendentes_para(ctx, uid))
+n_convites = len(vc.convites_do_usuario(ctx, uid))
 n_cad = len(auth.pendentes(ctx)) if user.admin else 0
 e_detalhista = any(pm.eh_detalhista(ctx, uid, e) for e in ctx.escalas)
 e_auxiliar = bool(user.militar_id) and any(user.militar_id in e.auxiliares for e in ctx.escalas)
@@ -157,7 +158,7 @@ menu = {
     "Operação": [_pg("escala", "Escala", "calendar_month", "escala"),
                  _pg("papeletas", "Papeletas" + _c(n_pend), "swap_horiz", "papeletas"),
                  _pg("devolucoes", "Devoluções", "undo", "devolucoes"),
-                 _pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos")],
+                 _pg("vinculos", "Vínculos" + _c(n_vinc + n_convites), "link", "vinculos")],
     "Documentos": [_pg("detalhe", "Detalhe de serviço", "description", "detalhe"),
                    _pg("regras", "Regras da escala", "menu_book", "regras")],
     # todo usuário aprovado cria ou importa escalas (e vira o detalhista delas) e busca as de outros
@@ -199,7 +200,7 @@ per = st.session_state.get("per") or "7 dias"
 dias = periodo(inicio, sessao.PERIODOS[per])
 sessao.definir(sessao.Pagina(ctx=ctx, user=user, esc=ctx.escala(eid) if eid else None, res=gerar(ctx, dias[-1]),
                              dias=dias, inicio=inicio, visiveis=visiveis, n_pend=n_pend, n_vinc=n_vinc,
-                             n_novas=n_novas, n_acessos=n_acessos))
+                             n_novas=n_novas, n_acessos=n_acessos, n_convites=n_convites))
 
 if (t := st.session_state.pop("toast", None)):
     st.toast(t, icon="✅")

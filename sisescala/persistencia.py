@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      ConviteVinculo, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -98,6 +98,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                          ("criado_por", "s")],
     "PedidosAcesso": [("id", "s"), ("usuario_id", "s"), ("escala_id", "s"), ("criado_em", "dt"), ("mensagem", "s"),
                       ("status", "s"), ("decidido_por", "s"), ("decidido_em", "dt"), ("motivo_rejeicao", "s")],
+    "ConvitesVinculo": [("id", "s"), ("usuario_id", "s"), ("militar_id", "s"), ("escala_id", "s"), ("criado_em", "dt"),
+                        ("convidado_por", "s"), ("status", "s"), ("decidido_em", "dt")],
     "Notificacoes": [("id", "s"), ("usuario_id", "s"), ("tipo", "s"), ("texto", "s"), ("criado_em", "dt"),
                      ("lida", "b"), ("escala_id", "s")],
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
@@ -162,6 +164,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("Notificacoes", n)
     for pa in ctx.pedidos_acesso:
         add("PedidosAcesso", pa)
+    for cv in ctx.convites_vinculo:
+        add("ConvitesVinculo", cv)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -254,6 +258,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
+    ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
         d["tipo"] = d["tipo"] or "troca"          # planilhas antigas sem a coluna

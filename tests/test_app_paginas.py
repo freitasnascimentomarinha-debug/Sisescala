@@ -172,12 +172,14 @@ def test_deploy_novo_com_modulos_velhos_na_memoria_recarrega_sem_erro(app):
     """Simula o servidor que já tinha `sisescala` carregado de um deploy anterior (ImportError na nuvem)."""
     import sys
     guardados = {n: m for n, m in sys.modules.items() if n == "sisescala" or n.startswith("sisescala.")}
+    assinatura = sys.modules["sisescala"]._assinatura
     try:
         _recarrega_modulos_velhos(app, sys)
     finally:                      # o app descarta e recarrega os módulos; devolve os originais para não afetar outros testes
         for n in [n for n in sys.modules if n == "sisescala" or n.startswith("sisescala.")]:
             del sys.modules[n]
         sys.modules.update(guardados)
+        sys.modules["sisescala"]._assinatura = assinatura
 
 
 def _recarrega_modulos_velhos(app, sys):
@@ -189,3 +191,32 @@ def _recarrega_modulos_velhos(app, sys):
     assert not app.exception
     assert hasattr(sys.modules["sisescala.modelos"], "PedidoAcesso")
     assert any(b.label == "Entrar" for b in app.button)                # sessão antiga descartada: pede login
+
+
+def test_convite_de_vinculo_na_tela_detalhista_convida_e_usuario_aceita(app):
+    from sisescala import vinculos as vc
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ana = auth.criar_usuario(ctx, "u1", "10000002", "Ana Souza", "senha-ana-1234", om="COPAB", email="a@x.com",
+                             ramal="2345", celular="21988887777")
+    alvo = next(m for m in ctx.militares if m.id not in {u.militar_id for u in ctx.usuarios})
+    app.run()
+    app.switch_page("paginas/vinculos.py").run()                       # admin (detalhista das escalas demo)
+    assert not app.exception
+    next(t for t in app.text_input if t.label == "Pesquisar usuário").input("ana").run()
+    assert any("Ana Souza" in o for s in app.selectbox if s.label == "Usuário" for o in s.options)
+    next(b for b in app.button if b.label == "Enviar convite").click().run()
+    assert not app.exception and vc.convites_do_usuario(app.session_state["ctx"], ana.id)
+    del app.session_state["uid"]
+    app.run()
+    _entrar(app, "10000002", "senha-ana-1234")
+    app.switch_page("paginas/vinculos.py").run()
+    assert not app.exception and any(b.label == "Aceitar convite" for b in app.button)
+    c = vc.convites_do_usuario(app.session_state["ctx"], ana.id)[0]
+    militar = app.session_state["ctx"].militar(c.militar_id)
+    next(t for t in app.text_input if t.label == "Seu NIP" and t.key == f"cn_{c.id}").input(militar.nip or "")
+    next(t for t in app.text_input if t.key == f"cp_{c.id}").input("1234")
+    next(t for t in app.text_input if t.key == f"cq_{c.id}").input("1234")
+    next(b for b in app.button if b.label == "Aceitar convite").click().run()
+    assert not app.exception
+    assert app.session_state["ctx"].usuario(ana.id).militar_id == militar.id

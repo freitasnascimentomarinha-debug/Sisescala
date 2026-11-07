@@ -24,6 +24,7 @@ class Pagina:
     n_pend: int = 0          # pedidos de troca aguardando decisão (para quem decide)
     n_vinc: int = 0          # pedidos de vínculo aguardando decisão
     n_novas: int = 0         # notificações não lidas
+    n_convites: int = 0      # convites de vínculo recebidos aguardando resposta
     n_acessos: int = 0       # pedidos de acesso às escalas dele aguardando decisão
     extras: dict[str, Any] = field(default_factory=dict)
 

@@ -358,6 +358,7 @@ def excluir_usuario(ctx: Contexto, admin_id: str, alvo_id: str) -> None:
         e.compartilhado_com.pop(alvo.id, None)
     ctx.vinculos = [v for v in ctx.vinculos if v.usuario_id != alvo.id]
     ctx.pedidos_acesso = [p for p in ctx.pedidos_acesso if p.usuario_id != alvo.id]
+    ctx.convites_vinculo = [c for c in ctx.convites_vinculo if c.usuario_id != alvo.id]
     ctx.notificacoes = [n for n in ctx.notificacoes if n.usuario_id != alvo.id]
     ctx.usuarios = [u for u in ctx.usuarios if u.id != alvo.id]
 

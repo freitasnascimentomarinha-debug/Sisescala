@@ -279,6 +279,20 @@ class PedidoAcesso:
 
 
 @dataclass
+class ConviteVinculo:
+    """O detalhista (ou auxiliar) convida um usuário a ser reconhecido como um militar da escala. Só vale quando o
+    próprio usuário aceita, confirmando o NIP e criando o PIN dele."""
+    id: str
+    usuario_id: str               # conta convidada
+    militar_id: str               # persona que ela passaria a ser
+    escala_id: str
+    criado_em: datetime
+    convidado_por: str = ""       # conta de quem convidou
+    status: str = "pendente"      # pendente | aceito | recusado | cancelado
+    decidido_em: datetime | None = None
+
+
+@dataclass
 class Notificacao:
     """Aviso dentro do sistema para um usuário."""
     id: str
@@ -343,6 +357,7 @@ class Contexto:
     disponibilidades: list[Disponibilidade] = field(default_factory=list)
     notificacoes: list[Notificacao] = field(default_factory=list)
     pedidos_acesso: list[PedidoAcesso] = field(default_factory=list)
+    convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
