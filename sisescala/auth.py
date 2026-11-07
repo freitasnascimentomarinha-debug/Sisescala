@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 import bcrypt
 
+from .contatos import normalizar_contato
 from .modelos import Contexto, Usuario
 
 ROUNDS = 12   # custo do bcrypt (os testes usam menos)
@@ -45,7 +46,8 @@ def tem_usuarios(ctx: Contexto) -> bool:
 
 
 def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, senha: str, *,
-                  perfil: str = "detalhista", militar_id: str = "", admin: bool = False) -> Usuario:
+                  perfil: str = "detalhista", militar_id: str = "", admin: bool = False,
+                  email: str = "", ramal: str = "", celular: str = "", exigir_contato: bool = False) -> Usuario:
     """Só administrador cria contas; a primeira conta do sistema nasce administradora."""
     primeiro = not ctx.usuarios
     if not primeiro:
@@ -59,16 +61,86 @@ def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, sen
         raise ValueError(f"login '{login}' já existe")
     if perfil not in PERFIS:
         raise ValueError("perfil inválido")
-    if perfil == "militar":
-        if not militar_id or not any(m.id == militar_id for m in ctx.militares):
-            raise ValueError("conta de militar precisa estar vinculada a um militar do cadastro")
+    if perfil == "militar" and militar_id:
+        if not any(m.id == militar_id for m in ctx.militares):
+            raise ValueError("militar não encontrado no cadastro")
         if any(u.militar_id == militar_id for u in ctx.usuarios):
             raise ValueError("esse militar já tem conta")
+    if exigir_contato or email or ramal or celular:
+        email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=exigir_contato)
     _validar_senha(senha)
+    return _registrar(ctx, login, nome, senha, perfil, militar_id, admin or primeiro, email, ramal, celular)
+
+
+def _registrar(ctx, login, nome, senha, perfil, militar_id, admin, email, ramal, celular) -> Usuario:
     uid = f"u{max([int(u.id[1:]) for u in ctx.usuarios if u.id[1:].isdigit()] + [0]) + 1}"
-    u = Usuario(uid, nome.strip() or login, login, hash_senha(senha), militar_id, perfil, admin or primeiro)
+    u = Usuario(uid, nome.strip() or login, login, hash_senha(senha), militar_id, perfil, admin,
+                email=email, ramal=ramal, celular=celular)
     ctx.usuarios.append(u)
     return u
+
+
+def cadastrar_se(ctx: Contexto, login: str, nome: str, senha: str, email: str, ramal: str, celular: str) -> Usuario:
+    """O próprio militar cria a conta (perfil militar, sem acesso a nada até receber uma escala e ser
+    vinculado). Contato obrigatório. O administrador pode fechar o cadastro."""
+    if not ctx.cadastro_aberto:
+        raise PermissionError("o cadastro de novas contas está fechado; fale com o administrador")
+    login = _slug_login(login)
+    if not login:
+        raise ValueError("informe o login")
+    if any(u.login == login for u in ctx.usuarios):
+        raise ValueError(f"login '{login}' já existe")
+    if not nome.strip():
+        raise ValueError("informe o nome")
+    email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=True)
+    _validar_senha(senha)
+    return _registrar(ctx, login, nome, senha, "militar", "", False, email, ramal, celular)
+
+
+def atualizar_contato(ctx: Contexto, usuario_id: str, email: str, ramal: str, celular: str) -> None:
+    u = ctx.usuario(usuario_id)
+    if u is None:
+        raise ValueError("usuário não encontrado")
+    u.email, u.ramal, u.celular = normalizar_contato(email, ramal, celular, obrigatorio=True)
+    m = next((x for x in ctx.militares if x.id == u.militar_id), None)
+    if m:
+        m.email, m.ramal, m.celular = u.email, u.ramal, u.celular
+
+
+# ---------------------------------------------------------------- PIN de assinatura
+def validar_pin(pin: str) -> None:
+    if not (pin.isdigit() and 4 <= len(pin) <= 6):
+        raise ValueError("o PIN deve ter de 4 a 6 dígitos numéricos")
+
+
+def hash_pin(pin: str) -> str:
+    validar_pin(pin)
+    return bcrypt.hashpw(pin.encode(), bcrypt.gensalt(rounds=ROUNDS)).decode()
+
+
+def alterar_pin(ctx: Contexto, usuario_id: str, senha: str, novo_pin: str) -> None:
+    u = ctx.usuario(usuario_id)
+    if not u or not _checar(senha, u.senha_hash):
+        raise AutenticacaoErro("senha incorreta")
+    u.pin_hash = hash_pin(novo_pin)
+
+
+def confirmar_assinatura(ctx: Contexto, usuario_id: str, segredo: str, agora: datetime | None = None) -> bool:
+    """Confirma a assinatura com o PIN (se a conta tiver) ou com a senha. Erros seguidos bloqueiam a conta."""
+    agora = agora or datetime.now()
+    u = ctx.usuario(usuario_id)
+    if not u or not u.ativo:
+        return False
+    if u.bloqueado_ate and u.bloqueado_ate > agora:
+        raise AutenticacaoErro(f"conta bloqueada por excesso de tentativas até {u.bloqueado_ate:%H:%M}")
+    ok = _checar(segredo, u.pin_hash if u.pin_hash else u.senha_hash)
+    if ok:
+        u.tentativas = 0
+        return True
+    u.tentativas += 1
+    if u.tentativas >= MAX_TENTATIVAS:
+        u.bloqueado_ate, u.tentativas = agora + timedelta(minutes=BLOQUEIO_MIN), 0
+    return False
 
 
 def entrar(ctx: Contexto, login: str, senha: str, agora: datetime | None = None) -> Usuario:

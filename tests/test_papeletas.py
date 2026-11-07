@@ -167,7 +167,7 @@ def test_assinatura_pela_conta_e_confirmacao():
     assert [s["tem_conta"] for s in sit] == [True, True] and [s["assinou"] for s in sit] == [False, False]
     with pytest.raises(ValueError, match="aguardando assinatura"):
         pp.confirmar(c, "u1", p.id, AGORA)
-    with pytest.raises(PermissaoNegada, match="senha"):
+    with pytest.raises(PermissaoNegada, match="incorreto"):
         pp.assinar(c, p.id, M1, "errada", AGORA)
     with pytest.raises(PermissaoNegada):
         pp.assinar(c, p.id, M5, SENHA, AGORA)                            # não é parte

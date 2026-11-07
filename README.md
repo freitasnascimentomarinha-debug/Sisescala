@@ -37,10 +37,16 @@ streamlit run app.py
 6. **As partes cancelam enquanto não aprovado.** O detalhista cancela também depois de aprovar (e da confirmação, com motivo): a troca é desfeita.
 - Serviço que já veio de troca (T/TF) não é trocado de novo. A assinatura pelo sistema não substitui certificado ICP-Brasil.
 
-## Login e perfis
-- A primeira conta criada (tela "Primeiro acesso") é a administradora. O administrador cria as contas na aba **Usuários**.
-- **Detalhista:** cria e edita escalas, cadastro, importação, lançamentos. **Militar:** conta ligada a um militar do cadastro; enxerga (leitura) as escalas em que está e pede troca para si.
-- Senhas só como hash bcrypt (mínimo 8 caracteres); 5 falhas seguidas bloqueiam a conta por 5 minutos.
+## Login, cadastro e vínculo com o militar
+- A primeira conta criada (tela "Primeiro acesso") é a administradora. O administrador cria contas na aba **Usuários** e pode **fechar o cadastro aberto**.
+- **O militar cria a própria conta** (aba "Criar conta" no login) com login, senha e **e-mail, ramal e celular obrigatórios**. Conta nova não enxerga nada.
+- O detalhista **compartilha a escala** com o login do militar (aba Escalas → Compartilhar acesso). O militar então abre a aba **Vínculos**, escolhe quem ele é na lista da escala, confirma o NIP (se já cadastrado) e **cria um PIN** (4 a 6 dígitos). O detalhista/editores **aprovam ou rejeitam** (com motivo). Aprovado, a conta passa a ser daquele militar e o contato dela completa o cadastro dele.
+- O **PIN assina as papeletas** (5 erros seguidos bloqueiam a conta por 5 minutos). Quem ainda não tem PIN assina com a senha.
+- **Detalhista:** cria e edita escalas, cadastro, importação e lançamentos. **Militar:** vê (leitura) as escalas em que está, pede troca para si e sinaliza disponibilidade.
+- Senhas e PINs só como hash bcrypt (senha com 8+ caracteres).
+
+## Disponibilidade de troca
+O militar vinculado (ou o detalhista por ele) escolhe, na **Prévia**, um dia futuro em que está escalado e abre a disponibilidade: aparece uma **bolinha verde piscando** na célula dele, para todos que veem a escala, e ● nas listas de troca. Só vale para serviço dele (se mudar de mãos, o sinal some), respeitando a antecedência mínima da escala, e fica oculta enquanto ele estiver num pedido de troca ativo. Sinais de dias passados são removidos.
 
 ## Persistência no Google Sheets
 1. No Google Cloud: crie um projeto, ative a **Google Sheets API** e crie uma **conta de serviço** com chave JSON.

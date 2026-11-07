@@ -41,6 +41,9 @@ class Militar:
     antiguidade: int = 0      # 1 = mais antigo
     nip: str = ""
     om: str = ""              # sigla ou código da OM
+    email: str = ""
+    ramal: str = ""
+    celular: str = ""
 
 
 @dataclass
@@ -153,8 +156,12 @@ class Usuario:
     perfil: str = "detalhista"
     admin: bool = False
     ativo: bool = True
-    tentativas: int = 0           # falhas seguidas de login
+    tentativas: int = 0           # falhas seguidas de login/PIN
     bloqueado_ate: datetime | None = None
+    email: str = ""
+    ramal: str = ""
+    celular: str = ""
+    pin_hash: str = ""            # PIN de assinatura (bcrypt), criado ao pedir o vínculo
 
 
 @dataclass
@@ -208,6 +215,31 @@ class Troca:
 
 
 @dataclass
+class Vinculo:
+    """Pedido de uma conta para ser reconhecida como um militar da escala (aprovado pelo detalhista)."""
+    id: str
+    usuario_id: str
+    militar_id: str
+    escala_id: str                # escala (detalhe) em que o pedido foi feito; quem a edita decide
+    criado_em: datetime
+    pin_hash: str = ""            # PIN escolhido; passa para a conta quando aprovado
+    status: str = "pendente"      # pendente | aprovado | rejeitado | cancelado
+    decidido_por: str = ""
+    decidido_em: datetime | None = None
+    motivo_rejeicao: str = ""
+
+
+@dataclass
+class Disponibilidade:
+    """Militar sinaliza que está aberto a trocar o serviço de um dia em que está escalado."""
+    escala_id: str
+    militar_id: str
+    data: date
+    criado_em: datetime
+    criado_por: str = ""
+
+
+@dataclass
 class Assinatura:
     militar_id: str
     em: datetime
@@ -255,6 +287,9 @@ class Contexto:
     usuarios: list[Usuario] = field(default_factory=list)
     eventos: list[Evento] = field(default_factory=list)
     papeletas: list[Papeleta] = field(default_factory=list)
+    vinculos: list[Vinculo] = field(default_factory=list)
+    disponibilidades: list[Disponibilidade] = field(default_factory=list)
+    cadastro_aberto: bool = True          # permite que militares criem a própria conta
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
 

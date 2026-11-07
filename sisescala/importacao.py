@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from .cadastro import novo_id, renumerar
+from .contatos import normalizar_contato
 from .modelos import Contexto, Escala, Militar, Pertinencia
 from .motor import fila_do_dia
 
@@ -31,6 +32,9 @@ SINONIMOS = {
     "ordem": {"ordem", "antiguidade", "seq", "sequencia", "numero", "n", "no", "nº", "posicao"},
     "ultimo": {"ultimo servico", "ultimo serv", "data ultimo servico", "ult servico", "ultimo"},
     "data": {"data", "dia", "data do servico"},
+    "email": {"email", "e-mail", "e mail", "correio eletronico"},
+    "ramal": {"ramal", "telefone", "telefone fixo"},
+    "celular": {"celular", "cel", "whatsapp", "telefone celular", "movel"},
 }
 MODELO_CSV = (
     "Nome de guerra;Posto/Graduação;NIP;OM;Escala;Ordem;Último serviço;Data\n"
@@ -149,6 +153,11 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     vistos_nip: set[str] = set()
     for n_lin, row in enumerate(linhas, 2):
         nome, posto, nip, om = g(row, "nome"), g(row, "posto"), g(row, "nip"), g(row, "om")
+        try:
+            email_, ramal_, cel_ = normalizar_contato(g(row, "email"), g(row, "ramal"), g(row, "celular"), False)
+        except ValueError as ex:
+            rel.avisos.append(f"Linha {n_lin}: contato ignorado ({ex}).")
+            email_, ramal_, cel_ = "", "", ""
         if not nome and not nip:
             continue
         if nip and nip in vistos_nip and not g(row, "data"):
@@ -156,13 +165,14 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         vistos_nip.add(nip)
         m = _achar_militar(ctx, nome, posto, nip)
         if m is None:
-            m = Militar(novo_id(ctx, nip or nome), nome, posto, 10 ** 6, nip, om)
+            m = Militar(novo_id(ctx, nip or nome), nome, posto, 10 ** 6, nip, om, email_, ramal_, cel_)
             ctx.militares.append(m)
             rel.novos.append(nome)
         else:
             mudou = [k for k, v in (("nome", nome), ("posto", posto), ("nip", nip), ("om", om))
                      if v and getattr(m, k) != v]
-            for k, v in (("nome", nome), ("posto", posto), ("nip", nip), ("om", om)):
+            for k, v in (("nome", nome), ("posto", posto), ("nip", nip), ("om", om),
+                         ("email", email_), ("ramal", ramal_), ("celular", cel_)):
                 if v:
                     setattr(m, k, v)
             if mudou and m.nome not in rel.atualizados:

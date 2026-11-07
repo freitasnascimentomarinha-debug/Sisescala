@@ -8,6 +8,8 @@ import streamlit as st
 import pandas as pd
 
 from sisescala import auth
+from sisescala import disponibilidade as dp
+from sisescala import vinculos as vc
 from sisescala import cadastro as cd
 from sisescala import papeletas as pp
 from sisescala import permissoes as pm
@@ -82,22 +84,44 @@ if user is None or not user.ativo:
         with st.form("primeiro"):
             l1, l2, l3 = st.columns(3)
             lg, nm_, sn = l1.text_input("Login"), l2.text_input("Nome"), l3.text_input("Senha (8+ caracteres)", type="password")
+            l4, l5, l6 = st.columns(3)
+            em_, ra_, ce_ = l4.text_input("E-mail"), l5.text_input("Ramal"), l6.text_input("Celular (com DDD)")
             if st.form_submit_button("Criar administrador"):
                 try:
-                    novo_u = auth.criar_usuario(ctx, None, lg, nm_, sn)
+                    novo_u = auth.criar_usuario(ctx, None, lg, nm_, sn, email=em_, ramal=ra_, celular=ce_,
+                                                exigir_contato=True)
                     st.session_state.uid = novo_u.id
                     st.rerun()
                 except ValueError as ex:
                     st.error(str(ex))
     else:
-        with st.form("login"):
-            lg, sn = st.text_input("Login"), st.text_input("Senha", type="password")
-            if st.form_submit_button("Entrar"):
-                try:
-                    st.session_state.uid = auth.entrar(ctx, lg, sn).id
-                    st.rerun()
-                except auth.AutenticacaoErro as ex:
-                    st.error(str(ex))
+        t_entrar, t_criar = st.tabs(["Entrar", "Criar conta (militar)"])
+        with t_entrar:
+            with st.form("login"):
+                lg, sn = st.text_input("Login"), st.text_input("Senha", type="password")
+                if st.form_submit_button("Entrar"):
+                    try:
+                        st.session_state.uid = auth.entrar(ctx, lg, sn).id
+                        st.rerun()
+                    except auth.AutenticacaoErro as ex:
+                        st.error(str(ex))
+        with t_criar:
+            if not ctx.cadastro_aberto:
+                st.info("O cadastro de novas contas está fechado. Fale com o administrador.")
+            else:
+                st.caption("Crie sua conta. Depois, peça ao detalhista acesso à sua escala e vincule-se ao seu nome nela.")
+                with st.form("cadastro"):
+                    c1, c2, c3 = st.columns(3)
+                    cl, cn, cs = c1.text_input("Login"), c2.text_input("Nome completo"), c3.text_input("Senha (8+)", type="password")
+                    c4, c5, c6 = st.columns(3)
+                    ce, cr, cc = c4.text_input("E-mail para contato"), c5.text_input("Ramal"), c6.text_input("Celular (com DDD)")
+                    if st.form_submit_button("Criar conta"):
+                        try:
+                            novo_u = auth.cadastrar_se(ctx, cl, cn, cs, ce, cr, cc)
+                            st.session_state.uid = novo_u.id
+                            st.rerun()
+                        except (ValueError, PermissionError) as ex:
+                            st.error(str(ex))
     st.stop()
 
 uid = user.id
@@ -117,6 +141,26 @@ with st.sidebar:
                     st.success("Senha alterada.")
                 except (ValueError, auth.AutenticacaoErro) as ex:
                     st.error(str(ex))
+        with st.form("meu_contato"):
+            mc1 = st.text_input("E-mail", user.email)
+            mc2, mc3 = st.columns(2)
+            mr, mcel = mc2.text_input("Ramal", user.ramal), mc3.text_input("Celular", user.celular)
+            if st.form_submit_button("Salvar contato"):
+                try:
+                    auth.atualizar_contato(ctx, uid, mc1, mr, mcel)
+                    st.success("Contato atualizado.")
+                except ValueError as ex:
+                    st.error(str(ex))
+        if user.militar_id:
+            with st.form("meu_pin", clear_on_submit=True):
+                st.caption("PIN de assinatura (4 a 6 dígitos)")
+                ps, pn = st.text_input("Senha da conta", type="password"), st.text_input("Novo PIN", type="password")
+                if st.form_submit_button("Alterar PIN"):
+                    try:
+                        auth.alterar_pin(ctx, uid, ps, pn)
+                        st.success("PIN alterado.")
+                    except (ValueError, auth.AutenticacaoErro) as ex:
+                        st.error(str(ex))
         if st.button("Sair"):
             st.session_state.pop("uid", None)
             st.rerun()
@@ -125,6 +169,9 @@ with st.sidebar:
         st.info("Você ainda não tem escalas." + (" Crie uma na aba Escalas." if PODE_GERIR else ""))
     eid = st.selectbox("Escala", [e.id for e in visiveis], format_func=lambda i: ctx.escala(i).nome) \
         if visiveis else None
+    n_vinc = len(vc.pendentes_para(ctx, uid))
+    if n_vinc:
+        st.warning(f"🔔 {n_vinc} pedido(s) de vínculo de militar aguardando sua decisão (aba Vínculos).")
     n_pend = len(pp.pedidos_pendentes(ctx, uid))
     if n_pend:
         st.warning(f"🔔 {n_pend} pedido(s) de troca de serviço aguardando sua decisão (aba Papeletas).")
@@ -147,18 +194,22 @@ _abas = [("prev", "Prévia"), ("pdf", "Detalhe (PDF)"), ("pap", f"Papeletas{f' (
          ("reg", "Regras da escala")]
 if PODE_GERIR:
     _abas += [("lanc", "Lançamentos"), ("esc", "Escalas"), ("mil", "Militares"), ("imp", "Importar planilha")]
+if PODE_GERIR or not user.militar_id:
+    _abas += [("vinc", f"Vínculos{f' ({n_vinc})' if n_vinc else ''}")]
 if user.admin:
     _abas += [("usr", "Usuários")]
 _tabs = dict(zip([k for k, _ in _abas], st.tabs([r for _, r in _abas])))
 aba_prev, aba_pdf, aba_pap, aba_reg = (_tabs[k] for k in ("prev", "pdf", "pap", "reg"))
-aba_lanc, aba_esc, aba_mil, aba_imp, aba_usr = (_tabs.get(k) for k in ("lanc", "esc", "mil", "imp", "usr"))
+aba_lanc, aba_esc, aba_mil, aba_imp, aba_usr, aba_vinc = (_tabs.get(k) for k in ("lanc", "esc", "mil", "imp", "usr", "vinc"))
+dp.podar(ctx)
 
 with aba_prev:
     if esc:
         for av in res.avisos:
             if av.startswith("CONFLITO"):
                 st.error(av)
-        st.html(html_previa(ctx, res, dias, esc.id))
+        abertas_ = dp.abertas(ctx, res, esc.id)
+        st.html(html_previa(ctx, res, dias, esc.id, abertas_))
         pend = [d for d in res.devolucoes if d.escala_id == esc.id]
         if pend:
             st.subheader("Serviços a devolver")
@@ -178,7 +229,28 @@ with aba_prev:
             return sorted(d for (d, e), de in res.dias.items() if e == esc.id and d >= ctx.data_base
                           for a in de.alocacoes if a.militar_id == mid and a.origem == "normal")
 
-        fmt_d = lambda d: f"{d:%d/%m/%Y} ({'seg ter qua qui sex sáb dom'.split()[d.weekday()]})"  # noqa: E731
+        abertas_ = dp.abertas(ctx, res, esc.id)
+        fmt_d0 = lambda d: f"{d:%d/%m/%Y} ({'seg ter qua qui sex sáb dom'.split()[d.weekday()]})"  # noqa: E731
+        fmt_d = fmt_d0
+        # --- disponibilidade de troca (bolinha piscando na prévia)
+        quem_sinaliza = membros if eh_editor else ([meu_militar] if meu_militar in membros else [])
+        if quem_sinaliza:
+            st.markdown("**Disponibilidade de troca** — sinaliza na prévia, com uma bolinha piscando, que o serviço está aberto a troca.")
+            d1, d2 = st.columns(2)
+            sm = d1.selectbox("Militar", quem_sinaliza, format_func=nomes_m.get, key="dp_m")
+            futuros = [d for d in dias_servico(sm) if d >= date.today()]
+            if futuros:
+                dd = d2.selectbox("Dia do serviço", futuros, key="dp_d",
+                                  format_func=lambda d: fmt_d0(d) + (" ● aberto" if (d, sm) in abertas_ else ""))
+                if st.button("Fechar disponibilidade" if (dd, sm) in abertas_ else "Abrir disponibilidade de troca", key="dp_b"):
+                    try:
+                        dp.alternar(ctx, uid, esc.id, sm, dd, res)
+                        st.rerun()
+                    except (ValueError, pm.PermissaoNegada) as ex:
+                        st.error(str(ex))
+            else:
+                d2.caption("Sem serviço futuro nesta prévia.")
+        fmt_d = lambda d: fmt_d0(d)  # noqa: E731
         if eh_editor:
             quem_pede = [m for m in membros if m not in em_pedido]
         else:
@@ -199,9 +271,12 @@ with aba_prev:
             ddx = dias_servico(sx)
             dx = t1.selectbox("Dia do serviço dele", ddx, format_func=fmt_d, key="pp_dx") if ddx else None
             opcoes_y = com_quem(sx)
-            sy = t2.selectbox("Trocar com", opcoes_y, format_func=nomes_m.get, key="pp_y") if opcoes_y else None
+            sy = t2.selectbox("Trocar com", opcoes_y, key="pp_y",
+                              format_func=lambda m: nomes_m[m] + (" ●" if any(k[1] == m for k in abertas_) else "")) \
+                if opcoes_y else None
             ddy = dias_servico(sy) if sy else []
-            dy = t2.selectbox("Dia do serviço do outro", ddy, format_func=fmt_d, key="pp_dy",
+            dy = t2.selectbox("Dia do serviço do outro", ddy, key="pp_dy",
+                              format_func=lambda d: fmt_d0(d) + (" ● aberto a troca" if (d, sy) in abertas_ else ""),
                               index=next((i for i, d in enumerate(ddy) if d != dx), 0)) if ddy else None
             mot = st.text_input("Motivo da troca (obrigatório)", key="pp_mot")
             if dx and dy:
@@ -227,6 +302,12 @@ with aba_prev:
                         st.error(str(ex))
             else:
                 st.caption("Os dois militares precisam ter serviço (efetivo ou retém) no período para a troca.")
+
+
+def _contato(m):
+    u = next((x for x in ctx.usuarios if x.militar_id == m.id), None)
+    em, ra, ce = m.email or (u.email if u else ""), m.ramal or (u.ramal if u else ""), m.celular or (u.celular if u else "")
+    return " · ".join(p for p in (f"✉ {em}" if em else "", f"ramal {ra}" if ra else "", f"📱 {ce}" if ce else "") if p) or "—"
 
 
 def _agir(f):
@@ -260,7 +341,9 @@ with aba_pap:
                     f"**Pedido em** {p.criado_em:%d/%m/%Y às %H:%M} · **Escala:** {esc.nome}  \n"
                     f"**Quem pediu:** {x.posto} {x.nome} · NIP {x.nip or '—'} · OM {x.om or '—'} "
                     f"(lançado por {nomes_u.get(p.criado_por, p.criado_por)})  \n"
+                    f"**Contato de {x.nome}:** {_contato(x)}  \n"
                     f"**Troca com:** {y.posto} {y.nome} · NIP {y.nip or '—'} · OM {y.om or '—'}  \n"
+                    f"**Contato de {y.nome}:** {_contato(y)}  \n"
                     f"**Serviços:** {x.nome} em {p.data_solicitante:%d/%m/%Y} ↔ {y.nome} em {p.data_outro:%d/%m/%Y}  \n"
                     f"**Motivo:** {p.motivo}")
                 if p.motivo_rejeicao:
@@ -291,8 +374,8 @@ with aba_pap:
                 minha = pp.militar_do_usuario(ctx, uid)
                 if p.status in pp.ABERTAS and sou_parte and minha not in p.assinaturas:
                     with st.form(f"as_{p.id}", clear_on_submit=True):
-                        st.caption("Assinar pelo sistema: confirme a senha da sua conta")
-                        senha_ass = st.text_input("Senha", type="password")
+                        st.caption("Assinar pelo sistema: confirme com o seu " + ("PIN" if user.pin_hash else "senha"))
+                        senha_ass = st.text_input("PIN" if user.pin_hash else "Senha", type="password")
                         if st.form_submit_button("Assinar"):
                             _agir(lambda: pp.assinar(ctx, p.id, uid, senha_ass))
                 if eh_editor and p.status in pp.ABERTAS:
@@ -508,7 +591,8 @@ if PODE_GERIR:
     with aba_mil:
         st.subheader("Militares")
         df = pd.DataFrame([{"Excluir": False, "id": m.id, "Antiguidade": m.antiguidade, "Nome de guerra": m.nome,
-                            "Posto/Grad.": m.posto, "NIP": m.nip, "OM": m.om}
+                            "Posto/Grad.": m.posto, "NIP": m.nip, "OM": m.om, "E-mail": m.email, "Ramal": m.ramal,
+                            "Celular": m.celular}
                            for m in sorted(ctx.militares, key=lambda m: m.antiguidade)])
         ed = st.data_editor(df, hide_index=True, width="stretch", disabled=["id"], key="mil_editor",
                             column_config={"id": None})
@@ -517,7 +601,8 @@ if PODE_GERIR:
             try:
                 for _, r in ed.iterrows():
                     cd.editar_militar(ctx, r["id"], nome=r["Nome de guerra"], posto=r["Posto/Grad."] or "",
-                                      nip=r["NIP"] or "", om=r["OM"] or "")
+                                      nip=r["NIP"] or "", om=r["OM"] or "", email=r["E-mail"] or "",
+                                      ramal=r["Ramal"] or "", celular=r["Celular"] or "")
                 for _, r in ed.sort_values("Antiguidade").iterrows():
                     if ctx.militar(r["id"]).antiguidade != int(r["Antiguidade"]):
                         cd.editar_militar(ctx, r["id"], antiguidade=int(r["Antiguidade"]))
@@ -537,9 +622,11 @@ if PODE_GERIR:
             nm, pt, nip, om_, ant = (a1.text_input("Nome de guerra"), a2.text_input("Posto/Grad."),
                                      a3.text_input("NIP"), a4.text_input("OM"),
                                      a5.number_input("Antiguidade (0 = mais moderno)", 0, 999, 0))
+            a6, a7, a8 = st.columns(3)
+            em_m, ra_m, ce_m = a6.text_input("E-mail "), a7.text_input("Ramal "), a8.text_input("Celular ")
             if st.form_submit_button("Adicionar"):
                 try:
-                    cd.adicionar_militar(ctx, nm, pt, nip, om_, ant or None); st.rerun()
+                    cd.adicionar_militar(ctx, nm, pt, nip, om_, ant or None, em_m, ra_m, ce_m); st.rerun()
                 except ValueError as ex:
                     st.error(str(ex))
         st.subheader("Vincular à escala")
@@ -591,25 +678,88 @@ if PODE_GERIR:
                 st.rerun()
 
 
+if aba_vinc is not None:
+    with aba_vinc:
+        if PODE_GERIR:
+            st.subheader("Pedidos de vínculo aguardando decisão")
+            st.caption("O militar criou a conta e pede para ser reconhecido como um militar de uma das suas escalas. "
+                       "Confira nome, NIP e contato antes de aprovar. Para um militar poder pedir, compartilhe a escala "
+                       "com a conta dele (aba Escalas → Compartilhar acesso).")
+            fila = vc.pendentes_para(ctx, uid)
+            if not fila:
+                st.caption("Nenhum pedido pendente.")
+            for v in fila:
+                ux, mx_ = ctx.usuario(v.usuario_id), ctx.militar(v.militar_id)
+                with st.expander(f"{ux.nome} (@{ux.login}) → {mx_.posto} {mx_.nome} · {ctx.escala(v.escala_id).nome}", expanded=True):
+                    st.markdown(f"**Pedido em** {v.criado_em:%d/%m/%Y %H:%M}  \n**Militar do cadastro:** {mx_.posto} {mx_.nome} · "
+                                f"NIP {mx_.nip or '—'} (conferido na solicitação) · OM {mx_.om or '—'}  \n"
+                                f"**Contato da conta:** ✉ {ux.email} · ramal {ux.ramal} · 📱 {ux.celular}")
+                    k1, k2 = st.columns(2)
+                    if k1.button("Aprovar vínculo", key=f"va_{v.id}"):
+                        _agir(lambda: vc.aprovar(ctx, uid, v.id))
+                    mrj = k2.text_input("Motivo da rejeição", key=f"vrm_{v.id}")
+                    if k2.button("Rejeitar", key=f"vr_{v.id}"):
+                        _agir(lambda: vc.rejeitar(ctx, uid, v.id, mrj))
+            st.divider()
+            st.caption("Histórico: " + ("; ".join(
+                f"{ctx.usuario(v.usuario_id).nome}→{ctx.militar(v.militar_id).nome}: {v.status}"
+                for v in ctx.vinculos if v.status != "pendente") or "—"))
+        if not user.militar_id:
+            st.subheader("Vincular a minha conta ao meu nome na escala")
+            meu = vc.pendente_do_usuario(ctx, uid)
+            rejeitados = [v for v in ctx.vinculos if v.usuario_id == uid and v.status == "rejeitado"]
+            for v in rejeitados[-1:]:
+                st.error(f"Seu último pedido foi rejeitado: {v.motivo_rejeicao}")
+            if meu:
+                st.info(f"Pedido enviado em {meu.criado_em:%d/%m/%Y %H:%M}: {ctx.militar(meu.militar_id).nome} em "
+                        f"{ctx.escala(meu.escala_id).nome}. Aguardando o detalhista.")
+                if st.button("Cancelar pedido de vínculo"):
+                    _agir(lambda: vc.cancelar(ctx, uid, meu.id))
+            elif not visiveis:
+                st.info("Você ainda não recebeu acesso a nenhuma escala. Peça ao detalhista para compartilhar a escala "
+                        "com o seu login (@" + user.login + ").")
+            else:
+                with st.form("vinc_pedido", clear_on_submit=True):
+                    ve = st.selectbox("Escala", [e.id for e in visiveis], format_func=lambda i: ctx.escala(i).nome)
+                    livres = vc.militares_livres(ctx, ve)
+                    vm = st.selectbox("Quem é você nesta escala?", livres,
+                                      format_func=lambda i: f"{ctx.militar(i).posto} {ctx.militar(i).nome}") if livres else None
+                    v1, v2, v3 = st.columns(3)
+                    vnip = v1.text_input("Seu NIP")
+                    vpin = v2.text_input("Crie um PIN (4 a 6 dígitos)", type="password")
+                    vpin2 = v3.text_input("Repita o PIN", type="password")
+                    if st.form_submit_button("Pedir vínculo") and vm:
+                        if vpin != vpin2:
+                            st.error("Os PINs não são iguais.")
+                        else:
+                            _agir(lambda: vc.solicitar(ctx, uid, ve, vm, vnip, vpin))
+                st.caption("O PIN será usado para assinar as papeletas de troca. O vínculo só vale depois que o detalhista aprovar.")
+
 if user.admin:
     with aba_usr:
         st.subheader("Contas de acesso")
         st.caption("Detalhista: cria e edita escalas. Militar: vê a própria escala e pede troca para si.")
         tab = [{"Login": u.login, "Nome": u.nome, "Perfil": u.perfil, "Admin": "sim" if u.admin else "",
-                "Militar": nomes_m.get(u.militar_id, ""), "Ativo": "sim" if u.ativo else "não",
+                "Militar": nomes_m.get(u.militar_id, ""), "E-mail": u.email, "Ramal": u.ramal, "Celular": u.celular,
+                "Ativo": "sim" if u.ativo else "não",
                 "Bloqueada até": f"{u.bloqueado_ate:%d/%m %H:%M}" if u.bloqueado_ate else ""} for u in ctx.usuarios]
         st.dataframe(pd.DataFrame(tab), hide_index=True, width="stretch")
+        ctx.cadastro_aberto = st.checkbox("Permitir que militares criem a própria conta (tela de login)", ctx.cadastro_aberto)
         with st.form("novo_usuario", clear_on_submit=True):
             n1, n2, n3 = st.columns(3)
             lg2, nm2, sn2 = n1.text_input("Login"), n2.text_input("Nome"), n3.text_input("Senha provisória (8+)", type="password")
+            n7, n8, n9 = st.columns(3)
+            em2, ra2, ce2 = n7.text_input("E-mail  "), n8.text_input("Ramal  "), n9.text_input("Celular  ")
             n4, n5, n6 = st.columns(3)
             perfil2 = n4.selectbox("Perfil", list(auth.PERFIS))
             sem_conta = [m.id for m in ctx.militares if not any(u.militar_id == m.id for u in ctx.usuarios)]
-            mil2 = n5.selectbox("Militar (perfil militar)", [""] + sem_conta, format_func=lambda i: nomes_m.get(i, "—"))
+            mil2 = n5.selectbox("Militar (perfil militar; vazio = a pessoa se vincula depois)", [""] + sem_conta,
+                                format_func=lambda i: nomes_m.get(i, "—"))
             adm2 = n6.checkbox("Administrador")
             if st.form_submit_button("Criar conta"):
                 try:
-                    auth.criar_usuario(ctx, uid, lg2, nm2, sn2, perfil=perfil2, militar_id=mil2, admin=adm2)
+                    auth.criar_usuario(ctx, uid, lg2, nm2, sn2, perfil=perfil2, militar_id=mil2, admin=adm2,
+                                       email=em2, ramal=ra2, celular=ce2, exigir_contato=True)
                     st.rerun()
                 except (ValueError, PermissionError) as ex:
                     st.error(str(ex))

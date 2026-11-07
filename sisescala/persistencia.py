@@ -20,8 +20,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
 
-from .modelos import (Assinatura, Contexto, DiaEspecial, Escala, Evento, Guarnecimento, Impedimento, Militar,
-                      Ocorrencia, Papeleta, PeriodoRoxa, Pertinencia, Quarto, Troca, Usuario)
+from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
+                      Impedimento, Militar, Ocorrencia, Papeleta, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      Usuario, Vinculo)
 
 
 class ConflitoDeVersao(Exception):
@@ -59,9 +60,11 @@ def _r(txt: str, t: str):
 # nome da aba -> [(campo, tipo)]   tipos: s texto, i inteiro, b booleano, d data, dt data-hora
 SCHEMA: dict[str, list[tuple[str, str]]] = {
     "Config": [("chave", "s"), ("valor", "s")],
-    "Militares": [("id", "s"), ("nome", "s"), ("posto", "s"), ("antiguidade", "i"), ("nip", "s"), ("om", "s")],
+    "Militares": [("id", "s"), ("nome", "s"), ("posto", "s"), ("antiguidade", "i"), ("nip", "s"), ("om", "s"),
+                  ("email", "s"), ("ramal", "s"), ("celular", "s")],
     "Usuarios": [("id", "s"), ("nome", "s"), ("login", "s"), ("senha_hash", "s"), ("militar_id", "s"),
-                 ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt")],
+                 ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
+                 ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s")],
     "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
@@ -85,6 +88,11 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                   ("criado_por", "s"), ("motivo", "s"), ("status", "s"), ("decidido_por", "s"),
                   ("decidido_em", "dt"), ("motivo_rejeicao", "s"), ("confirmada_por", "s"),
                   ("confirmada_em", "dt")],
+    "Vinculos": [("id", "s"), ("usuario_id", "s"), ("militar_id", "s"), ("escala_id", "s"), ("criado_em", "dt"),
+                 ("pin_hash", "s"), ("status", "s"), ("decidido_por", "s"), ("decidido_em", "dt"),
+                 ("motivo_rejeicao", "s")],
+    "Disponibilidades": [("escala_id", "s"), ("militar_id", "s"), ("data", "d"), ("criado_em", "dt"),
+                         ("criado_por", "s")],
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
                             ("metodo", "s"), ("referencia", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
@@ -110,7 +118,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         T[aba].append(_linha(obj, SCHEMA[aba]))
     for chave, valor in (("data_base", ctx.data_base.isoformat()), ("uf", ctx.uf),
                          ("janela_devolucao_dias", str(ctx.janela_devolucao_dias)),
-                         ("janela_troca_dias", str(ctx.janela_troca_dias))):
+                         ("janela_troca_dias", str(ctx.janela_troca_dias)),
+                         ("cadastro_aberto", "1" if ctx.cadastro_aberto else "0")):
         T["Config"].append([chave, valor])
     for m in ctx.militares:
         add("Militares", m)
@@ -135,6 +144,10 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
             add(aba, o)
     for ev in ctx.eventos:
         add("Eventos", {**{c: getattr(ev, c) for c, _ in SCHEMA["Eventos"]}, "vagas": "" if ev.vagas is None else ev.vagas})
+    for v in ctx.vinculos:
+        add("Vinculos", v)
+    for x in ctx.disponibilidades:
+        add("Disponibilidades", x)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -159,7 +172,8 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         data_base=date.fromisoformat(cfg["data_base"]) if cfg.get("data_base") else date.today(),
         uf=cfg.get("uf") or "RJ",
         janela_devolucao_dias=int(cfg.get("janela_devolucao_dias") or 30),
-        janela_troca_dias=int(cfg.get("janela_troca_dias") or 15))
+        janela_troca_dias=int(cfg.get("janela_troca_dias") or 15),
+        cadastro_aberto=cfg.get("cadastro_aberto", "1") != "0")
     ctx.usuarios = [Usuario(**d) for d in _linhas_de(T, "Usuarios")]
     escalas = {}
     for d in _linhas_de(T, "Escalas"):
@@ -187,6 +201,8 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         r = list(r) + [""] * (6 - len(r))
         ctx.eventos.append(Evento(r[0], date.fromisoformat(r[1]), r[2], r[3], r[4],
                                   int(r[5]) if str(r[5]).strip() else None))
+    ctx.vinculos = [Vinculo(**d) for d in _linhas_de(T, "Vinculos")]
+    ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
         p = Papeleta(**d)

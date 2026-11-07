@@ -219,7 +219,7 @@ def cancelar(ctx: Contexto, usuario_id: str, pid: str, motivo: str = "", agora: 
 
 # ------------------------------------------------------------------ assinaturas
 def assinar(ctx: Contexto, pid: str, usuario_id: str, senha: str, agora: datetime | None = None) -> Assinatura:
-    """O militar assina logado na própria conta, reconfirmando a senha."""
+    """O militar assina logado na própria conta, confirmando com o PIN (ou a senha, se ainda não tiver PIN)."""
     agora = agora or datetime.now()
     p = _obter(ctx, pid)
     if p.status not in ABERTAS:
@@ -229,8 +229,8 @@ def assinar(ctx: Contexto, pid: str, usuario_id: str, senha: str, agora: datetim
         raise PermissaoNegada("somente os dois militares da troca assinam, com a própria conta")
     if mid in p.assinaturas:
         raise ValueError("já assinou")
-    if not auth.confirmar_senha(ctx, usuario_id, senha):
-        raise PermissaoNegada("senha incorreta")
+    if not auth.confirmar_assinatura(ctx, usuario_id, senha, agora):
+        raise PermissaoNegada("PIN/senha incorreto")
     a = Assinatura(mid, agora, hash_documento(ctx, p), "conta")
     p.assinaturas[mid] = a
     _log(p, usuario_id, f"{ctx.militar(mid).nome} assinou pelo sistema", agora)

@@ -5,6 +5,7 @@ import re
 import unicodedata
 from datetime import date
 
+from .contatos import normalizar_contato
 from .modelos import Contexto, Militar, Pertinencia
 from .permissoes import PermissaoNegada, pode_editar
 
@@ -29,7 +30,7 @@ def renumerar(ctx: Contexto) -> None:
 
 
 def adicionar_militar(ctx: Contexto, nome: str, posto: str = "", nip: str = "", om: str = "",
-                      antiguidade: int | None = None) -> Militar:
+                      antiguidade: int | None = None, email: str = "", ramal: str = "", celular: str = "") -> Militar:
     if not nome.strip():
         raise ValueError("informe o nome de guerra")
     if nip and any(m.nip == nip for m in ctx.militares):
@@ -39,7 +40,10 @@ def adicionar_militar(ctx: Contexto, nome: str, posto: str = "", nip: str = "", 
     for m in ctx.militares:
         if m.antiguidade >= pos:
             m.antiguidade += 1
-    novo = Militar(novo_id(ctx, nip or nome), nome.strip(), posto.strip(), pos, nip.strip(), om.strip())
+    if email or ramal or celular:
+        email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=False)
+    novo = Militar(novo_id(ctx, nip or nome), nome.strip(), posto.strip(), pos, nip.strip(), om.strip(),
+                   email, ramal, celular)
     ctx.militares.append(novo)
     renumerar(ctx)
     return novo
@@ -52,6 +56,10 @@ def editar_militar(ctx: Contexto, mid: str, **campos) -> Militar:
     for k in ("nome", "posto", "nip", "om"):
         if k in campos:
             setattr(m, k, str(campos[k]).strip())
+    if any(k in campos for k in ("email", "ramal", "celular")):
+        m.email, m.ramal, m.celular = normalizar_contato(
+            campos.get("email", m.email), campos.get("ramal", m.ramal), campos.get("celular", m.celular),
+            obrigatorio=False)
     if campos.get("antiguidade"):
         destino = max(1, min(int(campos["antiguidade"]), len(ctx.militares)))
         outros = sorted((o for o in ctx.militares if o.id != mid), key=lambda o: o.antiguidade)

@@ -87,7 +87,8 @@ def _cabecalho_dias(ctx: Contexto, dias: list[date]) -> str:
     return cab
 
 
-def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str) -> str:
+def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, abertas=None) -> str:
+    abertas = abertas or {}
     esc = ctx.escala(escala_id)
     ids = {p.militar_id for p in esc.membros}
     refs = [ctx.escala(r) for r in esc.referencias if any(e.id == r for e in ctx.escalas)]
@@ -102,6 +103,8 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str)
             for a in (dia.alocacoes if dia else []):
                 if a.militar_id == m.id and a.origem != "falta":
                     tags.append(_tag(a.sigla, horarios_curtos(a.horarios)))
+                    if (d, m.id) in abertas and a.origem == "normal":
+                        tags.append('<span class="pisca" title="Aberto a troca de serviço"></span>')
                     if a.obs and a.origem != "normal":
                         obs.append((d, f"{m.nome}: {a.obs}"))
                 elif a.militar_id == m.id:
@@ -133,6 +136,8 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str)
     if sigla != SVC:
         leg = _tag(sigla) + f" {escape(CATEGORIAS.get(esc.categoria, ('', ''))[0] or 'Escalação')} " + leg
     obs_html = "".join(f"<li><b>{d:%d/%m}</b> – {escape(t)}</li>" for d, t in sorted(set(obs)))
+    if abertas:
+        leg += ' <span class="pisca"></span> aberto a troca de serviço'
     return f"""<style>
 .card{{border:1px solid #d0d7de;border-left:6px solid #1f6feb;border-radius:8px;padding:10px 14px;margin-bottom:10px;font:13px sans-serif;background:#f6f8fa}}
 .card h3{{margin:0 0 6px;font-size:18px}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
@@ -143,6 +148,8 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str)
 .prev td.para{{color:#8b949e;font-style:italic}}
 .t{{display:inline-block;border-radius:4px;padding:1px 5px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
 .t.ref{{opacity:.55;outline:1px dashed #57606a}}
+.pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2da44e;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
+@keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(45,164,78,.7)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(45,164,78,0)}}}}
 </style>
 <div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>
 <div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias)}</tr>{linhas}
