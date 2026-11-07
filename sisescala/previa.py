@@ -10,14 +10,14 @@ from .modelos import (CATEGORIAS, CURSO, DBQ, DISP, DTQ, FERIAS, SVC, TIPOS_IMPE
 from .motor import Resultado, _folgas, sigla_base
 
 CORES = {  # sigla base -> (fundo, texto)
-    "SVÇ": ("#1f6feb", "#fff"), "RT": ("#8b949e", "#fff"),
-    "PAL": ("#0a7d8c", "#fff"), "CUR": ("#0550ae", "#fff"), "VIS": ("#7d4e00", "#fff"),
-    "CER": ("#953800", "#fff"), "APO": ("#116329", "#fff"), "OUT": ("#57606a", "#fff"),
-    FERIAS: ("#2da44e", "#fff"), DISP: ("#0e8a8a", "#fff"), DBQ: ("#cf222e", "#fff"),
-    CURSO: ("#0969da", "#fff"),
-    DTQ: ("#6639ba", "#fff"),
+    "SVÇ": ("#4B6A2B", "#fff"), "RT": ("#6B7360", "#fff"),
+    "PAL": ("#2F6F8F", "#fff"), "CUR": ("#4F7387", "#fff"), "VIS": ("#7D5B2C", "#fff"),
+    "CER": ("#8A4B2A", "#fff"), "APO": ("#3B7A46", "#fff"), "OUT": ("#5A5F4F", "#fff"),
+    FERIAS: ("#2F7D4F", "#fff"), DISP: ("#3F7F78", "#fff"), DBQ: ("#A8452F", "#fff"),
+    CURSO: ("#4F7387", "#fff"),
+    DTQ: ("#7A5C86", "#fff"),
 }
-COR_TF, COR_T = ("#d29922", "#000"), ("#8957e5", "#fff")
+COR_TF, COR_T = ("#C9992F", "#1B1405"), ("#8B6B3F", "#fff")
 
 LEGENDA_FIXA = [
     ("SVÇ", "Serviço"), ("SVÇ (TF)", "Serviço por troca forçada"), ("SVÇ (T)", "Serviço por troca consensual"),
@@ -152,27 +152,27 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 body,.prev,.card{{font-family:'Inter','Segoe UI',system-ui,sans-serif}}
-body{{font-size:12.5px;color:#C7D2E5;margin:0;background:transparent}} p,li{{font-size:12.5px;line-height:1.9}}
-h4{{font-size:13px;margin:14px 0 4px;color:#EAF0FA}} ul{{margin:4px 0 0 18px;padding:0}} b{{color:#EAF0FA}}
-.card{{border:1px solid #223049;border-left:6px solid #3B82F6;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;background:#111A2E}}
-.card h3{{margin:0 0 6px;font-size:18px;color:#EAF0FA}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
-.k span{{display:block;color:#8696B3;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
-.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #223049;border-radius:12px;overflow:hidden;background:#0E1629}}
-.prev th,.prev td{{border-bottom:1px solid #1A2740;border-right:1px solid #1A2740;padding:5px 6px;text-align:center;white-space:nowrap}}
-.prev th{{font-weight:700;color:#C7D2E5;background:#16213A}} .prev th.util{{background:#16213A}}
-.prev th.folga{{background:rgba(239,68,68,.20);color:#FCA5A5}} .prev th.roxa{{background:rgba(139,92,246,.24);color:#DDD6FE}}
-.prev th.nome{{text-align:left;background:#111A2E;position:sticky;left:0;color:#EAF0FA}}
-.prev td.para{{color:#8696B3;font-style:italic}}
-.prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(59,130,246,.12)}}
-.prev td.sel{{outline:2px solid #60A5FA;outline-offset:-2px;background:rgba(59,130,246,.22)}}
+body{{font-size:12.5px;color:#D3D0BC;margin:0;background:transparent}} p,li{{font-size:12.5px;line-height:1.9}}
+h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;padding:0}} b{{color:#EFEBDD}}
+.card{{border:1px solid #323D24;border-left:6px solid #7FA24A;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;background:#192012}}
+.card h3{{margin:0 0 6px;font-size:18px;color:#EFEBDD}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
+.k span{{display:block;color:#9AA183;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
+.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #323D24;border-radius:12px;overflow:hidden;background:#141A0E}}
+.prev th,.prev td{{border-bottom:1px solid #2A3420;border-right:1px solid #2A3420;padding:5px 6px;text-align:center;white-space:nowrap}}
+.prev th{{font-weight:700;color:#D3D0BC;background:#1F2817}} .prev th.util{{background:#1F2817}}
+.prev th.folga{{background:rgba(239,68,68,.20);color:#F0B09A}} .prev th.roxa{{background:rgba(160,130,70,.28);color:#E3D3A8}}
+.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD}}
+.prev td.para{{color:#9AA183;font-style:italic}}
+.prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(127,162,74,.14)}}
+.prev td.sel{{outline:2px solid #A3C265;outline-offset:-2px;background:rgba(127,162,74,.26)}}
 .t{{display:inline-block;border-radius:7px;padding:2px 7px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
-.t.ref{{opacity:.6;outline:1px dashed #8696B3}}
-.pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#22C55E;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
-@keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(34,197,94,0)}}}}
+.t.ref{{opacity:.6;outline:1px dashed #9AA183}}
+.pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#B6F34A;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
+@keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
 <div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias)}</tr>{linhas}
-<tr><th colspan="{len(dias) + 1}" style="background:#16213A;color:#8696B3;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
+<tr><th colspan="{len(dias) + 1}" style="background:#1F2817;color:#9AA183;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
 <tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
 <h4>Observações</h4><ul>{obs_html or '<li>Sem trocas ou ocorrências no período.</li>'}</ul>"""

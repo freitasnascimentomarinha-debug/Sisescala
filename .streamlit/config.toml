@@ -1,20 +1,23 @@
 [theme]
 base = "dark"
-primaryColor = "#3B82F6"
-backgroundColor = "#0A0F1E"
-secondaryBackgroundColor = "#16213A"
-textColor = "#EAF0FA"
+primaryColor = "#7FA24A"
+backgroundColor = "#10150B"
+secondaryBackgroundColor = "#1F2817"
+textColor = "#EFEBDD"
 font = "sans serif"
 baseRadius = "0.75rem"
-borderColor = "#223049"
+borderColor = "#323D24"
 showWidgetBorder = true
 
 [theme.sidebar]
-backgroundColor = "#070B16"
-secondaryBackgroundColor = "#101A30"
-textColor = "#E3EBF7"
-primaryColor = "#60A5FA"
-borderColor = "#16213A"
+backgroundColor = "#0B0F07"
+secondaryBackgroundColor = "#161D0F"
+textColor = "#E6E2D0"
+primaryColor = "#A3C265"
+borderColor = "#1F2817"
+
+[server]
+enableStaticServing = true     # serve static/camuflado.svg (textura da farda)
 
 [client]
 toolbarMode = "minimal"

@@ -10,7 +10,7 @@ streamlit run app.py
 
 ## Documentos e visual
 - Todo documento (detalhe de serviço, papeleta, regras) abre com **MARINHA DO BRASIL** e, logo abaixo, a **OM que gerencia a escala** (campo em Gestão → Escalas; pode ser ajustada na hora no detalhe). Dispensados aparecem como `[Disp]` com a justificativa nas observações.
-- Tema **escuro** (azul-marinho), definido em `.streamlit/config.toml` e `assets/estilo.css`.
+- Tema **escuro camuflado**, com as cores da farda (verdes de oliva e floresta, areia e marrom) e o padrão digital pixelado como textura no menu, no login e numa faixa no topo. Definido em `.streamlit/config.toml`, `assets/estilo.css` e `static/camuflado.svg` (gerado por `scripts/gerar_camuflado.py`; o servidor precisa de `enableStaticServing`, já ligado no config).
 - A leitura da planilha é **pelo nome das colunas**: versões novas podem acrescentar colunas sem quebrar dados já gravados.
 
 ## Organização do app (páginas, por etapa do trabalho)

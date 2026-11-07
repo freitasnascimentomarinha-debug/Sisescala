@@ -35,8 +35,8 @@ _ICONES = {  # traçados no estilo Lucide (ISC), 24x24, stroke currentColor
 }
 
 
-COR_TOM = {"blue": "#60A5FA", "green": "#4ADE80", "amber": "#FBBF24", "red": "#F87171", "violet": "#A78BFA",
-           "gray": "#A9B6CD", "white": "#FFFFFF", "muted": "#64748B"}
+COR_TOM = {"blue": "#A3C265", "green": "#9BD06A", "amber": "#E0B85C", "red": "#E58A6B", "violet": "#C9A27E",
+           "gray": "#B3B79C", "white": "#FFFFFF", "muted": "#6F7757"}
 
 
 def icone(nome: str, tam: int | None = None, cor: str = "white") -> str:
