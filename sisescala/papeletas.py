@@ -9,18 +9,23 @@ Fluxo
  4. O detalhista aguarda o documento assinado pelas duas partes e então confirma.
     Se não for assinado, pode cancelar e a troca é desfeita.
 
-Assinatura: eletrônica simples (NIP + PIN do militar, com data/hora e hash do documento) ou
-registro de documento assinado fora do sistema (gov.br/ICP/papel). Não substitui certificado ICP-Brasil.
+Quem pode pedir: detalhista/editores (em nome de qualquer militar da escala) e o próprio militar
+(mesmo com acesso só de leitura), sempre para si. Um pedido ativo (pendente ou aprovado) trava os dois
+militares: não podem entrar em outro pedido. As partes cancelam enquanto não aprovado; o detalhista
+cancela também depois de aprovado.
+
+Assinatura: o militar assina logado na própria conta, reconfirmando a senha (com data/hora e hash do
+documento), ou o detalhista registra documento assinado fora do sistema (gov.br/ICP/papel).
+Não substitui certificado ICP-Brasil.
 """
 from __future__ import annotations
 
 import hashlib
 from datetime import date, datetime, time, timedelta
 
-import bcrypt
 
-from .calendario import dia_util  # noqa: F401  (reservado para regras futuras)
-from .modelos import Assinatura, Contexto, Escala, Papeleta, Troca
+from . import auth
+from .modelos import Assinatura, Contexto, Escala, Militar, Papeleta, Troca
 from .motor import Resultado, _achar, _descansado, _impedido, gerar
 from .permissoes import PermissaoNegada, pode_editar, pode_ver
 
@@ -89,22 +94,45 @@ def hash_documento(ctx: Contexto, p: Papeleta) -> str:
 
 
 # ------------------------------------------------------------------ ciclo de vida
+def militar_do_usuario(ctx: Contexto, usuario_id: str) -> str:
+    u = ctx.usuario(usuario_id)
+    return u.militar_id if u else ""
+
+
+def militares_em_pedido_ativo(ctx: Contexto) -> dict[str, Papeleta]:
+    """Quem já está numa papeleta ativa (pendente ou aprovada) -> a papeleta. Não pode entrar em outra."""
+    ativos: dict[str, Papeleta] = {}
+    for q in ctx.papeletas:
+        if q.status in ABERTAS:
+            ativos.setdefault(q.solicitante_id, q)
+            ativos.setdefault(q.outro_id, q)
+    return ativos
+
+
+def pode_pedir_por(ctx: Contexto, usuario_id: str, escala_id: str, solicitante_id: str) -> bool:
+    """Editores pedem por qualquer militar da escala; o militar pede só para si (mesmo em leitura)."""
+    esc = ctx.escala(escala_id)
+    if pode_editar(ctx, usuario_id, esc):
+        return True
+    return pode_ver(ctx, usuario_id, esc) and militar_do_usuario(ctx, usuario_id) == solicitante_id
+
+
 def criar(ctx: Contexto, usuario_id: str, escala_id: str, solicitante_id: str, data_solicitante: date,
           outro_id: str, data_outro: date, motivo: str = "", agora: datetime | None = None) -> Papeleta:
     agora = agora or datetime.now()
     esc = ctx.escala(escala_id)
-    if not pode_ver(ctx, usuario_id, esc):
-        raise PermissaoNegada("sem acesso a esta escala")
+    if not pode_pedir_por(ctx, usuario_id, escala_id, solicitante_id):
+        raise PermissaoNegada("você só pode pedir troca para o seu próprio serviço, em uma escala em que está")
     erros, _, _ = validar_troca(ctx, esc, solicitante_id, data_solicitante, outro_id, data_outro)
     if not erros and not antecedencia_ok(esc, data_solicitante, data_outro, agora):
         erros.append(f"a papeleta precisa de pelo menos {esc.antecedencia_horas}h de antecedência "
                      f"do primeiro serviço")
-    for q in ctx.papeletas:
-        if q.escala_id == esc.id and q.status in ABERTAS and (
-                {(q.solicitante_id, q.data_solicitante), (q.outro_id, q.data_outro)}
-                & {(solicitante_id, data_solicitante), (outro_id, data_outro)}):
-            erros.append(f"já existe a papeleta {q.numero:04d} em andamento para um desses serviços")
-            break
+    for m in (solicitante_id, outro_id):
+        q = militares_em_pedido_ativo(ctx).get(m)
+        if q:
+            erros.append(f"{ctx.militar(m).nome} já está na papeleta {q.numero:04d} em andamento")
+    if not motivo.strip():
+        erros.append("informe o motivo da troca")
     if erros:
         raise ValueError("; ".join(erros))
     numero = max((q.numero for q in ctx.papeletas), default=0) + 1
@@ -162,17 +190,24 @@ def rejeitar(ctx: Contexto, usuario_id: str, pid: str, motivo: str, agora: datet
     _log(p, usuario_id, f"Rejeitada: {motivo.strip()}", agora)
 
 
+def e_parte(ctx: Contexto, usuario_id: str, p: Papeleta) -> bool:
+    return militar_do_usuario(ctx, usuario_id) in (p.solicitante_id, p.outro_id)
+
+
 def cancelar(ctx: Contexto, usuario_id: str, pid: str, motivo: str = "", agora: datetime | None = None) -> None:
-    """Pendente: quem criou ou um editor. Aprovada: só editor, e a troca é desfeita."""
+    """Pendente: quem criou, qualquer das partes ou um editor. Aprovada/confirmada: só o detalhista
+    (editor), com motivo na confirmada, e a troca é desfeita."""
     agora = agora or datetime.now()
     p = _obter(ctx, pid)
     esc = ctx.escala(p.escala_id)
     desfeita = False
     if p.status == "pendente":
-        if usuario_id != p.criado_por and not pode_editar(ctx, usuario_id, esc):
+        if not (usuario_id == p.criado_por or e_parte(ctx, usuario_id, p) or pode_editar(ctx, usuario_id, esc)):
             raise PermissaoNegada("sem permissão para cancelar")
-    elif p.status == "aprovada":
+    elif p.status in ("aprovada", "confirmada"):
         _exigir_editor(ctx, usuario_id, p)
+        if p.status == "confirmada" and not motivo.strip():
+            raise ValueError("informe o motivo para cancelar uma papeleta já confirmada")
         ctx.trocas = [t for t in ctx.trocas if t.papeleta_id != p.id]
         desfeita = True
     else:
@@ -183,36 +218,22 @@ def cancelar(ctx: Contexto, usuario_id: str, pid: str, motivo: str = "", agora: 
 
 
 # ------------------------------------------------------------------ assinaturas
-def definir_pin(ctx: Contexto, militar_id: str, nip: str, pin: str, pin_atual: str | None = None) -> None:
-    m = ctx.militar(militar_id)
-    if not m.nip:
-        raise ValueError("militar sem NIP cadastrado: cadastre o NIP antes de assinar")
-    if nip.strip() != m.nip:
-        raise ValueError("NIP não confere")
-    if len(pin) < 4 or not pin.isdigit():
-        raise ValueError("o PIN deve ter pelo menos 4 dígitos numéricos")
-    if m.pin_hash and not (pin_atual and bcrypt.checkpw(pin_atual.encode(), m.pin_hash.encode())):
-        raise ValueError("PIN atual incorreto")
-    m.pin_hash = bcrypt.hashpw(pin.encode(), bcrypt.gensalt(rounds=10)).decode()
-
-
-def assinar(ctx: Contexto, pid: str, militar_id: str, nip: str, pin: str, agora: datetime | None = None) -> Assinatura:
+def assinar(ctx: Contexto, pid: str, usuario_id: str, senha: str, agora: datetime | None = None) -> Assinatura:
+    """O militar assina logado na própria conta, reconfirmando a senha."""
     agora = agora or datetime.now()
     p = _obter(ctx, pid)
     if p.status not in ABERTAS:
         raise ValueError(f"papeleta {p.status}: não aceita assinaturas")
-    if militar_id not in (p.solicitante_id, p.outro_id):
-        raise PermissaoNegada("somente os militares da troca assinam")
-    if militar_id in p.assinaturas:
+    mid = militar_do_usuario(ctx, usuario_id)
+    if mid not in (p.solicitante_id, p.outro_id):
+        raise PermissaoNegada("somente os dois militares da troca assinam, com a própria conta")
+    if mid in p.assinaturas:
         raise ValueError("já assinou")
-    m = ctx.militar(militar_id)
-    if not m.pin_hash:
-        raise ValueError("defina seu PIN antes de assinar")
-    if nip.strip() != m.nip or not bcrypt.checkpw(pin.encode(), m.pin_hash.encode()):
-        raise PermissaoNegada("NIP ou PIN incorretos")
-    a = Assinatura(militar_id, agora, hash_documento(ctx, p), "pin")
-    p.assinaturas[militar_id] = a
-    _log(p, m.nome, "Assinou eletronicamente", agora)
+    if not auth.confirmar_senha(ctx, usuario_id, senha):
+        raise PermissaoNegada("senha incorreta")
+    a = Assinatura(mid, agora, hash_documento(ctx, p), "conta")
+    p.assinaturas[mid] = a
+    _log(p, usuario_id, f"{ctx.militar(mid).nome} assinou pelo sistema", agora)
     return a
 
 
@@ -230,6 +251,29 @@ def registrar_assinatura_externa(ctx: Contexto, usuario_id: str, pid: str, milit
         raise ValueError("informe o link ou número do documento assinado")
     p.assinaturas[militar_id] = Assinatura(militar_id, agora, hash_documento(ctx, p), "externo", referencia.strip())
     _log(p, usuario_id, f"Registrou assinatura externa de {ctx.militar(militar_id).nome}", agora)
+
+
+def situacao_partes(ctx: Contexto, p: Papeleta) -> list[dict]:
+    """Para o detalhista: cada parte tem conta no sistema? assinou? como?"""
+    out = []
+    for mid in (p.solicitante_id, p.outro_id):
+        m: Militar = ctx.militar(mid)
+        conta = next((u for u in ctx.usuarios if u.militar_id == mid and u.ativo), None)
+        a = p.assinaturas.get(mid)
+        out.append({"militar": m, "papel": "solicitante" if mid == p.solicitante_id else "troca com",
+                    "tem_conta": conta is not None, "login": conta.login if conta else "",
+                    "assinou": a is not None, "metodo": a.metodo if a else "", "em": a.em if a else None,
+                    "referencia": a.referencia if a else ""})
+    return out
+
+
+def papeletas_visiveis(ctx: Contexto, usuario_id: str, escala_id: str) -> list[Papeleta]:
+    """Editores veem todas da escala; os demais, só as que os envolvem (parte ou quem criou)."""
+    esc = ctx.escala(escala_id)
+    editor = pode_editar(ctx, usuario_id, esc)
+    return sorted((p for p in ctx.papeletas if p.escala_id == escala_id
+                   and (editor or e_parte(ctx, usuario_id, p) or p.criado_por == usuario_id)),
+                  key=lambda p: -p.numero)
 
 
 def faltam_assinar(ctx: Contexto, p: Papeleta) -> list[str]:

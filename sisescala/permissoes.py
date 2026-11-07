@@ -14,7 +14,13 @@ class PermissaoNegada(Exception):
 def nivel(ctx: Contexto, usuario_id: str, esc: Escala) -> str | None:
     if esc.dono_id == usuario_id:
         return "dono"
-    return esc.compartilhado_com.get(usuario_id)
+    explicito = esc.compartilhado_com.get(usuario_id)
+    if explicito:
+        return explicito
+    u = ctx.usuario(usuario_id)
+    if u and u.militar_id and any(p.militar_id == u.militar_id for p in esc.membros):
+        return "leitura"   # o militar sempre enxerga (somente leitura) as escalas em que está
+    return None
 
 
 def pode_ver(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:

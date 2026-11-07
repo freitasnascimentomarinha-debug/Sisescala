@@ -102,7 +102,7 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
         a = p.assinaturas.get(mid)
         if not a:
             return "_" * 30
-        meio = "assinatura eletrônica" if a.metodo == "pin" else f"assinado externamente ({a.referencia})"
+        meio = "assinado pelo sistema (conta e senha)" if a.metodo == "conta" else f"assinado externamente ({a.referencia})"
         return f"{meio}<br/>{a.em:%d/%m/%Y %H:%M}"
     cab = [[P(carimbo(p.solicitante_id)), P(carimbo(p.outro_id)), "_" * 30],
            [P(f"{nomes_assinantes[0] or dado(x)}<br/><b>Solicitante</b>"),

@@ -41,7 +41,6 @@ class Militar:
     antiguidade: int = 0      # 1 = mais antigo
     nip: str = ""
     om: str = ""              # sigla ou código da OM
-    pin_hash: str = ""        # PIN da assinatura eletrônica (bcrypt); nunca em texto puro
 
 
 @dataclass
@@ -144,8 +143,18 @@ class Evento:
 
 @dataclass
 class Usuario:
+    """Conta de acesso. `perfil`: "detalhista" (cria/edita escalas) ou "militar" (vê a própria escala e
+    pede trocas para si). `admin` gerencia contas."""
     id: str
     nome: str
+    login: str = ""
+    senha_hash: str = ""          # bcrypt; nunca a senha
+    militar_id: str = ""          # militar a quem a conta pertence (obrigatório para perfil militar)
+    perfil: str = "detalhista"
+    admin: bool = False
+    ativo: bool = True
+    tentativas: int = 0           # falhas seguidas de login
+    bloqueado_ate: datetime | None = None
 
 
 @dataclass
@@ -203,7 +212,7 @@ class Assinatura:
     militar_id: str
     em: datetime
     hash_documento: str
-    metodo: str = "pin"           # "pin" (eletrônica simples) | "externo" (gov.br, ICP, papel)
+    metodo: str = "conta"         # "conta" (logado + senha) | "externo" (gov.br, ICP, papel)
     referencia: str = ""          # link/arquivo do documento assinado externamente
 
 
@@ -248,6 +257,9 @@ class Contexto:
     papeletas: list[Papeleta] = field(default_factory=list)
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
+
+    def usuario(self, uid: str) -> Usuario | None:
+        return next((u for u in self.usuarios if u.id == uid), None)
 
     def militar(self, mid: str) -> Militar:
         return next(m for m in self.militares if m.id == mid)

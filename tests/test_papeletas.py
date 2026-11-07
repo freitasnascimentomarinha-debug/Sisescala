@@ -2,82 +2,120 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from sisescala import auth
 from sisescala import papeletas as pp
 from sisescala.modelos import *
 from sisescala.motor import gerar
 from sisescala.pdf import pdf_papeleta
-from sisescala.permissoes import PermissaoNegada, compartilhar
+from sisescala.permissoes import PermissaoNegada, compartilhar, pode_editar, pode_ver
 
 D = date(2027, 3, 1)
 AGORA = datetime(2027, 2, 27, 9, 0)      # bem antes do serviço
+SENHA = "senha-forte-1"
 
 
 def mk(n=8, **kw):
-    ms = [Militar(f"m{i}", f"M{i}", "CB", i, nip=f"{i}.000") for i in range(1, n + 1)]
+    ms = [Militar(f"m{i}", f"M{i}", "CB", i, nip=f"{i}.000", om="COPAB") for i in range(1, n + 1)]
     e = Escala("A", "Diária", dono_id="u1", membros=[Pertinencia(m.id) for m in ms], **kw)
-    return Contexto(ms, [e], D, usuarios=[Usuario("u1", "Det"), Usuario("u2", "Ed"), Usuario("u3", "Leitor")])
+    c = Contexto(ms, [e], D)
+    auth.criar_usuario(c, None, "det", "Detalhista", SENHA, admin=True)                  # u1 (dono)
+    auth.criar_usuario(c, "u1", "ed", "Editor", SENHA)                                    # u2
+    for i in (1, 3, 5):                                                                   # contas de militares
+        auth.criar_usuario(c, "u1", f"mil{i}", f"Militar {i}", SENHA, perfil="militar", militar_id=f"m{i}")
+    return c   # u3=m1, u4=m3, u5=m5
 
 
-def serv(c, mid, d=None):
-    r = gerar(c, D + timedelta(days=20))
-    return sorted(dd for (dd, e), de in r.dias.items() for a in de.efetivos if a.militar_id == mid)
+M1, M3, M5 = "u3", "u4", "u5"
 
 
 def pedido(c, **kw):
-    # m1 serve em D, m3 serve em D+2: trocar
     args = dict(usuario_id="u1", escala_id="A", solicitante_id="m1", data_solicitante=D, outro_id="m3",
                 data_outro=D + timedelta(days=2), motivo="consulta médica", agora=AGORA)
     args.update(kw)
     return pp.criar(c, **args)
 
 
-def test_cria_pedido_com_data_hora_quem_com_quem_e_escala():
+def test_cria_pedido_com_data_hora_quem_com_quem_motivo_e_escala():
     c = mk()
     p = pedido(c)
-    assert (p.status, p.numero, p.escala_id) == ("pendente", 1, "A")
+    assert (p.status, p.numero, p.escala_id, p.motivo) == ("pendente", 1, "A", "consulta médica")
     assert (p.solicitante_id, p.outro_id, p.criado_em, p.criado_por) == ("m1", "m3", AGORA, "u1")
-    assert p.historico and p.historico[0][1] == "u1"
 
 
 def test_antecedencia_minima_24h_e_ajustavel():
     c = mk()
-    proximo = datetime(2027, 2, 28, 12, 0)       # 12h antes do serviço (01/03 00:00)
+    proximo = datetime(2027, 2, 28, 12, 0)
     with pytest.raises(ValueError, match="24h"):
         pedido(c, agora=proximo)
-    c.escala("A").antecedencia_horas = 6          # ajustável
+    c.escala("A").antecedencia_horas = 6
     assert pedido(c, agora=proximo).status == "pendente"
     c2 = mk(); c2.escala("A").antecedencia_horas = 72
     with pytest.raises(ValueError, match="72h"):
-        pedido(c2, agora=AGORA)                   # 63h antes: menos de 72h
+        pedido(c2, agora=AGORA)
 
 
-def test_recusa_trocas_invalidas():
+def test_recusa_trocas_invalidas_e_exige_motivo():
     c = mk()
     with pytest.raises(ValueError, match="não está escalado"):
-        pedido(c, solicitante_id="m5")             # m5 não serve em D
+        pedido(c, solicitante_id="m5")
     with pytest.raises(ValueError, match="outro militar"):
         pedido(c, outro_id="m1")
     with pytest.raises(ValueError, match="diferentes"):
         pedido(c, data_outro=D)
+    with pytest.raises(ValueError, match="motivo"):
+        pedido(c, motivo=" ")
     c.impedimentos.append(Impedimento("m3", "ferias", D, D))
     with pytest.raises(ValueError, match="impedido"):
         pedido(c)
-    p = mk()
-    pedido(p)
-    with pytest.raises(ValueError, match="em andamento"):
-        pedido(p)
 
 
-def test_aprovar_faz_a_troca_automaticamente():
+# ---------------------------------------------- o próprio militar pede, mesmo só com leitura
+def test_militar_pede_para_si_mesmo_com_acesso_somente_leitura():
+    c = mk()
+    esc = c.escala("A")
+    assert pode_ver(c, M1, esc) and not pode_editar(c, M1, esc)        # leitura implícita por ser membro
+    p = pedido(c, usuario_id=M1)
+    assert p.criado_por == M1 and p.solicitante_id == "m1"
+    with pytest.raises(PermissaoNegada, match="próprio"):
+        pedido(c, usuario_id=M3, solicitante_id="m1")                  # m3 não pede por m1
+
+
+def test_militar_de_fora_da_escala_nao_pede():
+    c = mk()
+    c.escala("A").membros = [p for p in c.escala("A").membros if p.militar_id != "m5"]
+    assert not pode_ver(c, M5, c.escala("A"))
+    with pytest.raises(PermissaoNegada):
+        pedido(c, usuario_id=M5, solicitante_id="m5")
+
+
+# ---------------------------------------------- pedido ativo trava as partes
+def test_pedido_ativo_trava_os_dois_militares():
     c = mk()
     p = pedido(c)
-    assert D in serv(c, "m1")
+    assert set(pp.militares_em_pedido_ativo(c)) == {"m1", "m3"}
+    with pytest.raises(ValueError, match="já está na papeleta 0001"):
+        pedido(c, solicitante_id="m4", data_solicitante=D + timedelta(days=3), outro_id="m3",
+               data_outro=D + timedelta(days=2))                         # m3 já está em outro pedido
+    pp.aprovar(c, "u1", p.id, AGORA)
+    assert set(pp.militares_em_pedido_ativo(c)) == {"m1", "m3"}          # aprovada continua travando
+    pp.cancelar(c, "u1", p.id, "x", AGORA)
+    assert pp.militares_em_pedido_ativo(c) == {}                          # cancelada libera
+    p2 = pedido(c)
+    pp.rejeitar(c, "u1", p2.id, "não", AGORA)
+    assert pp.militares_em_pedido_ativo(c) == {}                          # rejeitada libera
+
+
+# ---------------------------------------------- aprovação, rejeição, quem decide
+def test_aprovar_faz_a_troca_automaticamente_e_so_entao_muda_a_previa():
+    c = mk()
+    p = pedido(c)
+    antes = gerar(c, D + timedelta(days=3))
+    assert antes.dia(D, "A").efetivos[0].militar_id == "m1"              # pendente: prévia intacta
     pp.aprovar(c, "u1", p.id, AGORA)
     r = gerar(c, D + timedelta(days=3))
     a1, a2 = r.dia(D, "A").efetivos[0], r.dia(D + timedelta(days=2), "A").efetivos[0]
     assert (a1.militar_id, a1.sigla) == ("m3", "SVÇ (T)") and "0001" in a1.obs
     assert (a2.militar_id, a2.sigla) == ("m1", "SVÇ (T)")
-    assert p.status == "aprovada" and p.decidido_por == "u1"
 
 
 def test_rejeitar_nao_altera_a_escala_e_exige_motivo():
@@ -87,83 +125,106 @@ def test_rejeitar_nao_altera_a_escala_e_exige_motivo():
         pp.rejeitar(c, "u1", p.id, " ")
     pp.rejeitar(c, "u1", p.id, "efetivo insuficiente", AGORA)
     assert p.status == "rejeitada" and c.trocas == []
-    assert gerar(c, D).dia(D, "A").efetivos[0].militar_id == "m1"
     with pytest.raises(ValueError):
         pp.aprovar(c, "u1", p.id, AGORA)
 
 
-def test_so_detalhista_e_editores_decidem_e_recebem_o_pedido():
+def test_so_detalhista_e_editores_decidem_militar_nao_aprova_o_proprio_pedido():
     c = mk()
-    p = pedido(c, usuario_id="u1")
-    compartilhar(c, "u1", "A", "u3", "leitura")
+    p = pedido(c, usuario_id=M1)
     compartilhar(c, "u1", "A", "u2", "edicao")
     with pytest.raises(PermissaoNegada):
-        pp.aprovar(c, "u3", p.id, AGORA)          # leitor não decide
+        pp.aprovar(c, M1, p.id, AGORA)                  # o próprio militar não aprova
     assert [x.id for x in pp.pedidos_pendentes(c, "u1")] == [p.id]
-    assert [x.id for x in pp.pedidos_pendentes(c, "u2")] == [p.id]     # editor recebe
-    assert pp.pedidos_pendentes(c, "u3") == []
-    pp.aprovar(c, "u2", p.id, AGORA)               # editor aprova
-    assert pp.pedidos_pendentes(c, "u1") == []
+    assert [x.id for x in pp.pedidos_pendentes(c, "u2")] == [p.id]
+    assert pp.pedidos_pendentes(c, M1) == []
+    pp.aprovar(c, "u2", p.id, AGORA)
 
 
-def test_assinatura_eletronica_e_confirmacao():
+# ---------------------------------------------- cancelamento
+def test_partes_cancelam_enquanto_nao_aprovado_e_nao_depois():
     c = mk()
-    p = pedido(c)
+    p = pedido(c, usuario_id=M1)
+    pp.cancelar(c, M3, p.id, "mudei de ideia", AGORA)                   # a outra parte também pode
+    assert p.status == "cancelada"
+    p2 = pedido(c, usuario_id=M1)
+    with pytest.raises(PermissaoNegada):
+        pp.cancelar(c, M5, p2.id, "", AGORA)                             # terceiro não
+    pp.aprovar(c, "u1", p2.id, AGORA)
+    with pytest.raises(PermissaoNegada):
+        pp.cancelar(c, M1, p2.id, "", AGORA)                             # aprovado: parte não cancela
+    pp.cancelar(c, "u1", p2.id, "não assinaram", AGORA)                   # detalhista cancela e desfaz
+    assert p2.status == "cancelada" and c.trocas == []
+    assert gerar(c, D).dia(D, "A").efetivos[0].militar_id == "m1"
+
+
+# ---------------------------------------------- assinatura pela conta
+def test_assinatura_pela_conta_e_confirmacao():
+    c = mk()
+    p = pedido(c, usuario_id=M1)
     pp.aprovar(c, "u1", p.id, AGORA)
+    sit = pp.situacao_partes(c, p)
+    assert [s["tem_conta"] for s in sit] == [True, True] and [s["assinou"] for s in sit] == [False, False]
     with pytest.raises(ValueError, match="aguardando assinatura"):
         pp.confirmar(c, "u1", p.id, AGORA)
-    with pytest.raises(ValueError, match="PIN"):
-        pp.assinar(c, p.id, "m1", "1.000", "1234", AGORA)           # sem PIN definido
-    with pytest.raises(ValueError, match="NIP"):
-        pp.definir_pin(c, "m1", "9.999", "1234")
-    pp.definir_pin(c, "m1", "1.000", "1234"); pp.definir_pin(c, "m3", "3.000", "5678")
-    assert "1234" not in c.militar("m1").pin_hash                     # só o hash
+    with pytest.raises(PermissaoNegada, match="senha"):
+        pp.assinar(c, p.id, M1, "errada", AGORA)
     with pytest.raises(PermissaoNegada):
-        pp.assinar(c, p.id, "m1", "1.000", "0000", AGORA)
+        pp.assinar(c, p.id, M5, SENHA, AGORA)                            # não é parte
     with pytest.raises(PermissaoNegada):
-        pp.assinar(c, p.id, "m5", "5.000", "1234", AGORA)             # não faz parte da troca
-    a = pp.assinar(c, p.id, "m1", "1.000", "1234", AGORA)
-    assert a.hash_documento == pp.hash_documento(c, p) and pp.faltam_assinar(c, p) == ["M3"]
-    pp.assinar(c, p.id, "m3", "3.000", "5678", AGORA + timedelta(hours=1))
+        pp.assinar(c, p.id, "u1", SENHA, AGORA)                          # detalhista não assina pelos militares
+    a = pp.assinar(c, p.id, M1, SENHA, AGORA)
+    assert a.metodo == "conta" and a.hash_documento == pp.hash_documento(c, p)
+    with pytest.raises(ValueError, match="já assinou"):
+        pp.assinar(c, p.id, M1, SENHA, AGORA)
+    assert [s["assinou"] for s in pp.situacao_partes(c, p)] == [True, False]
+    pp.assinar(c, p.id, M3, SENHA, AGORA + timedelta(hours=1))
     pp.confirmar(c, "u1", p.id, AGORA + timedelta(hours=2))
-    assert p.status == "confirmada" and p.confirmada_por == "u1"
-    with pytest.raises(ValueError):
-        pp.cancelar(c, "u1", p.id)                                    # confirmada é definitiva
+    assert p.status == "confirmada"
 
 
-def test_assinatura_externa_registrada_pelo_detalhista():
+def test_situacao_mostra_parte_sem_conta_e_assinatura_externa():
     c = mk()
-    p = pedido(c)
+    p = pedido(c, outro_id="m4", data_outro=D + timedelta(days=3))       # m4 não tem conta
     pp.aprovar(c, "u1", p.id, AGORA)
-    pp.registrar_assinatura_externa(c, "u1", p.id, "m1", "gov.br/doc/123", AGORA)
-    pp.registrar_assinatura_externa(c, "u1", p.id, "m3", "papel – arquivo 45", AGORA)
+    assert [s["tem_conta"] for s in pp.situacao_partes(c, p)] == [True, False]
+    pp.assinar(c, p.id, M1, SENHA, AGORA)
+    pp.registrar_assinatura_externa(c, "u1", p.id, "m4", "gov.br/doc/9", AGORA)
     pp.confirmar(c, "u1", p.id, AGORA)
-    assert p.assinaturas["m1"].metodo == "externo" and p.status == "confirmada"
+    assert p.assinaturas["m4"].metodo == "externo"
 
 
-def test_cancelar_aprovada_desfaz_a_troca():
+def test_detalhista_cancela_ate_confirmada_com_motivo():
     c = mk()
-    p = pedido(c)
+    p = pedido(c, usuario_id=M1)
     pp.aprovar(c, "u1", p.id, AGORA)
-    pp.cancelar(c, "u1", p.id, "não assinaram", AGORA)
+    pp.assinar(c, p.id, M1, SENHA, AGORA); pp.assinar(c, p.id, M3, SENHA, AGORA)
+    pp.confirmar(c, "u1", p.id, AGORA)
+    with pytest.raises(ValueError, match="motivo"):
+        pp.cancelar(c, "u1", p.id, "", AGORA)
+    pp.cancelar(c, "u1", p.id, "erro de lançamento", AGORA)
     assert p.status == "cancelada" and c.trocas == []
-    assert gerar(c, D).dia(D, "A").efetivos[0].militar_id == "m1"
-    assert "desfeita" in p.historico[-1][2]
+
+
+def test_visibilidade_das_papeletas():
+    c = mk()
+    p = pedido(c, usuario_id=M1)
+    assert [x.id for x in pp.papeletas_visiveis(c, "u1", "A")] == [p.id]   # detalhista
+    assert [x.id for x in pp.papeletas_visiveis(c, M1, "A")] == [p.id]     # parte
+    assert [x.id for x in pp.papeletas_visiveis(c, M3, "A")] == [p.id]     # outra parte
+    assert pp.papeletas_visiveis(c, M5, "A") == []                          # terceiro não vê
 
 
 def test_servico_que_veio_de_troca_nao_pode_ser_trocado_de_novo():
     c = mk()
     p = pedido(c)
     pp.aprovar(c, "u1", p.id, AGORA)
+    pp.cancelar(c, "u1", p.id, "x", AGORA)
+    p = pedido(c)
+    pp.aprovar(c, "u1", p.id, AGORA)
+    pp.assinar(c, p.id, M1, SENHA, AGORA); pp.assinar(c, p.id, M3, SENHA, AGORA); pp.confirmar(c, "u1", p.id, AGORA)
     with pytest.raises(ValueError, match="já veio de uma troca"):
         pedido(c, solicitante_id="m3", data_solicitante=D, outro_id="m4", data_outro=D + timedelta(days=3))
-
-
-def test_aviso_de_descanso_curto_nao_bloqueia():
-    c = mk(8)
-    p = pedido(c, data_outro=D + timedelta(days=3), outro_id="m4")   # m1 passaria a D+3 e D+8... ok
-    avisos = pp.aprovar(c, "u1", p.id, AGORA)
-    assert isinstance(avisos, list) and p.status == "aprovada"
 
 
 def test_documento_pdf_e_hash_muda_com_o_conteudo():

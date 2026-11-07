@@ -112,10 +112,12 @@ LOGICA_FIXA = [
     "para que ele dê as duas; o motivo aparece em Observações.",
     "Serviço sempre prevalece sobre palestra, cerimônia, curso, visitação religiosa, apoio e demais escalações. "
     "O retém de serviço não impede essas escalações.",
-    "Troca consensual (T): feita por papeleta. O pedido (data, hora, quem pediu, com quem e em que escala) chega ao "
-    "detalhista e aos editores da escala, que aprovam ou rejeitam. Aprovada, a troca de datas é aplicada "
-    "automaticamente; o detalhista confirma quando as duas partes assinarem. Sem confirmação, pode cancelar e a "
-    "troca é desfeita. Serviços que já vieram de troca (T ou TF) não são trocados de novo.",
+    "Troca consensual (T): feita por papeleta. O próprio militar pode pedi-la para si (mesmo só com leitura) e o "
+    "detalhista/editores pedem por qualquer militar da escala. O pedido (data, hora, quem pediu, motivo, com quem e em "
+    "que escala) chega ao detalhista e aos editores, que aprovam ou rejeitam. Um pedido ativo trava os dois militares: "
+    "não entram em outro pedido. As partes cancelam enquanto não aprovado. Aprovada, a troca de datas aparece na "
+    "prévia automaticamente; cada parte assina pela própria conta e o detalhista confirma. O detalhista pode cancelar "
+    "depois de aprovar (a troca é desfeita). Serviços que já vieram de troca (T ou TF) não são trocados de novo.",
     "Escala referenciada (de outro responsável) prevalece sobre a que a referencia; escalas sem referência "
     "entre responsáveis diferentes não se influenciam.",
     "O resultado de um dia não depende do tamanho da prévia (7, 15 ou 30 dias).",
