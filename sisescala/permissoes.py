@@ -40,6 +40,19 @@ def eh_detalhista(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
     return bool(u and u.ativo and u.perfil == "detalhista" and pode_editar(ctx, usuario_id, esc))
 
 
+def eh_auxiliar(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
+    """Conta ligada ao militar que é o auxiliar do detalhista nesta escala."""
+    u = ctx.usuario(usuario_id)
+    return bool(u and u.ativo and u.militar_id and u.militar_id == esc.auxiliar_id)
+
+
+def pode_decidir(ctx: Contexto, usuario_id: str, esc: Escala) -> bool:
+    """Quem decide papeletas e vínculos da escala: o detalhista e o auxiliar dele. O auxiliar concorre à escala
+    normalmente e decide só nesta escala (sem acesso às páginas de gestão). Ninguém decide o que é seu
+    (ver `papeletas._exigir_editor`)."""
+    return eh_detalhista(ctx, usuario_id, esc) or eh_auxiliar(ctx, usuario_id, esc)
+
+
 def escalas_visiveis(ctx: Contexto, usuario_id: str) -> list[Escala]:
     return [e for e in ctx.escalas if pode_ver(ctx, usuario_id, e)]
 

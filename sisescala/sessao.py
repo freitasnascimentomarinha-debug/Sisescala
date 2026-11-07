@@ -35,6 +35,12 @@ class Pagina:
         return self.user.perfil == "detalhista"
 
     @property
+    def decide(self) -> bool:
+        """Detalhista ou auxiliar de alguma escala: decide papeletas e vínculos."""
+        return self.gerir or (bool(self.user.militar_id)
+                              and any(e.auxiliar_id == self.user.militar_id for e in self.ctx.escalas))
+
+    @property
     def nomes_m(self) -> dict[str, str]:
         return {m.id: m.nome for m in self.ctx.militares}
 

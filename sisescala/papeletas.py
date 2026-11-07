@@ -27,7 +27,7 @@ from . import auth
 from . import notificacoes as nt
 from .modelos import Assinatura, Contexto, Escala, Militar, Papeleta, Troca
 from .motor import Devolucao, Resultado, _achar, _descansado, _impedido, gerar
-from .permissoes import PermissaoNegada, eh_detalhista, pode_ver
+from .permissoes import PermissaoNegada, eh_detalhista, pode_decidir, pode_ver
 
 ABERTAS = ("pendente", "aprovada")
 TIPOS = {"troca": "troca de serviço", "devolucao": "devolução de serviço"}
@@ -226,7 +226,7 @@ def _nova(ctx: Contexto, usuario_id: str, esc: Escala, tipo: str, x: str, dx: da
     nt.notificar(ctx, nt.usuarios_do_militar(ctx, y), "papeleta", txt + " Aguardando a decisão do detalhista.",
                  esc.id, agora, excluir=[usuario_id])
     nt.notificar(ctx, nt.editores_da_escala(ctx, esc.id), "papeleta", txt + " Aguardando a sua decisão.",
-                 esc.id, agora, excluir=[usuario_id])
+                 esc.id, agora, excluir=[usuario_id, *nt.usuarios_do_militar(ctx, x), *nt.usuarios_do_militar(ctx, y)])
     return p
 
 
@@ -281,9 +281,12 @@ def _obter(ctx: Contexto, pid: str) -> Papeleta:
 
 
 def _exigir_editor(ctx: Contexto, usuario_id: str, p: Papeleta) -> Escala:
+    """Quem decide (detalhista ou auxiliar da escala), exceto a própria troca: ninguém decide papeleta em que é parte."""
     esc = ctx.escala(p.escala_id)
-    if not eh_detalhista(ctx, usuario_id, esc):
-        raise PermissaoNegada("somente o detalhista e os editores da escala decidem papeletas")
+    if not pode_decidir(ctx, usuario_id, esc):
+        raise PermissaoNegada("somente o detalhista e o auxiliar da escala decidem papeletas")
+    if e_parte(ctx, usuario_id, p):
+        raise PermissaoNegada("ninguém decide a própria troca: a decisão cabe a outro responsável (detalhista ou auxiliar)")
     return esc
 
 
@@ -336,7 +339,7 @@ def cancelar(ctx: Contexto, usuario_id: str, pid: str, motivo: str = "", agora: 
     esc = ctx.escala(p.escala_id)
     desfeita = False
     if p.status == "pendente":
-        if not (usuario_id == p.criado_por or e_parte(ctx, usuario_id, p) or eh_detalhista(ctx, usuario_id, esc)):
+        if not (usuario_id == p.criado_por or e_parte(ctx, usuario_id, p) or pode_decidir(ctx, usuario_id, esc)):
             raise PermissaoNegada("sem permissão para cancelar")
     elif p.status in ("aprovada", "confirmada"):
         _exigir_editor(ctx, usuario_id, p)
@@ -412,7 +415,7 @@ def situacao_partes(ctx: Contexto, p: Papeleta) -> list[dict]:
 def papeletas_visiveis(ctx: Contexto, usuario_id: str, escala_id: str) -> list[Papeleta]:
     """Editores veem todas da escala; os demais, só as que os envolvem (parte ou quem criou)."""
     esc = ctx.escala(escala_id)
-    editor = eh_detalhista(ctx, usuario_id, esc)
+    editor = pode_decidir(ctx, usuario_id, esc)
     return sorted((p for p in ctx.papeletas if p.escala_id == escala_id
                    and (editor or e_parte(ctx, usuario_id, p) or p.criado_por == usuario_id)),
                   key=lambda p: -p.numero)
@@ -438,9 +441,9 @@ def confirmar(ctx: Contexto, usuario_id: str, pid: str, agora: datetime | None =
 
 # ------------------------------------------------------------------ caixa de pedidos
 def pedidos_pendentes(ctx: Contexto, usuario_id: str) -> list[Papeleta]:
-    """Pedidos aguardando decisão nas escalas em que o usuário é dono ou editor."""
-    editaveis = {e.id for e in ctx.escalas if eh_detalhista(ctx, usuario_id, e)}
-    return [p for p in ctx.papeletas if p.status == "pendente" and p.escala_id in editaveis]
+    """Pedidos aguardando a decisão DESTE usuário (detalhista ou auxiliar da escala), sem os que ele mesmo integra."""
+    decide = {e.id for e in ctx.escalas if pode_decidir(ctx, usuario_id, e)}
+    return [p for p in ctx.papeletas if p.status == "pendente" and p.escala_id in decide and not e_parte(ctx, usuario_id, p)]
 
 
 # ------------------------------------------------------------------ devoluções em aberto

@@ -67,3 +67,21 @@ def test_senha_errada_nao_entra(app):
     next(t for t in app.text_input if t.label == "Senha").input("errada")
     next(b for b in app.button if b.label == "Entrar").click().run()
     assert "uid" not in app.session_state and any("incorretos" in e.value for e in app.error)
+
+
+def test_paginas_do_auxiliar_que_decide_papeletas_e_vinculos(app):
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.escala("per").auxiliar_id = "m2"
+    auth.criar_usuario(ctx, "u1", "aux", "Auxiliar", "senha-aux-1234", perfil="militar", militar_id="m2",
+                       email="a@x.com", ramal="2345", celular="21988887777")
+    app.run()
+    del app.session_state["uid"]
+    app.run()
+    _texto(app, "Login").input("aux")
+    next(t for t in app.text_input if t.label == "Senha").input("senha-aux-1234")
+    next(b for b in app.button if b.label == "Entrar").click().run()
+    assert app.session_state["uid"] == "u2" and not app.exception
+    for p in PAGINAS_MILITAR + ["vinculos"]:
+        app.switch_page(f"paginas/{p}.py").run()
+        assert not app.exception, (p, [e.value for e in app.exception])

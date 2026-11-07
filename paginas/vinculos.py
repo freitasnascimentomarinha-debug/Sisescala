@@ -10,11 +10,11 @@ ctx, user, uid = P.ctx, P.user, P.uid
 ui.cabecalho("Vínculos", "Liga a conta de um militar ao nome dele na escala.", "link",
              [ui.chip("Aguardando você", P.n_vinc)] if P.n_vinc else None)
 
-if P.gerir:
+if P.decide:
     with st.container(border=True):
         ui.secao("Pedidos aguardando decisão")
         st.caption("O militar criou a conta e pede para ser reconhecido como um militar de uma das suas escalas. Confira nome, "
-                   "NIP e contato antes de aprovar. Para ele poder pedir, compartilhe a escala com o login dele (Gestão → Escalas).")
+                   "NIP e contato antes de aprovar. Para ele poder pedir, o detalhista compartilha a escala com o login dele (Gestão → Escalas).")
         fila = vc.pendentes_para(ctx, uid)
         if not fila:
             ui.vazio("Nenhum pedido pendente", "", "check")
@@ -70,5 +70,5 @@ if not user.militar_id:
                     st.error("Os PINs não são iguais.")
                 else:
                     agir(lambda: vc.solicitar(ctx, uid, ve, vm, vnip, vpin), "Pedido de vínculo enviado.")
-elif not P.gerir:
+elif not P.decide:
     ui.vazio("Conta vinculada", f"Sua conta está vinculada a {ctx.militar(user.militar_id).nome}.", "check")

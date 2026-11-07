@@ -45,7 +45,7 @@ def _estagio(p):
 for p in lista:
     esc = ctx.escala(p.escala_id)
     x, y = ctx.militar(p.solicitante_id), ctx.militar(p.outro_id)
-    eh_editor = pm.eh_detalhista(ctx, uid, esc)
+    eh_editor = pm.pode_decidir(ctx, uid, esc)
     sou_parte = pp.e_parte(ctx, uid, p)
     rotulo, tom = TOM[p.status]
     tipo = "Devolução de serviço" if p.tipo == "devolucao" else "Troca de serviço"
@@ -81,8 +81,11 @@ for p in lista:
 
         # --- ações
         minha = pp.militar_do_usuario(ctx, uid)
+        pode_agir = eh_editor and not sou_parte           # ninguém decide a própria troca
+        if eh_editor and sou_parte and p.status in pp.ABERTAS:
+            st.info("Você faz parte desta papeleta: a decisão cabe a outro responsável (detalhista ou auxiliar).")
         cols = iter(st.columns(4))
-        if eh_editor and p.status == "pendente":
+        if pode_agir and p.status == "pendente":
             if next(cols).button("Aprovar e trocar", key=f"ap_{p.id}", type="primary", icon=":material/check:", use_container_width=True):
                 agir(lambda: pp.aprovar(ctx, uid, p.id), "Papeleta aprovada; troca aplicada na escala.")
             with next(cols).popover("Rejeitar", icon=":material/close:", use_container_width=True):
@@ -97,19 +100,19 @@ for p in lista:
                 st.caption("A data, a hora e o código do documento ficam registrados.")
                 if st.button("Assinar", key=f"as_{p.id}", type="primary"):
                     agir(lambda: pp.assinar(ctx, p.id, uid, pin_ass), "Assinatura registrada.")
-        if p.status == "pendente" and (sou_parte or p.criado_por == uid) and not eh_editor:
+        if p.status == "pendente" and (sou_parte or p.criado_por == uid) and not pode_agir:
             if next(cols).button("Cancelar pedido", key=f"cp_{p.id}", icon=":material/block:", use_container_width=True):
                 agir(lambda: pp.cancelar(ctx, uid, p.id, "cancelado pelo solicitante/parte"), "Pedido cancelado.")
-        if eh_editor and p.status in pp.ABERTAS:
+        if pode_agir and p.status in pp.ABERTAS:
             with next(cols).popover("Assinatura externa", icon=":material/upload_file:", use_container_width=True):
                 quem2 = st.selectbox("Militar", [p.solicitante_id, p.outro_id], format_func=nomes_m.get, key=f"exm_{p.id}")
                 ref = st.text_input("Link ou nº do documento (gov.br, ICP, papel)", key=f"exr_{p.id}")
                 if st.button("Registrar", key=f"ex_{p.id}"):
                     agir(lambda: pp.registrar_assinatura_externa(ctx, uid, p.id, quem2, ref), "Assinatura externa registrada.")
-        if eh_editor and p.status == "aprovada":
+        if pode_agir and p.status == "aprovada":
             if next(cols).button("Confirmar", key=f"cf_{p.id}", type="primary", icon=":material/verified:", use_container_width=True):
                 agir(lambda: pp.confirmar(ctx, uid, p.id), "Papeleta confirmada.")
-        if eh_editor and p.status in ("aprovada", "confirmada"):
+        if pode_agir and p.status in ("aprovada", "confirmada"):
             with next(cols).popover("Cancelar troca", icon=":material/undo:", use_container_width=True):
                 mcanc = st.text_input("Motivo do cancelamento", key=f"ccm_{p.id}")
                 if st.button("Cancelar papeleta", key=f"cc_{p.id}"):

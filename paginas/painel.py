@@ -37,6 +37,11 @@ if P.gerir:
              ("Serviços a devolver", len(devs), "undo", "azul", "nas suas escalas"),
              ("Conflitos na escala", len(conflitos), "alert", "vermelho" if conflitos else "verde",
               "sem troca possível" if conflitos else "tudo resolvido")])
+elif P.decide:                  # auxiliar: decide o que não é seu e também concorre à escala
+    ui.kpis([("Pedidos de troca", P.n_pend, "swap", "ambar" if P.n_pend else "cinza", "aguardando a sua decisão"),
+             ("Vínculos", P.n_vinc, "link", "ambar" if P.n_vinc else "cinza", "aguardando a sua decisão"),
+             ("Meus próximos serviços", len(meus), "calendar", "azul", "nos próximos dias"),
+             ("Assinaturas pendentes", len(a_assinar), "key", "ambar" if a_assinar else "verde")])
 else:
     ui.kpis([("Meus próximos serviços", len(meus), "calendar", "azul", "nos próximos dias"),
              ("Papeletas em andamento", len(minhas_pap), "swap", "violeta"),
@@ -49,9 +54,9 @@ with esq:
     with st.container(border=True):
         ui.secao("Precisa da sua atenção")
         itens = []
-        if P.gerir and P.n_pend:
+        if P.decide and P.n_pend:
             itens.append(("paginas/papeletas.py", f"{P.n_pend} pedido(s) de troca aguardando decisão", ":material/swap_horiz:"))
-        if P.gerir and P.n_vinc:
+        if P.decide and P.n_vinc:
             itens.append(("paginas/vinculos.py", f"{P.n_vinc} pedido(s) de vínculo aguardando decisão", ":material/link:"))
         if a_assinar:
             itens.append(("paginas/papeletas.py", f"{len(a_assinar)} papeleta(s) aguardando a sua assinatura", ":material/draw:"))
