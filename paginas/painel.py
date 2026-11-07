@@ -74,11 +74,11 @@ with esq:
         for e in P.visiveis[:5]:
             dia = P.res.dia(hoje, e.id)
             if not dia or not dia.funciona:
-                corpo = '<span style="color:#94A3B8">não guarnece hoje</span>'
+                corpo = '<span style="color:var(--muted)">não guarnece hoje</span>'
             else:
                 corpo = " ".join(ui.pill(ctx.militar(a.militar_id).nome, "azul", False) for a in dia.efetivos) or "—"
                 rt = " ".join(ui.pill(ctx.militar(a.militar_id).nome, "cinza", False) for a in dia.retens)
-                corpo += f'  <span style="color:#64748B;font-size:.75rem;margin-left:.5rem">RT</span> {rt}' if rt else ""
+                corpo += f'  <span style="color:var(--muted);font-size:.75rem;margin-left:.5rem">RT</span> {rt}' if rt else ""
             st.html(f'<div class="item"><div class="tx" style="flex:1"><b>{ui.esc(e.nome)}</b>'
                     f'<span>{ui.esc(e.tipo or "")}</span></div><div>{corpo}</div></div>')
 with dir_:

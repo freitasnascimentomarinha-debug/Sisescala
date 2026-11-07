@@ -223,3 +223,18 @@ def test_criar_repositorio_escolhe_backend():
     assert "local" in nome
     r, nome = criar_repositorio({"gcp_service_account": {"a": 1}, "sheets": {}}, "/tmp/nao-usado.json")
     assert "local" in nome                                    # incompleto: cai no local
+
+
+def test_planilha_de_versao_antiga_sem_coluna_nova_e_em_outra_ordem_continua_carregando():
+    c = ctx_completo()
+    T = para_tabelas(c)
+    antigas = {k: [list(r) for r in v] for k, v in T.items()}
+    # tira a coluna "om" das escalas e embaralha a ordem das colunas de Militares (como uma planilha antiga/editada)
+    cab = antigas["Escalas"][0]
+    i = cab.index("om")
+    antigas["Escalas"] = [[v for j, v in enumerate(r) if j != i] for r in antigas["Escalas"]]
+    antigas["Militares"] = [list(reversed(r)) for r in antigas["Militares"]]
+    antigas.pop("Notificacoes")                                  # aba que ainda não existia
+    c2 = de_tabelas(antigas)
+    assert [e.nome for e in c2.escalas] == [e.nome for e in c.escalas] and all(e.om == "" for e in c2.escalas)
+    assert c2.militares == c.militares

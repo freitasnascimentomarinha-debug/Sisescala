@@ -8,6 +8,11 @@ pytest
 streamlit run app.py
 ```
 
+## Documentos e visual
+- Todo documento (detalhe de serviço, papeleta, regras) abre com **MARINHA DO BRASIL** e, logo abaixo, a **OM que gerencia a escala** (campo em Gestão → Escalas; pode ser ajustada na hora no detalhe). Dispensados aparecem como `[Disp]` com a justificativa nas observações.
+- Tema **escuro** (azul-marinho), definido em `.streamlit/config.toml` e `assets/estilo.css`.
+- A leitura da planilha é **pelo nome das colunas**: versões novas podem acrescentar colunas sem quebrar dados já gravados.
+
 ## Organização do app (páginas, por etapa do trabalho)
 | Seção | Páginas |
 |---|---|
@@ -27,9 +32,9 @@ O menu mostra só o que o perfil pode usar. Código: `app.py` (login, navegaçã
 - **Ordem:** do mais antigo ao mais moderno, circular, a partir de quem deu o último serviço.
 - **Descanso mínimo (2x1):** `folgas_minimas=2` por padrão (configurável): nunca 1x1, inclusive entre filas (sexta preta / sábado vermelha). Quem é pulado não perde a vez. `validar_escala` recusa configurações impossíveis.
 - **Quartos** (`quartos_padrao(4)` = 6 de 4h; `(2)` = 12 de 2h), `militares_dia`, `retem_qtd` configuráveis.
-- **Impedimentos:** férias, curso, dispensa (exige motivo e arquivo), baixa, desembarque e **DTQ (destaque)**: o militar não concorre no período.
+- **Impedimentos:** férias, curso, **dispensado** (com documento: motivo e arquivo; ou por baixa/falta: justificativa do detalhista), desembarque e **DTQ (destaque)**: o militar não concorre no período. Baixa e falta **não são status próprios**: viram `Disp` (dispensado) com a justificativa.
 - **Feriados:** nacionais/estaduais automáticos (`holidays`); municipais, licença administrativa e guarnecimento por dia são manuais.
-- **Falta no serviço:** o retém avança e fica uma devolução pendente (prazo padrão 30 dias, configurável).
+- **Dispensado no dia do serviço:** o militar escalado aparece como `Disp`, com a justificativa (obrigatória) lançada pelo detalhista; o retém avança, a prévia e o detalhe se reconfiguram e fica uma devolução pendente (prazo padrão 30 dias, configurável).
 - **Troca consensual** (papeleta com dois aceites) → `SVÇ (T)`. **Troca forçada** → `SVÇ (TF)` / `RT (TF)` com observação.
 - **Compartilhamento:** o dono libera a escala como *leitura* ou *edição*. Quem recebe pode criar outras escalas **referenciando** a compartilhada: ela prevalece e o militar de serviço nela é considerado ao formar a nova. Escalas de donos diferentes sem referência não se influenciam.
 - PDF do detalhe por escala, com assinaturas (Detalhista, Encarregado do Detalhe, Vice-Diretor).
@@ -61,7 +66,7 @@ O menu mostra só o que o perfil pode usar. Código: `app.py` (login, navegaçã
 O militar vinculado (ou o detalhista por ele) escolhe, na **Prévia**, um dia futuro em que está escalado e abre a disponibilidade: aparece uma **bolinha verde piscando** na célula dele, para todos que veem a escala, e ● nas listas de troca. Só vale para serviço dele (se mudar de mãos, o sinal some), respeitando a antecedência mínima da escala, e fica oculta enquanto ele estiver num pedido de troca ativo. Sinais de dias passados são removidos.
 
 ## Devoluções
-Quem não deu um serviço (falta lançada, ou deslocado por outra regra) fica com um **serviço a devolver**, com prazo (30 dias por padrão, configurável). A aba **Devoluções** lista os pendentes (🟡 aberta, 🔵 em andamento, 🔴 vencida) e sugere dias, os mais próximos do original primeiro, com **⚠ descanso curto** quando o 2x1 não é respeitado (o detalhista decide). A devolução é uma papeleta do tipo "devolução": o militar assume o serviço de um colega, com PIN, aprovação do detalhista e assinaturas. Confirmada, o serviço é quitado; cancelada ou rejeitada, volta a ficar aberto. O militar é avisado quando uma falta é lançada.
+Quem foi dispensado de um serviço escalado (ou deslocado por outra regra) fica com um **serviço a devolver**, com prazo (30 dias por padrão, configurável). A aba **Devoluções** lista os pendentes (🟡 aberta, 🔵 em andamento, 🔴 vencida) e sugere dias, os mais próximos do original primeiro, com **⚠ descanso curto** quando o 2x1 não é respeitado (o detalhista decide). A devolução é uma papeleta do tipo "devolução": o militar assume o serviço de um colega, com PIN, aprovação do detalhista e assinaturas. Confirmada, o serviço é quitado; cancelada ou rejeitada, volta a ficar aberto. O militar é avisado quando a dispensa é lançada.
 
 ## Notificações
 Central dentro do sistema (🔔 na barra lateral; não envia e-mail): disponibilidade aberta (para os colegas com conta e os editores), pedidos de troca/devolução (outra parte e editores), aprovação, rejeição, cancelamento, assinatura e confirmação, pedidos e decisões de vínculo e serviço a devolver. Lidas há mais de 30 dias são removidas.

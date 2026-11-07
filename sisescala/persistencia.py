@@ -65,7 +65,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "Usuarios": [("id", "s"), ("nome", "s"), ("login", "s"), ("senha_hash", "s"), ("militar_id", "s"),
                  ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s")],
-    "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("categoria", "s"),
+    "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("om", "s"), ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s")],
@@ -164,8 +164,21 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
 
 
 def _linhas_de(T: dict, aba: str) -> list[dict]:
+    """Lê pelo NOME das colunas (cabeçalho), não pela posição: planilhas gravadas por versões anteriores,
+    sem colunas novas ou com colunas em outra ordem, continuam carregando."""
     spec = SCHEMA[aba]
-    return [_dict(r, spec) for r in (T.get(aba) or [])[1:] if any(str(c).strip() for c in r)]
+    linhas = T.get(aba) or []
+    if not linhas:
+        return []
+    cab = [str(c).strip() for c in linhas[0]]
+    out = []
+    for r in linhas[1:]:
+        if not any(str(c).strip() for c in r):
+            continue
+        r = list(r) + [""] * (len(cab) - len(r))
+        por_nome = {cab[i]: r[i] for i in range(len(cab))}
+        out.append({c: _r(por_nome.get(c, ""), t) for c, t in spec})
+    return out
 
 
 def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
@@ -199,12 +212,9 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.roxas = [PeriodoRoxa(**d) for d in _linhas_de(T, "Roxas")]
     ctx.ocorrencias = [Ocorrencia(**d) for d in _linhas_de(T, "Ocorrencias")]
     ctx.trocas = [Troca(**d) for d in _linhas_de(T, "Trocas")]
-    for r in (T.get("Eventos") or [])[1:]:
-        if not any(str(c).strip() for c in r):
-            continue
-        r = list(r) + [""] * (6 - len(r))
-        ctx.eventos.append(Evento(r[0], date.fromisoformat(r[1]), r[2], r[3], r[4],
-                                  int(r[5]) if str(r[5]).strip() else None))
+    for d in _linhas_de(T, "Eventos"):
+        ctx.eventos.append(Evento(d["escala_id"], d["data"], d["descricao"], d["hora"], d["local"],
+                                  int(d["vagas"]) if str(d["vagas"]).strip() else None))
     ctx.vinculos = [Vinculo(**d) for d in _linhas_de(T, "Vinculos")]
     ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]

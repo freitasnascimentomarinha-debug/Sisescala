@@ -143,7 +143,7 @@ def texto_canonico(ctx: Contexto, p: Papeleta) -> str:
     esc = ctx.escala(p.escala_id)
     x, y = ctx.militar(p.solicitante_id), ctx.militar(p.outro_id)
     if p.tipo == "devolucao":
-        corpo = [f"DEVOLUCAO DE SERVICO DE {x.nome} ({x.nip}) NAO DADO EM {p.data_solicitante:%d/%m/%Y}",
+        corpo = [f"DEVOLUCAO DE SERVICO DE {x.nome} ({x.nip}) DISPENSADO EM {p.data_solicitante:%d/%m/%Y}",
                  f"ASSUME O SERVICO DE {y.nome} ({y.nip}) EM {p.data_outro:%d/%m/%Y}"]
     else:
         corpo = [f"SOLICITANTE {x.nome} ({x.nip}) DIA {p.data_solicitante:%d/%m/%Y}",

@@ -13,14 +13,14 @@ def contexto_demo(base: date | None = None) -> Contexto:
     mil = [Militar(f"m{i}", f"Militar {i:02d}", POSTOS[i - 1], i) for i in range(1, 16)]
     ids = [m.id for m in mil]
     escalas = [
-        Escala("per", "Serviço de Pernoite", "PER", dono_id="u1", tipo="Pernoite", prioridade=5,
+        Escala("per", "Serviço de Pernoite", "PER", dono_id="u1", om="Organização Militar de Demonstração", tipo="Pernoite", prioridade=5,
                modo="preta_vermelha", funciona_em="todos", militares_dia=3,
                quartos=quartos_padrao(4), membros=[Pertinencia(i) for i in ids[:10]],
                ),
-        Escala("dia", "Serviço Diário", "DIA", dono_id="u1", tipo="Diária", prioridade=1,
+        Escala("dia", "Serviço Diário", "DIA", dono_id="u1", om="Organização Militar de Demonstração", tipo="Diária", prioridade=1,
                modo="preta_vermelha", funciona_em="uteis", militares_dia=1,
                membros=[Pertinencia(i) for i in ids[4:]], referencias=["per"]),
-        Escala("pal", "Palestras", "PAL", dono_id="u1", categoria="palestra", modo="eventos",
+        Escala("pal", "Palestras", "PAL", dono_id="u1", om="Organização Militar de Demonstração", categoria="palestra", modo="eventos",
                militares_dia=2, retem_qtd=0, participa_roxa=False, prioridade=1,
                membros=[Pertinencia(i) for i in ids]),
     ]

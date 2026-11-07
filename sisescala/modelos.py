@@ -7,17 +7,25 @@ from datetime import date, datetime
 # --- siglas exibidas na prévia -------------------------------------------------
 SVC, SVC_TF, SVC_T = "SVÇ", "SVÇ (TF)", "SVÇ (T)"
 RT, RT_TF, RT_T = "RT", "RT (TF)", "RT (T)"
-FERIAS, DISP, DBQ, CURSO, BAIXA, FALTA = "Férias", "Disp", "DBQ", "Curso", "Baixa", "Falta"
+FERIAS, DISP, DBQ, CURSO = "Férias", "Disp", "DBQ", "Curso"
 DTQ = "DTQ"  # destaque: militar destacado por período, não concorre à escala
 
-# tipo de impedimento -> sigla
+# tipo de impedimento -> sigla. Baixa e falta NÃO são status próprios: o militar fica "Disp" (dispensado),
+# com a justificativa lançada pelo detalhista.
 TIPOS_IMPEDIMENTO = {
     "ferias": FERIAS,
     "curso": CURSO,
-    "dispensa": DISP,   # exige motivo e arquivo
-    "baixa": BAIXA,     # passou mal / baixa médica
-    "desembarque": DBQ,  # sem data fim: nunca mais dá serviço
-    "destaque": DTQ,     # destacado (em outra OM etc.) durante um período
+    "dispensa": DISP,               # com documento: exige motivo e arquivo
+    "dispensa_justificada": DISP,   # baixa/falta: exige a justificativa do detalhista
+    "desembarque": DBQ,             # sem data fim: nunca mais dá serviço
+    "destaque": DTQ,                # destacado (em outra OM etc.) durante um período
+    "baixa": DISP,                  # legado (dados antigos): tratado como dispensa; não aparece mais nas telas
+}
+TIPOS_VISIVEIS = [t for t in TIPOS_IMPEDIMENTO if t != "baixa"]
+ROTULO_IMPEDIMENTO = {
+    "ferias": "Férias", "curso": "Curso", "dispensa": "Dispensado – com documento",
+    "dispensa_justificada": "Dispensado – baixa ou falta (justificativa)", "desembarque": "Desembarque (DBQ)",
+    "destaque": "Destaque (DTQ)", "baixa": "Dispensado – baixa (legado)",
 }
 
 # categorias de escalação: (rótulo, sigla do militar escalado). "servico" usa SVÇ.
@@ -87,6 +95,7 @@ class Escala:
     nome: str
     sigla: str = ""
     dono_id: str = ""              # usuário que criou a escala
+    om: str = ""                   # Organização Militar que gerencia a escala (cabeçalho dos documentos)
     categoria: str = "servico"     # chave de CATEGORIAS
     sigla_evento: str = ""         # sigla própria (categoria "outro" ou personalizada)
     tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...
@@ -126,8 +135,10 @@ class Impedimento:
         erros = []
         if self.tipo not in TIPOS_IMPEDIMENTO:
             erros.append(f"tipo inválido: {self.tipo}")
-        if self.tipo == "dispensa" and not (self.motivo and self.anexo):
-            erros.append("dispensa exige motivo e arquivo anexo")
+        if self.tipo == "dispensa" and not (self.motivo.strip() and self.anexo.strip()):
+            erros.append("dispensa com documento exige motivo e arquivo anexo")
+        if self.tipo in ("dispensa_justificada", "baixa") and not self.motivo.strip():
+            erros.append("informe a justificativa da dispensa (baixa ou falta)")
         if self.tipo != "desembarque" and self.fim is None:
             erros.append("informe a data final")
         return erros
@@ -194,7 +205,10 @@ class Ocorrencia:
     data: date
     escala_id: str
     militar_id: str
-    motivo: str = ""
+    motivo: str = ""              # justificativa lançada pelo detalhista (obrigatória na tela)
+
+    def validar(self) -> list[str]:
+        return [] if self.motivo.strip() else ["informe a justificativa da dispensa"]
 
 
 @dataclass

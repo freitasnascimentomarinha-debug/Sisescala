@@ -51,7 +51,7 @@ for p in lista:
     tipo = "Devolução de serviço" if p.tipo == "devolucao" else "Troca de serviço"
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.05rem;'
-                f'color:#0F172A">Papeleta nº {p.numero:04d}</div>{ui.chip(tipo)}{ui.chip(esc.nome)}'
+                f'color:var(--ink)">Papeleta nº {p.numero:04d}</div>{ui.chip(tipo)}{ui.chip(esc.nome)}'
                 f'<div style="margin-left:auto">{ui.pill(rotulo, tom)}</div></div>')
         etapa, falhou = _estagio(p)
         ui.linha_do_tempo(["Pedido", "Decisão", "Assinaturas", "Confirmada"], etapa, falhou)

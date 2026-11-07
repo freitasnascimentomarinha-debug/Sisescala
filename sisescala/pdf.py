@@ -16,6 +16,22 @@ from .motor import Resultado
 ASSINATURAS = ("Detalhista", "Encarregado do Detalhe", "Vice-Diretor")
 
 
+def cabecalho_documento(st, om: str, titulo: str = "") -> list:
+    """Cabeçalho oficial de todo documento: MARINHA DO BRASIL, a OM que gerencia a escala e o título."""
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import HRFlowable
+    marinha = ParagraphStyle("marinha", parent=st["Normal"], alignment=1, fontSize=14, leading=17, fontName="Helvetica-Bold")
+    orgao = ParagraphStyle("orgao", parent=st["Normal"], alignment=1, fontSize=11, leading=14)
+    tit = ParagraphStyle("tit", parent=st["Normal"], alignment=1, fontSize=13, leading=16, fontName="Helvetica-Bold", spaceBefore=6)
+    el = [Paragraph("MARINHA DO BRASIL", marinha)]
+    if om.strip():
+        el.append(Paragraph(om.strip().upper(), orgao))
+    el.append(HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=4, spaceAfter=4))
+    if titulo:
+        el.append(Paragraph(titulo, tit))
+    return el
+
+
 def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
               instrucoes: str = "", recomendacoes: str = "", regras: str = "",
               nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> bytes:
@@ -25,7 +41,7 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
     st = getSampleStyleSheet()
     esc = ctx.escala(escala_id)
     cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]
-    el = [Paragraph(f"<b>DETALHE – {esc.nome.upper()}</b>{' – ' + om if om else ''}", st["Title"]),
+    el = cabecalho_documento(st, om or esc.om, f"DETALHE DE SERVIÇO – {esc.nome.upper()}") + [
           Paragraph(f"{cat}{' · ' + esc.tipo if esc.tipo else ''} · "
                     f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y} · "
                     f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}", st["Normal"]),
@@ -44,6 +60,10 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
             partes.append(f"{ctx.militar(a.militar_id).nome} [{a.sigla}]{h}")
             if a.obs and a.origem != "normal":
                 obs.append(f"{d:%d/%m}: {a.obs}")
+        for a in dia.alocacoes:                 # dispensado do serviço escalado: Disp + justificativa do detalhista
+            if a.origem == "falta":
+                partes.append(f"<i>{ctx.militar(a.militar_id).nome} [Disp]</i>")
+                obs.append(f"{d:%d/%m}: {ctx.militar(a.militar_id).nome} – {a.obs}")
         rets = [f"{ctx.militar(a.militar_id).nome} [{a.sigla}]" for a in dia.retens]
         obs += [f"{d:%d/%m}: {a.obs}" for a in dia.retens if a.obs]
         lin = [f"{d:%d/%m} {dow}", Paragraph("<br/>".join(partes) or "-", st["BodyText"]),
@@ -56,9 +76,14 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
                            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("FONTSIZE", (0, 0), (-1, -1), 8)]))
     el.append(t)
+    for i in ctx.impedimentos:                  # dispensas por período, com a justificativa
+        if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.motivo and any(i.cobre(d) for d in dias) \
+                and any(p.militar_id == i.militar_id for p in esc.membros):
+            fim = f"–{i.fim:%d/%m}" if i.fim else ""
+            obs.append(f"{max(i.inicio, dias[0]):%d/%m}: {ctx.militar(i.militar_id).nome} – Dispensado ({i.inicio:%d/%m}{fim}): {i.motivo}")
     for titulo, texto in (("Instruções do serviço", instrucoes), ("Recomendações", recomendacoes),
                           ("Regras (horário de parada, acumulação de trabalho etc.)", regras),
-                          ("Observações (trocas e avanços)", "\n".join(dict.fromkeys(obs)))):
+                          ("Observações (trocas, dispensas e avanços)", "\n".join(dict.fromkeys(obs)))):
         if texto.strip():
             el += [Spacer(1, 8), Paragraph(f"<b>{titulo}</b>", st["Heading4"]),
                    Paragraph(texto.replace("\n", "<br/>"), st["BodyText"])]
@@ -83,14 +108,12 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
     dado = lambda m: f"{m.posto} {m.nome}".strip() + (f" – NIP {m.nip}" if m.nip else "")  # noqa: E731
     titulo = "PAPELETA DE DEVOLUÇÃO DE SERVIÇO" if devolucao else "PAPELETA DE TROCA DE SERVIÇO"
-    el = [P(f"<b>{titulo} Nº {p.numero:04d}</b>", "Title")]
-    if om:
-        el.append(P(om, "Heading3"))
+    el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}")
     dados = [
         ["Escala", esc.nome + (f" ({esc.tipo})" if esc.tipo else "")],
         ["Pedido em", f"{p.criado_em:%d/%m/%Y} às {p.criado_em:%H:%M:%S}"],
         ["Solicitante", dado(x)],
-        ["Serviço não dado em" if devolucao else "Serviço do solicitante em", f"{p.data_solicitante:%d/%m/%Y}"],
+        ["Dispensado do serviço de" if devolucao else "Serviço do solicitante em", f"{p.data_solicitante:%d/%m/%Y}"],
         ["Assume o serviço de" if devolucao else "Troca com", dado(y)],
         ["Data do serviço assumido" if devolucao else "Serviço do outro militar em", f"{p.data_outro:%d/%m/%Y}"],
         ["Motivo", p.motivo or "-"], ["Antecedência mínima da escala", f"{esc.antecedencia_horas}h"]]
@@ -98,7 +121,7 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
                            ("VALIGN", (0, 0), (-1, -1), "TOP")]))
     if devolucao:
-        texto = (f"{x.nome} devolve o serviço que deixou de dar em {p.data_solicitante:%d/%m/%Y}, assumindo o "
+        texto = (f"{x.nome} devolve o serviço do qual foi dispensado em {p.data_solicitante:%d/%m/%Y}, assumindo o "
                  f"serviço de {y.nome} em {p.data_outro:%d/%m/%Y}, ciente de que a devolução só vale após a "
                  f"aprovação do Detalhista.")
     else:

@@ -102,10 +102,11 @@ LOGICA_FIXA = [
     "A ordem da fila vai do mais antigo ao mais moderno, em círculo, a partir de quem deu o último serviço.",
     "Cada escala tem filas independentes (corrida, preta, vermelha, roxa). A fila que não é a do dia fica "
     "congelada e retoma de onde parou. A roxa começa do zero para todos.",
-    "Quem está de férias, curso, dispensa, baixa, destaque (DTQ) ou desembarcado é pulado sem perder o seu lugar na ordem; "
+    "Quem está de férias, curso, dispensado (inclusive por baixa ou falta, com a justificativa lançada pelo detalhista), destaque (DTQ) ou desembarcado é pulado sem perder o seu lugar na ordem; "
     "desembarcado sai da fila.",
-    "O retém do dia é o próximo da fila depois dos escalados. Se um escalado não puder dar o serviço, o retém "
-    "avança para efetivo e os reténs dos dias seguintes avançam junto.",
+    "O retém do dia é o próximo da fila depois dos escalados. Se um escalado for dispensado do serviço (baixa ou falta, "
+    "com a justificativa do detalhista), ele aparece como Disp, o retém avança para efetivo e os reténs dos dias seguintes "
+    "avançam junto; a prévia e o detalhe se reconfiguram.",
     "Quem é pulado por ainda estar de folga não perde a vez: entra na primeira oportunidade.",
     "Troca forçada (TF): se o militar cai em duas escalações no mesmo dia, prevalece a de maior prioridade "
     "(ou a escala referenciada). Na outra, o sistema procura a melhor troca de datas com outro militar da escala "
@@ -198,10 +199,7 @@ def html_regras(ctx: Contexto, esc: Escala) -> str:
     como = "".join(f"<li>{escape(t)}</li>" for t in texto_funcionamento(ctx, esc))
     fixa = "".join(f"<li>{escape(t)}</li>" for t in LOGICA_FIXA)
     sit = "".join(f"<tr><td>{escape(k)}</td><td>{escape(v)}</td></tr>" for k, v in situacao_atual(ctx, esc))
-    return f"""<style>.reg{{border-collapse:collapse;font:13px sans-serif;margin-bottom:8px}}
-.reg td,.reg th{{border:1px solid #d0d7de;padding:4px 8px;text-align:left;vertical-align:top}} .reg th{{background:#f6f8fa}}
-.alt{{background:#d29922;color:#000;border-radius:4px;padding:0 5px;font-weight:600}} .pad{{color:#57606a}}</style>
-<h3>Regras do serviço – {escape(esc.nome)}</h3><h4>Como esta escala funciona</h4><ul>{como}</ul>{sec}
+    return f"""<h3>Regras do serviço – {escape(esc.nome)}</h3><h4>Como esta escala funciona</h4><ul>{como}</ul>{sec}
 <h4>Situação atual</h4><table class='reg'>{sit}</table>
 <h4>Lógica fixa do sistema (não configurável)</h4><ul>{fixa}</ul>"""
 
@@ -217,7 +215,8 @@ def pdf_regras(ctx: Contexto, esc: Escala, om: str = "") -> bytes:
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm,
                             bottomMargin=14 * mm)
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
-    el = [P(f"<b>REGRAS DO SERVIÇO – {escape(esc.nome.upper())}</b>{' – ' + escape(om) if om else ''}", "Title"),
+    from .pdf import cabecalho_documento
+    el = cabecalho_documento(st, om or esc.om, f"REGRAS DO SERVIÇO – {escape(esc.nome.upper())}") + [
           P("Como esta escala funciona", "Heading3")]
     el += [P("• " + escape(t)) for t in texto_funcionamento(ctx, esc)]
     for titulo, itens in itens_configuracao(ctx, esc):

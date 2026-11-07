@@ -5,8 +5,8 @@ from datetime import date, timedelta
 from html import escape
 
 from .calendario import dia_util, nome_dia_nao_util, roxa_do_dia
-from .modelos import (BAIXA, CATEGORIAS, CURSO, DBQ, DISP, DTQ, FALTA, FERIAS, SVC, TIPOS_IMPEDIMENTO,
-                      Contexto, Escala, horarios_curtos)
+from .modelos import (CATEGORIAS, CURSO, DBQ, DISP, DTQ, FERIAS, SVC, TIPOS_IMPEDIMENTO, Contexto, Escala,
+                      horarios_curtos)
 from .motor import Resultado, _folgas, sigla_base
 
 CORES = {  # sigla base -> (fundo, texto)
@@ -14,15 +14,15 @@ CORES = {  # sigla base -> (fundo, texto)
     "PAL": ("#0a7d8c", "#fff"), "CUR": ("#0550ae", "#fff"), "VIS": ("#7d4e00", "#fff"),
     "CER": ("#953800", "#fff"), "APO": ("#116329", "#fff"), "OUT": ("#57606a", "#fff"),
     FERIAS: ("#2da44e", "#fff"), DISP: ("#0e8a8a", "#fff"), DBQ: ("#cf222e", "#fff"),
-    CURSO: ("#0969da", "#fff"), BAIXA: ("#e16f24", "#fff"), FALTA: ("#82071e", "#fff"),
+    CURSO: ("#0969da", "#fff"),
     DTQ: ("#6639ba", "#fff"),
 }
 COR_TF, COR_T = ("#d29922", "#000"), ("#8957e5", "#fff")
 
 LEGENDA_FIXA = [
     ("SVÇ", "Serviço"), ("SVÇ (TF)", "Serviço por troca forçada"), ("SVÇ (T)", "Serviço por troca consensual"),
-    ("RT", "Retém"), ("RT (TF)", "Troca forçada de retém"), (FERIAS, "Férias"), (DISP, "Dispensado"),
-    (DBQ, "Desembarque"), (CURSO, "Curso"), (DTQ, "Destaque"), (BAIXA, "Baixa"), (FALTA, "Não deu o serviço"),
+    ("RT", "Retém"), ("RT (TF)", "Troca forçada de retém"), (FERIAS, "Férias"), (DISP, "Dispensado (baixa, falta ou dispensa)"),
+    (DBQ, "Desembarque"), (CURSO, "Curso"), (DTQ, "Destaque"),
 ]
 
 
@@ -108,8 +108,8 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                         tags.append('<span class="pisca" title="Aberto a troca de serviço"></span>')
                     if a.obs and a.origem != "normal":
                         obs.append((d, f"{m.nome}: {a.obs}"))
-                elif a.militar_id == m.id:
-                    tags.append(_tag(FALTA))
+                elif a.militar_id == m.id:           # dispensado do serviço em que estava escalado
+                    tags.append(_tag(DISP))
                     obs.append((d, f"{m.nome}: {a.obs}"))
             for r in refs:  # de serviço numa escala de referência (prevalece)
                 dr = res.dia(d, r.id)
@@ -120,6 +120,11 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                 tags.append(_tag(s))
             cel += f"<td data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
         linhas += f"<tr><th class='nome'>{escape(m.posto)} {escape(m.nome)}</th>{cel}</tr>"
+    for i in ctx.impedimentos:
+        if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.militar_id in ids and i.motivo \
+                and any(i.cobre(d) for d in dias):
+            fim = f"–{i.fim:%d/%m}" if i.fim else ""
+            obs.append((max(i.inicio, dias[0]), f"{ctx.militar(i.militar_id).nome}: Dispensado ({i.inicio:%d/%m}{fim}): {i.motivo}"))
     # retém do dia (e descrição de eventos)
     ret, desc = "", ""
     for d in dias:
@@ -142,24 +147,27 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 body,.prev,.card{{font-family:'Inter','Segoe UI',system-ui,sans-serif}}
-body{{font-size:12.5px;color:#334155;margin:0}} p,li{{font-size:12.5px;line-height:1.9}} h4{{font-size:13px;margin:14px 0 4px;color:#0F172A}} ul{{margin:4px 0 0 18px;padding:0}}
-.prev{{border-radius:12px;overflow:hidden}}
-.card{{border:1px solid #d0d7de;border-left:6px solid #1f6feb;border-radius:8px;padding:10px 14px;margin-bottom:10px;font:13px sans-serif;background:#f6f8fa}}
-.card h3{{margin:0 0 6px;font-size:18px}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
-.k span{{display:block;color:#57606a;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
-.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden}} .prev th,.prev td{{border-bottom:1px solid #EEF2F7;border-right:1px solid #EEF2F7;padding:5px 6px;text-align:center;white-space:nowrap}}
-.prev th{{font-weight:700;color:#334155}} .prev th.util{{background:#F8FAFC}} .prev th.folga{{background:#ffd8d8}} .prev th.roxa{{background:#d8c4f5}}
-.prev th.nome{{text-align:left;background:#F8FAFC;position:sticky;left:0;color:#0F172A}}
-.prev td.para{{color:#8b949e;font-style:italic}}
-.prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:#eef6ff}} .prev td.sel{{outline:2px solid #1f6feb;outline-offset:-2px;background:#dbeafe}}
+body{{font-size:12.5px;color:#C7D2E5;margin:0;background:transparent}} p,li{{font-size:12.5px;line-height:1.9}}
+h4{{font-size:13px;margin:14px 0 4px;color:#EAF0FA}} ul{{margin:4px 0 0 18px;padding:0}} b{{color:#EAF0FA}}
+.card{{border:1px solid #223049;border-left:6px solid #3B82F6;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;background:#111A2E}}
+.card h3{{margin:0 0 6px;font-size:18px;color:#EAF0FA}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
+.k span{{display:block;color:#8696B3;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
+.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #223049;border-radius:12px;overflow:hidden;background:#0E1629}}
+.prev th,.prev td{{border-bottom:1px solid #1A2740;border-right:1px solid #1A2740;padding:5px 6px;text-align:center;white-space:nowrap}}
+.prev th{{font-weight:700;color:#C7D2E5;background:#16213A}} .prev th.util{{background:#16213A}}
+.prev th.folga{{background:rgba(239,68,68,.20);color:#FCA5A5}} .prev th.roxa{{background:rgba(139,92,246,.24);color:#DDD6FE}}
+.prev th.nome{{text-align:left;background:#111A2E;position:sticky;left:0;color:#EAF0FA}}
+.prev td.para{{color:#8696B3;font-style:italic}}
+.prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(59,130,246,.12)}}
+.prev td.sel{{outline:2px solid #60A5FA;outline-offset:-2px;background:rgba(59,130,246,.22)}}
 .t{{display:inline-block;border-radius:7px;padding:2px 7px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
-.t.ref{{opacity:.55;outline:1px dashed #57606a}}
-.pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2da44e;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
-@keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(45,164,78,.7)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(45,164,78,0)}}}}
+.t.ref{{opacity:.6;outline:1px dashed #8696B3}}
+.pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#22C55E;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}
+@keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(34,197,94,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
 <div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias)}</tr>{linhas}
-<tr><th colspan="{len(dias) + 1}" style="background:#eaeef2;text-align:left">Retém do dia</th></tr>
+<tr><th colspan="{len(dias) + 1}" style="background:#16213A;color:#8696B3;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
 <tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
 <h4>Observações</h4><ul>{obs_html or '<li>Sem trocas ou ocorrências no período.</li>'}</ul>"""

@@ -12,7 +12,7 @@ P = pagina()
 ctx, user, uid = P.ctx, P.user, P.uid
 nomes_m = P.nomes_m
 hoje = date.today()
-ui.cabecalho("Devoluções", "Quem não deu um serviço devolve em outro dia, dentro do prazo, assumindo o serviço de um colega.", "undo",
+ui.cabecalho("Devoluções", "Quem foi dispensado de um serviço escalado devolve em outro dia, dentro do prazo, assumindo o serviço de um colega.", "undo",
              [ui.chip("Prazo", f"{ctx.janela_devolucao_dias} dias")])
 
 esc_ids = {e.id for e in P.visiveis}
@@ -22,7 +22,7 @@ meu_m = pp.militar_do_usuario(ctx, uid)
 lista = [x for x in pp.devolucoes_em_aberto(ctx, res_dev, esc_ids)
          if x["devolucao"].militar_id == meu_m or x["devolucao"].escala_id in ed_ids]
 if not lista:
-    ui.vazio("Nenhum serviço a devolver", "Quando uma falta for lançada, ela aparece aqui com o prazo.", "check")
+    ui.vazio("Nenhum serviço a devolver", "Quando uma dispensa for lançada no dia do serviço, ela aparece aqui com o prazo.", "check")
 
 TOM = {"aberta": ("Aberta", "ambar"), "em_andamento": ("Em andamento", "azul"), "vencida": ("Prazo vencido", "vermelho")}
 for x_ in lista:
@@ -32,8 +32,8 @@ for x_ in lista:
     rest = x_["dias_restantes"]
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.05rem;'
-                f'color:#0F172A">{ui.esc(mm.nome)}</div>{ui.chip(e_.nome)}<div style="margin-left:auto">{ui.pill(rot, tom)}</div></div>')
-        ui.campos([("Serviço não dado em", f"{dv.data_origem:%d/%m/%Y}"), ("Prazo para devolver", f"{dv.prazo:%d/%m/%Y}"),
+                f'color:var(--ink)">{ui.esc(mm.nome)}</div>{ui.chip(e_.nome)}<div style="margin-left:auto">{ui.pill(rot, tom)}</div></div>')
+        ui.campos([("Dispensado do serviço de", f"{dv.data_origem:%d/%m/%Y}"), ("Prazo para devolver", f"{dv.prazo:%d/%m/%Y}"),
                    ("Situação do prazo", f"vence em {rest} dia(s)" if rest >= 0 else f"vencido há {-rest} dia(s)")])
         if x_["estado"] == "em_andamento":
             p = x_["papeleta"]

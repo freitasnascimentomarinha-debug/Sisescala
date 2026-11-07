@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from .calendario import dia_util, roxa_do_dia
-from .modelos import CATEGORIAS, SVC, Contexto, Escala, Quarto
+from .modelos import CATEGORIAS, DISP, SVC, Contexto, Escala, Quarto
 
 
 @dataclass
@@ -34,7 +34,7 @@ class Alocacao:
     sigla: str                     # SVÇ, SVÇ (TF), SVÇ (T), RT, RT (TF), PAL, PAL (TF)...
     horarios: list[str] = field(default_factory=list)
     obs: str = ""
-    origem: str = "normal"         # "normal" | "tf" | "t" | "falta"
+    origem: str = "normal"         # "normal" | "tf" | "t" | "falta" (= dispensado do serviço escalado)
 
 
 @dataclass
@@ -233,9 +233,9 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
                     res.devolucoes.append(Devolucao(
                         m, esc.id, d, d + timedelta(days=ctx.janela_devolucao_dias)))
                     dia.alocacoes.append(Alocacao(
-                        m, esc.id, d, "efetivo", "Falta", [],
-                        f"Não pôde dar o serviço ({faltas[m].motivo or 'sem motivo informado'}); "
-                        f"retém avançou.", "falta"))
+                        m, esc.id, d, "efetivo", DISP, [],
+                        f"Dispensado do serviço: {faltas[m].motivo.strip() or 'justificativa não informada'}. "
+                        f"O retém avançou.", "falta"))
                 else:
                     efet.append((m, pos))
                 pos += 1

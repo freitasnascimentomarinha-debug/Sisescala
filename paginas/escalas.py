@@ -28,6 +28,8 @@ def _campos(e: Escala | None, k: str):
     tipo = b.text_input("Tipo (ex.: Diária, Pernoite)", d.tipo, key=f"{k}_tipo")
     cats = list(CATEGORIAS)
     cat = c.selectbox("Categoria", cats, cats.index(d.categoria), format_func=lambda x: CATEGORIAS[x][0], key=f"{k}_cat")
+    om = st.text_input("OM que gerencia a escala (aparece no cabeçalho dos documentos)", d.om, key=f"{k}_om",
+                       placeholder="Ex.: Centro de Operações do Abastecimento")
     a, b, c = st.columns(3)
     modos = list(MODOS)
     modo = a.selectbox("Modo", modos, modos.index(d.modo), format_func=MODOS.get, key=f"{k}_modo")
@@ -45,7 +47,7 @@ def _campos(e: Escala | None, k: str):
     a, b = st.columns(2)
     rox = a.checkbox("Participa da escala roxa", d.participa_roxa if e else True, key=f"{k}_rox")
     resp = b.checkbox("Não-serviço só escala quem não está de serviço", d.respeita_servicos, key=f"{k}_resp")
-    return dict(nome=nome, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
+    return dict(nome=nome, om=om, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
                 retem_qtd=ret, folgas_minimas=fol, quartos=quartos_padrao(hq) if hq else [], antecedencia_horas=ant,
                 participa_roxa=rox and modo != "eventos", respeita_servicos=resp)
 
@@ -96,7 +98,7 @@ for e in minhas:
     dono = e.dono_id == uid
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.1rem;'
-                f'color:#0F172A">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("Modo", MODOS[e.modo])}'
+                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Modo", MODOS[e.modo])}'
                 f'{ui.chip("Prioridade", e.prioridade)}{ui.chip(str(e.militares_dia) + " por dia")}'
                 f'{ui.chip(str(len(e.membros)) + " militares")}{ui.chip("Descanso", str(e.folgas_minimas) + "x1")}'
                 f'<div style="margin-left:auto">{ui.pill("Responsável: " + nomes_u.get(e.dono_id, e.dono_id or "—"), "azul" if dono else "cinza", False)}</div></div>')

@@ -12,7 +12,8 @@ ui.cabecalho("Detalhe de serviço", f"{esc.nome} · {dias[0]:%d/%m} a {dias[-1]:
              [ui.chip("Período", f"{len(dias)} dias")])
 
 barra_contexto(P, periodo=True)
-CAMPOS = ["det_om", "det_ins", "det_rec", "det_reg", "det_a1", "det_a2", "det_a3"]
+CHAVE_OM = f"det_om_{esc.id}"
+CAMPOS = [CHAVE_OM, "det_ins", "det_rec", "det_reg", "det_a1", "det_a2", "det_a3"]
 for k in CAMPOS:                      # mantém o que foi digitado ao navegar entre páginas
     if k in st.session_state:
         st.session_state[k] = st.session_state[k]
@@ -21,7 +22,9 @@ esq, dir_ = st.columns([1.2, 1], gap="large")
 with esq:
     with st.container(border=True):
         ui.secao("Cabeçalho e instruções")
-        om = st.text_input("Organização Militar", key="det_om", placeholder="Ex.: Centro de Operações do Abastecimento")
+        om = st.text_input("OM que gerencia a escala (cabeçalho do documento)", esc.om, key=CHAVE_OM)
+        if not esc.om:
+            st.caption("Dica: cadastre a OM em Gestão → Escalas para ela sair sempre no cabeçalho.")
         ins = st.text_area("Instruções do serviço", key="det_ins", height=120)
         rec = st.text_area("Recomendações", key="det_rec", height=100)
         reg = st.text_area("Regras (horário de parada, acumulação de trabalho etc.)", key="det_reg", height=100)
@@ -43,15 +46,13 @@ with dir_:
             else:
                 ef += "<td>" + "<br>".join(ui.esc(ctx.militar(a.militar_id).nome) for a in dia.efetivos) + "</td>"
                 rt += "<td>" + "<br>".join(ui.esc(ctx.militar(a.militar_id).nome) for a in dia.retens) + "</td>"
-        st.html(f"""<style>.q{{border-collapse:collapse;width:100%;font-size:.72rem}}.q th,.q td{{border:1px solid #E2E8F0;padding:5px;text-align:center}}
-        .q th{{background:#F1F5F9;color:#334155}}.q .para{{color:#94A3B8}}.q td.l{{background:#F8FAFC;font-weight:700;text-align:left}}</style>
-        <div style="overflow-x:auto"><table class="q"><tr><th></th>{cab}</tr><tr><td class="l">Efetivo</td>{ef}</tr>
+        st.html(f"""<div style="overflow-x:auto"><table class="q"><tr><th></th>{cab}</tr><tr><td class="l">Efetivo</td>{ef}</tr>
         <tr><td class="l">Retém</td>{rt}</tr></table></div>""")
         if len(dias) > 10:
             st.caption(f"Mostrando 10 de {len(dias)} dias; o PDF traz todos.")
         trocas = sum(1 for d in dias for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else []) if a.origem in ("tf", "t"))
-        ui.campos([("Escala", esc.nome), ("Dias no documento", str(len(dias))), ("Trocas no período", str(trocas))])
+        ui.campos([("Cabeçalho", f"MARINHA DO BRASIL · {om or '—'}"), ("Escala", esc.nome), ("Dias no documento", str(len(dias))), ("Trocas no período", str(trocas))])
         st.download_button("Gerar PDF do detalhe", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass),
                            f"detalhe_{esc.id}_{dias[0]:%Y%m%d}.pdf", "application/pdf", type="primary",
                            icon=":material/download:", use_container_width=True)
-        st.caption("Ajuste o período na barra lateral. O PDF inclui as observações de troca e as três assinaturas.")
+        st.caption("Ajuste a escala e o período acima. O PDF inclui as observações de trocas e dispensas e as três assinaturas.")

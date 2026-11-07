@@ -1,4 +1,4 @@
-"""Lançamentos: impedimentos, dias especiais, guarnecimento, faltas e eventos."""
+"""Lançamentos: impedimentos e dispensas, dias especiais, guarnecimento, dispensa no dia e eventos."""
 from datetime import date
 
 import streamlit as st
@@ -6,7 +6,7 @@ import streamlit as st
 from sisescala import notificacoes as nt
 from sisescala import ui
 from sisescala.calendario import pontos_facultativos
-from sisescala.modelos import (TIPOS_IMPEDIMENTO, DiaEspecial, Evento, Guarnecimento, Impedimento, Ocorrencia)
+from sisescala.modelos import (ROTULO_IMPEDIMENTO, TIPOS_IMPEDIMENTO, TIPOS_VISIVEIS, DiaEspecial, Evento, Guarnecimento, Impedimento, Ocorrencia)
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -14,10 +14,10 @@ ctx, uid = P.ctx, P.uid
 nomes_m = P.nomes_m
 editaveis = [e.id for e in P.editaveis()]
 ed_ids = set(editaveis)
-ui.cabecalho("Lançamentos", "Tudo que muda a escala: impedimentos, dias sem expediente, guarnecimento, faltas e eventos.", "calendar")
+ui.cabecalho("Lançamentos", "Tudo que muda a escala: impedimentos e dispensas, dias sem expediente, guarnecimento e eventos.", "calendar")
 
-SECOES = {"Impedimentos": "Impedimentos e destaques", "Dias": "Feriados e dias sem expediente",
-          "Guarnece": "Comando guarnece", "Faltas": "Faltas no serviço", "Eventos": "Eventos"}
+SECOES = {"Impedimentos": "Impedimentos e dispensas", "Dias": "Feriados e dias sem expediente",
+          "Guarnece": "Comando guarnece", "Faltas": "Dispensado no dia do serviço", "Eventos": "Eventos"}
 sec = st.segmented_control("Tipo de lançamento", list(SECOES), default="Impedimentos", format_func=SECOES.get,
                            key="lanc_sec", label_visibility="collapsed") or "Impedimentos"
 
@@ -40,14 +40,14 @@ def removivel(lista, rotulo, pertence=lambda x: True, chave=""):
 esq, dir_ = st.columns([1, 1.1], gap="large")
 if sec == "Impedimentos":
     with esq, st.container(border=True):
-        ui.secao("Novo impedimento / destaque (DTQ)")
+        ui.secao("Novo impedimento ou dispensa")
         with st.form("imp", clear_on_submit=True, border=False):
             mid = st.selectbox("Militar", list(nomes_m), format_func=nomes_m.get)
-            tipo = st.selectbox("Tipo", list(TIPOS_IMPEDIMENTO), format_func=lambda t: f"{TIPOS_IMPEDIMENTO[t]} · {t}")
+            tipo = st.selectbox("Situação", TIPOS_VISIVEIS, format_func=lambda t: f"{ROTULO_IMPEDIMENTO[t]}  ·  {TIPOS_IMPEDIMENTO[t]}")
             a, b = st.columns(2)
             i, f = a.date_input("Início", date.today(), format="DD/MM/YYYY"), b.date_input("Fim", date.today(), format="DD/MM/YYYY")
-            motivo = st.text_input("Motivo / OM de destino")
-            anexo = st.text_input("Arquivo ou link (obrigatório para dispensa)")
+            motivo = st.text_input("Justificativa / OM de destino", help="Obrigatória para dispensas (baixa, falta ou com documento).")
+            anexo = st.text_input("Arquivo ou link (obrigatório na dispensa com documento)")
             if st.form_submit_button("Lançar", type="primary", use_container_width=True):
                 imp = Impedimento(mid, tipo, i, None if tipo == "desembarque" else f, motivo, anexo)
                 if erros := imp.validar():
@@ -57,7 +57,7 @@ if sec == "Impedimentos":
                     st.session_state["toast"] = "Impedimento lançado."
                     st.rerun()
     with dir_:
-        removivel(ctx.impedimentos, lambda x: f"{nomes_m.get(x.militar_id, x.militar_id)} – {TIPOS_IMPEDIMENTO[x.tipo]} "
+        removivel(ctx.impedimentos, lambda x: f"{nomes_m.get(x.militar_id, x.militar_id)} – {ROTULO_IMPEDIMENTO.get(x.tipo, x.tipo)} "
                   f"{x.inicio:%d/%m}{'–' + format(x.fim, '%d/%m') if x.fim else ''} {x.motivo}", chave="imp")
 elif sec == "Dias":
     with esq, st.container(border=True):
@@ -94,24 +94,29 @@ elif sec == "Guarnece":
                   f"{'guarnece' if x.guarnece else 'não guarnece'}", lambda x: x.escala_id in ed_ids, "gu")
 elif sec == "Faltas":
     with esq, st.container(border=True):
-        ui.secao("Falta no serviço (avança o retém)")
+        ui.secao("Dispensado do serviço escalado (o retém avança)")
         if not editaveis:
             ui.vazio("Sem escalas para editar", "", "calendar")
         else:
             with st.form("oc", clear_on_submit=True, border=False):
                 e = st.selectbox("Escala", editaveis, format_func=lambda x: ctx.escala(x).nome)
                 m2 = st.selectbox("Militar escalado", list(nomes_m), format_func=nomes_m.get)
-                dt = st.date_input("Dia", date.today(), format="DD/MM/YYYY")
-                mot = st.text_input("Motivo")
-                if st.form_submit_button("Lançar falta", type="primary", use_container_width=True):
-                    ctx.ocorrencias.append(Ocorrencia(dt, e, m2, mot))
-                    nt.notificar(ctx, nt.usuarios_do_militar(ctx, m2), "devolucao",
-                                 f"Você tem um serviço a devolver: falta em {dt:%d/%m/%Y} ({ctx.escala(e).nome}), "
-                                 f"prazo de {ctx.janela_devolucao_dias} dias. Veja a página Devoluções.", e)
-                    st.session_state["toast"] = "Falta lançada; o retém avançou."
-                    st.rerun()
+                dt = st.date_input("Dia do serviço", date.today(), format="DD/MM/YYYY")
+                mot = st.text_input("Justificativa (obrigatória)", help="Baixa, falta ou outro motivo. Aparece na prévia e no detalhe.")
+                st.caption("O militar passa a Dispensado (Disp) nesse dia, o retém avança e a prévia e o detalhe se reconfiguram.")
+                if st.form_submit_button("Dispensar do serviço", type="primary", use_container_width=True):
+                    oc = Ocorrencia(dt, e, m2, mot.strip())
+                    if erros := oc.validar():
+                        st.error("; ".join(erros))
+                    else:
+                        ctx.ocorrencias.append(oc)
+                        nt.notificar(ctx, nt.usuarios_do_militar(ctx, m2), "devolucao",
+                                     f"Você foi dispensado do serviço de {dt:%d/%m/%Y} ({ctx.escala(e).nome}): {oc.motivo}. "
+                                     f"Você tem um serviço a devolver em até {ctx.janela_devolucao_dias} dias (página Devoluções).", e)
+                        st.session_state["toast"] = "Dispensa lançada; o retém avançou e a escala foi reconfigurada."
+                        st.rerun()
     with dir_:
-        removivel(ctx.ocorrencias, lambda x: f"{x.data:%d/%m} {ctx.escala(x.escala_id).nome}: {nomes_m.get(x.militar_id)}",
+        removivel(ctx.ocorrencias, lambda x: f"{x.data:%d/%m} {ctx.escala(x.escala_id).nome}: {nomes_m.get(x.militar_id)} dispensado – {x.motivo}",
                   lambda x: x.escala_id in ed_ids, "falta")
 else:
     evt = [e for e in editaveis if ctx.escala(e).modo == "eventos"]
