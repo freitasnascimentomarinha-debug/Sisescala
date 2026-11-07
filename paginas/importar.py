@@ -14,8 +14,11 @@ ui.linha_do_tempo(["Enviar planilha", "Revisar", "Aplicar"], 1 if prev else 0)
 esq, dir_ = st.columns([1, 1.2], gap="large")
 with esq, st.container(border=True):
     ui.secao("1 · Enviar")
-    st.caption("Colunas: Nome de guerra, Posto/Graduação, NIP, OM, Escala, Ordem, Último serviço e/ou Data, "
-               "E-mail, Ramal e Celular. A escala continua do dia seguinte à última data da planilha.")
+    st.caption("**Só o nome de guerra é obrigatório.** As demais colunas (Posto/Graduação, NIP, OM, Escala, Ordem, "
+               "Último serviço e/ou Data, E-mail, Ramal e Celular) são opcionais. E-mail, ramal e celular em branco "
+               "são completados depois: quando o militar pede o vínculo e o detalhista aprova, o contato da conta "
+               "dele entra no cadastro; o detalhista também pode digitar em Militares. A escala continua do dia "
+               "seguinte à última data da planilha.")
     st.download_button("Baixar modelo (CSV)", MODELO_CSV.encode("utf-8-sig"), "modelo_importacao.csv", "text/csv",
                        icon=":material/download:")
     arq = st.file_uploader("Planilha", type=["csv", "xlsx"], label_visibility="collapsed")

@@ -157,11 +157,12 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stForm"] { border:
   background-image:url(app/static/camuflado.svg); background-size:260px; border-bottom:1px solid rgba(0,0,0,.45); }
 .ph-ic { background-image: linear-gradient(135deg, rgba(74,106,39,.92), rgba(122,154,60,.92)), url(app/static/camuflado.svg); background-size: auto, 120px; }
 
-/* logo do menu lateral (PNG sem fundo): maior que o padrão do st.logo, que é pensado para marcas pequenas */
-[data-testid="stSidebarHeader"] { height:auto; padding-top:.9rem; padding-bottom:.5rem; align-items:flex-start; }
-[data-testid="stSidebarHeader"] > div:first-child { flex:1; }
-[data-testid="stSidebarLogo"] { height:auto !important; max-height:none !important; width:100% !important; max-width:215px !important;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,.55)); }
+/* logo do menu lateral (PNG sem fundo): centralizada e longe da borda; o botão de recolher fica sobreposto no canto */
+[data-testid="stSidebarHeader"] { position:relative; height:auto; display:block; padding:1.6rem 1.4rem .9rem; }
+[data-testid="stSidebarHeader"] > div:first-child { display:flex; justify-content:center; width:100%; }
+[data-testid="stSidebarLogo"] { height:auto !important; max-height:none !important; width:100% !important; max-width:190px !important;
+  margin:0 auto; filter: drop-shadow(0 2px 6px rgba(0,0,0,.55)); }
+[data-testid="stSidebarCollapseButton"] { position:absolute; top:.5rem; right:.5rem; }
 
 /* animação (GIF com fundo transparente) abaixo dos botões do menu */
 .menu-anim { display:block; width:100%; max-width:230px; margin:.6rem auto .2rem; image-rendering:pixelated; opacity:.95; }
