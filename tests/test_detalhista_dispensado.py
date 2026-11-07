@@ -131,7 +131,7 @@ def test_relatorio_informa_detalhista_auxiliar_e_a_opcao():
     c = mk(auxiliar_id="m2")
     sit = dict(situacao_atual(c, c.escala("A")))
     assert sit["Detalhista da escala"] == "M1 (fora da escala, dispensado de serviço)"
-    assert sit["Auxiliar do detalhista"].startswith("M2 (concorre normalmente e também decide")
+    assert sit["Auxiliar do detalhista"].startswith("M2 (concorre normalmente, decide papeletas e vínculos e faz lançamentos")
     assert "M1" not in next(v for k, v in sit.items() if k.startswith("Militares na escala"))
     assert any("M1" in t and "fica fora da escala" in t for t in texto_funcionamento(c, c.escala("A")))
     item = next(i for _, its in itens_configuracao(c, c.escala("A")) for i in its if i.rotulo == "Detalhista concorre à escala")
