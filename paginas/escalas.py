@@ -52,8 +52,8 @@ def _campos(e: Escala | None, k: str):
                       help="Pode ser o mesmo detalhista de várias escalas. Por padrão ele fica fora da escala.")
     aux = b.selectbox("Auxiliar do detalhista", ids, ids.index(d.auxiliar_id) if d.auxiliar_id in ids else 0,
                       format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_aux",
-                      help="O auxiliar concorre à escala normalmente e também aprova papeletas e vínculos desta escala "
-                           "(menos os próprios). Precisa ter a conta vinculada ao militar.")
+                      help="O auxiliar concorre à escala normalmente e também aprova papeletas e vínculos e lança dispensas "
+                           "e outros lançamentos desta escala (menos os próprios). Precisa ter a conta vinculada ao militar.")
     det_esc = st.checkbox("O detalhista também concorre a esta escala (raro)", d.detalhista_escalavel, key=f"{k}_detesc",
                           help="Desmarcado (padrão): o detalhista não é escalado para nada nesta escala.")
     a, b = st.columns(2)

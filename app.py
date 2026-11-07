@@ -122,7 +122,8 @@ if gerir:
 if user.admin:
     menu["Administração"] = [_pg("usuarios", "Usuários", "admin_panel_settings", "usuarios")]
 if not gerir and user.militar_id and any(e.auxiliar_id == user.militar_id for e in ctx.escalas):
-    menu["Operação"].append(_pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos"))   # auxiliar também decide vínculos
+    menu["Operação"].append(_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos"))   # auxiliar também lança
+    menu["Operação"].append(_pg("vinculos", "Vínculos" + _c(n_vinc), "link", "vinculos"))        # e decide vínculos
 conta = [_pg("notificacoes", "Notificações" + _c(n_novas), "notifications", "notificacoes"),
          _pg("conta", "Minha conta", "manage_accounts", "conta")]
 if not gerir and not user.militar_id:

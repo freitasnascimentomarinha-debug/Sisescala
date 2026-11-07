@@ -85,3 +85,21 @@ def test_paginas_do_auxiliar_que_decide_papeletas_e_vinculos(app):
     for p in PAGINAS_MILITAR + ["vinculos"]:
         app.switch_page(f"paginas/{p}.py").run()
         assert not app.exception, (p, [e.value for e in app.exception])
+
+
+def test_auxiliar_abre_a_pagina_de_lancamentos(app):
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.escala("per").auxiliar_id = "m2"
+    auth.criar_usuario(ctx, "u1", "aux", "Auxiliar", "senha-aux-1234", perfil="militar", militar_id="m2",
+                       email="a@x.com", ramal="2345", celular="21988887777")
+    app.run()
+    del app.session_state["uid"]
+    app.run()
+    _texto(app, "Login").input("aux")
+    next(t for t in app.text_input if t.label == "Senha").input("senha-aux-1234")
+    next(b for b in app.button if b.label == "Entrar").click().run()
+    app.switch_page("paginas/lancamentos.py").run()
+    assert not app.exception
+    militares = next(s for s in app.selectbox if s.label == "Militar")
+    assert "Militar 02" not in militares.options and "Militar 03" in militares.options       # sem ele mesmo
