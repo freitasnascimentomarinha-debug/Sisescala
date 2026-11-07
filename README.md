@@ -29,11 +29,11 @@ streamlit run app.py
 - Escalações que não são serviço (palestra etc.) **nunca** têm prioridade sobre serviço e só escalam quem não está de efetivo serviço no dia.
 
 ## Papeleta de troca de serviço
-1. Na **Prévia**, o militar (mesmo com acesso só de leitura) pede a troca **para si**; o detalhista e os editores pedem por qualquer militar da escala. Escolhe-se o dia dele, o militar e o dia com quem trocar, e o **motivo (obrigatório)**. O sistema valida na hora e respeita a **antecedência mínima** da escala (24h, ajustável).
+1. Na **Prévia** (ou clicando na célula do colega), o militar (mesmo com acesso só de leitura) pede a troca **para si, confirmando com o seu PIN**; o detalhista e os editores pedem por qualquer militar da escala. Escolhe-se o dia dele, o militar e o dia com quem trocar, e o **motivo (obrigatório)**. O sistema valida na hora e respeita a **antecedência mínima** da escala (24h, ajustável).
 2. **Pedido ativo (pendente ou aprovado) trava os dois militares**: não podem ser selecionados em outro pedido.
 3. O pedido registra data, hora, quem pediu (posto, nome, NIP, OM), motivo, com quem e em que escala, e chega ao dono (detalhista) e aos editores da escala.
 4. **A prévia só muda quando o detalhista aprova**; aprovando, a troca de datas é aplicada na hora (`SVÇ (T)` nos dois dias).
-5. Cada parte **assina pelo sistema** entrando na própria conta e reconfirmando a senha. O detalhista vê se **as duas partes têm conta** e quem já assinou (ou registra documento assinado fora: gov.br/ICP/papel) e **confirma**.
+5. Cada parte **assina pelo sistema com o PIN**, na própria conta; a assinatura registra **data, hora (com segundos) e o código de verificação do documento**, e aparece na tela e no PDF. O detalhista vê se **as duas partes têm conta** e quem já assinou (ou registra documento assinado fora: gov.br/ICP/papel) e **confirma**.
 6. **As partes cancelam enquanto não aprovado.** O detalhista cancela também depois de aprovar (e da confirmação, com motivo): a troca é desfeita.
 - Serviço que já veio de troca (T/TF) não é trocado de novo. A assinatura pelo sistema não substitui certificado ICP-Brasil.
 
@@ -41,12 +41,21 @@ streamlit run app.py
 - A primeira conta criada (tela "Primeiro acesso") é a administradora. O administrador cria contas na aba **Usuários** e pode **fechar o cadastro aberto**.
 - **O militar cria a própria conta** (aba "Criar conta" no login) com login, senha e **e-mail, ramal e celular obrigatórios**. Conta nova não enxerga nada.
 - O detalhista **compartilha a escala** com o login do militar (aba Escalas → Compartilhar acesso). O militar então abre a aba **Vínculos**, escolhe quem ele é na lista da escala, confirma o NIP (se já cadastrado) e **cria um PIN** (4 a 6 dígitos). O detalhista/editores **aprovam ou rejeitam** (com motivo). Aprovado, a conta passa a ser daquele militar e o contato dela completa o cadastro dele.
-- O **PIN assina as papeletas** (5 erros seguidos bloqueiam a conta por 5 minutos). Quem ainda não tem PIN assina com a senha.
+- **PIN:** todo usuário cadastra o seu em **Minha conta** (exige a senha). **Pedir troca/devolução e assinar exigem o PIN** de quem faz a ação (o detalhista que pede por um militar usa o próprio PIN). 5 erros seguidos bloqueiam a conta por 5 minutos.
 - **Detalhista:** cria e edita escalas, cadastro, importação e lançamentos. **Militar:** vê (leitura) as escalas em que está, pede troca para si e sinaliza disponibilidade.
 - Senhas e PINs só como hash bcrypt (senha com 8+ caracteres).
 
 ## Disponibilidade de troca
 O militar vinculado (ou o detalhista por ele) escolhe, na **Prévia**, um dia futuro em que está escalado e abre a disponibilidade: aparece uma **bolinha verde piscando** na célula dele, para todos que veem a escala, e ● nas listas de troca. Só vale para serviço dele (se mudar de mãos, o sinal some), respeitando a antecedência mínima da escala, e fica oculta enquanto ele estiver num pedido de troca ativo. Sinais de dias passados são removidos.
+
+## Devoluções
+Quem não deu um serviço (falta lançada, ou deslocado por outra regra) fica com um **serviço a devolver**, com prazo (30 dias por padrão, configurável). A aba **Devoluções** lista os pendentes (🟡 aberta, 🔵 em andamento, 🔴 vencida) e sugere dias, os mais próximos do original primeiro, com **⚠ descanso curto** quando o 2x1 não é respeitado (o detalhista decide). A devolução é uma papeleta do tipo "devolução": o militar assume o serviço de um colega, com PIN, aprovação do detalhista e assinaturas. Confirmada, o serviço é quitado; cancelada ou rejeitada, volta a ficar aberto. O militar é avisado quando uma falta é lançada.
+
+## Notificações
+Central dentro do sistema (🔔 na barra lateral; não envia e-mail): disponibilidade aberta (para os colegas com conta e os editores), pedidos de troca/devolução (outra parte e editores), aprovação, rejeição, cancelamento, assinatura e confirmação, pedidos e decisões de vínculo e serviço a devolver. Lidas há mais de 30 dias são removidas.
+
+## Prévia interativa (componente JavaScript)
+A prévia é um componente Streamlit próprio (`componentes/previa/index.html`, JS puro sem build, `sisescala/componente.py`). Clicar numa célula marca-a e devolve ao Python o militar e o dia: no seu próprio serviço pré-preenche a **disponibilidade**; no de um colega, a **troca**.
 
 ## Persistência no Google Sheets
 1. No Google Cloud: crie um projeto, ative a **Google Sheets API** e crie uma **conta de serviço** com chave JSON.
@@ -58,4 +67,4 @@ O militar vinculado (ou o detalhista por ele) escolhe, na **Prévia**, um dia fu
 - Para migrar depois para PostgreSQL basta implementar outro `Backend`/`Repositorio` (`sisescala/persistencia.py`); o motor e a tela não mudam.
 
 ## Pendente
-Tela de devolução de serviço; backend PostgreSQL; componente JS customizado; assinatura qualificada (ICP-Brasil/gov.br) integrada.
+Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento); envio de aviso por e-mail; assinatura qualificada (ICP-Brasil/gov.br) integrada.

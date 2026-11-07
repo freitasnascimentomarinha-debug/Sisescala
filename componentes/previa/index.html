@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;padding:0;background:transparent}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+/* Componente Streamlit em JavaScript puro (sem build).
+   Protocolo: https://docs.streamlit.io/develop/concepts/custom-components/intro
+   Recebe {html, selecionada}; devolve {data, militar, ts} ao clicar numa célula da prévia. */
+(function () {
+  var root = document.getElementById("root");
+  function enviar(tipo, dados) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, dados), "*");
+  }
+  function altura() {
+    enviar("streamlit:setFrameHeight", { height: Math.max(root.scrollHeight, 40) + 8 });
+  }
+  function marcar(td) {
+    root.querySelectorAll("td.sel").forEach(function (x) { x.classList.remove("sel"); });
+    if (td) td.classList.add("sel");
+  }
+  function ligar(selecionada) {
+    root.querySelectorAll("td[data-d]").forEach(function (td) {
+      if (selecionada && td.dataset.d === selecionada.data && td.dataset.m === selecionada.militar) marcar(td);
+      td.addEventListener("click", function () {
+        marcar(td);
+        enviar("streamlit:setComponentValue", {
+          dataType: "json",
+          value: { data: td.dataset.d, militar: td.dataset.m, ts: Date.now() }
+        });
+      });
+    });
+  }
+  var ultimo = null;
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "streamlit:render") return;
+    var a = ev.data.args || {};
+    if (a.html !== ultimo) {            // só redesenha se a tabela mudou
+      root.innerHTML = a.html || "";
+      ultimo = a.html;
+      ligar(a.selecionada);
+    } else {
+      marcar(null);
+      ligar(a.selecionada);
+    }
+    altura();
+  });
+  window.addEventListener("resize", altura);
+  enviar("streamlit:componentReady", { apiVersion: 1 });
+  altura();
+})();
+</script>
+</body>
+</html>

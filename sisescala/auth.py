@@ -125,16 +125,17 @@ def alterar_pin(ctx: Contexto, usuario_id: str, senha: str, novo_pin: str) -> No
     u.pin_hash = hash_pin(novo_pin)
 
 
-def confirmar_assinatura(ctx: Contexto, usuario_id: str, segredo: str, agora: datetime | None = None) -> bool:
-    """Confirma a assinatura com o PIN (se a conta tiver) ou com a senha. Erros seguidos bloqueiam a conta."""
+def confirmar_assinatura(ctx: Contexto, usuario_id: str, pin: str, agora: datetime | None = None) -> bool:
+    """Confirma com o PIN da conta (obrigatório para pedir troca e assinar). Erros seguidos bloqueiam a conta."""
     agora = agora or datetime.now()
     u = ctx.usuario(usuario_id)
     if not u or not u.ativo:
         return False
+    if not u.pin_hash:
+        raise AutenticacaoErro("cadastre o seu PIN no perfil (Minha conta)")
     if u.bloqueado_ate and u.bloqueado_ate > agora:
         raise AutenticacaoErro(f"conta bloqueada por excesso de tentativas até {u.bloqueado_ate:%H:%M}")
-    ok = _checar(segredo, u.pin_hash if u.pin_hash else u.senha_hash)
-    if ok:
+    if _checar(pin, u.pin_hash):
         u.tentativas = 0
         return True
     u.tentativas += 1

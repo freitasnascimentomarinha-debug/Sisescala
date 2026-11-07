@@ -87,11 +87,13 @@ def ctx_completo():
                for dx in (date(2027, 3, k) for k in range(8, 20)) for dy in (date(2027, 3, k) for k in range(8, 20))
                if dx != dy and not pp.validar_troca(c, esc, x, dx, y, dy)[0])
     x, dx, y, dy = par
-    p = pp.criar(c, det.id, "per", x, dx, y, dy, "consulta", AGORA)
+    for u in c.usuarios:
+        u.pin_hash = auth.hash_pin("1234")
+    p = pp.criar(c, det.id, "per", x, dx, y, dy, "consulta", AGORA, pin="1234")
     pp.aprovar(c, det.id, p.id, AGORA)
     conta = next((u for u in c.usuarios if u.militar_id == x), None)
     if conta:
-        pp.assinar(c, p.id, conta.id, "umasenha123", AGORA)
+        pp.assinar(c, p.id, conta.id, "1234", AGORA)
     return c
 
 

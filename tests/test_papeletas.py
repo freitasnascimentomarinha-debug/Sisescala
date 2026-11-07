@@ -12,6 +12,7 @@ from sisescala.permissoes import PermissaoNegada, compartilhar, pode_editar, pod
 D = date(2027, 3, 1)
 AGORA = datetime(2027, 2, 27, 9, 0)      # bem antes do serviço
 SENHA = "senha-forte-1"
+PIN = "1234"
 
 
 def mk(n=8, **kw):
@@ -22,6 +23,8 @@ def mk(n=8, **kw):
     auth.criar_usuario(c, "u1", "ed", "Editor", SENHA)                                    # u2
     for i in (1, 3, 5):                                                                   # contas de militares
         auth.criar_usuario(c, "u1", f"mil{i}", f"Militar {i}", SENHA, perfil="militar", militar_id=f"m{i}")
+    for u in c.usuarios:                                                                  # todos têm PIN no perfil
+        u.pin_hash = auth.hash_pin(PIN)
     return c   # u3=m1, u4=m3, u5=m5
 
 
@@ -30,7 +33,7 @@ M1, M3, M5 = "u3", "u4", "u5"
 
 def pedido(c, **kw):
     args = dict(usuario_id="u1", escala_id="A", solicitante_id="m1", data_solicitante=D, outro_id="m3",
-                data_outro=D + timedelta(days=2), motivo="consulta médica", agora=AGORA)
+                data_outro=D + timedelta(days=2), motivo="consulta médica", agora=AGORA, pin=PIN)
     args.update(kw)
     return pp.criar(c, **args)
 
@@ -170,15 +173,15 @@ def test_assinatura_pela_conta_e_confirmacao():
     with pytest.raises(PermissaoNegada, match="incorreto"):
         pp.assinar(c, p.id, M1, "errada", AGORA)
     with pytest.raises(PermissaoNegada):
-        pp.assinar(c, p.id, M5, SENHA, AGORA)                            # não é parte
+        pp.assinar(c, p.id, M5, PIN, AGORA)                            # não é parte
     with pytest.raises(PermissaoNegada):
-        pp.assinar(c, p.id, "u1", SENHA, AGORA)                          # detalhista não assina pelos militares
-    a = pp.assinar(c, p.id, M1, SENHA, AGORA)
+        pp.assinar(c, p.id, "u1", PIN, AGORA)                          # detalhista não assina pelos militares
+    a = pp.assinar(c, p.id, M1, PIN, AGORA)
     assert a.metodo == "conta" and a.hash_documento == pp.hash_documento(c, p)
     with pytest.raises(ValueError, match="já assinou"):
-        pp.assinar(c, p.id, M1, SENHA, AGORA)
+        pp.assinar(c, p.id, M1, PIN, AGORA)
     assert [s["assinou"] for s in pp.situacao_partes(c, p)] == [True, False]
-    pp.assinar(c, p.id, M3, SENHA, AGORA + timedelta(hours=1))
+    pp.assinar(c, p.id, M3, PIN, AGORA + timedelta(hours=1))
     pp.confirmar(c, "u1", p.id, AGORA + timedelta(hours=2))
     assert p.status == "confirmada"
 
@@ -188,7 +191,7 @@ def test_situacao_mostra_parte_sem_conta_e_assinatura_externa():
     p = pedido(c, outro_id="m4", data_outro=D + timedelta(days=3))       # m4 não tem conta
     pp.aprovar(c, "u1", p.id, AGORA)
     assert [s["tem_conta"] for s in pp.situacao_partes(c, p)] == [True, False]
-    pp.assinar(c, p.id, M1, SENHA, AGORA)
+    pp.assinar(c, p.id, M1, PIN, AGORA)
     pp.registrar_assinatura_externa(c, "u1", p.id, "m4", "gov.br/doc/9", AGORA)
     pp.confirmar(c, "u1", p.id, AGORA)
     assert p.assinaturas["m4"].metodo == "externo"
@@ -198,7 +201,7 @@ def test_detalhista_cancela_ate_confirmada_com_motivo():
     c = mk()
     p = pedido(c, usuario_id=M1)
     pp.aprovar(c, "u1", p.id, AGORA)
-    pp.assinar(c, p.id, M1, SENHA, AGORA); pp.assinar(c, p.id, M3, SENHA, AGORA)
+    pp.assinar(c, p.id, M1, PIN, AGORA); pp.assinar(c, p.id, M3, PIN, AGORA)
     pp.confirmar(c, "u1", p.id, AGORA)
     with pytest.raises(ValueError, match="motivo"):
         pp.cancelar(c, "u1", p.id, "", AGORA)
@@ -222,7 +225,7 @@ def test_servico_que_veio_de_troca_nao_pode_ser_trocado_de_novo():
     pp.cancelar(c, "u1", p.id, "x", AGORA)
     p = pedido(c)
     pp.aprovar(c, "u1", p.id, AGORA)
-    pp.assinar(c, p.id, M1, SENHA, AGORA); pp.assinar(c, p.id, M3, SENHA, AGORA); pp.confirmar(c, "u1", p.id, AGORA)
+    pp.assinar(c, p.id, M1, PIN, AGORA); pp.assinar(c, p.id, M3, PIN, AGORA); pp.confirmar(c, "u1", p.id, AGORA)
     with pytest.raises(ValueError, match="já veio de uma troca"):
         pedido(c, solicitante_id="m3", data_solicitante=D, outro_id="m4", data_outro=D + timedelta(days=3))
 

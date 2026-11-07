@@ -117,7 +117,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                         tags.append(_tag(a.sigla, r.nome, "ref"))
             if not tags and (s := _sigla_imp(ctx, m.id, d)):
                 tags.append(_tag(s))
-            cel += f"<td>{''.join(tags)}</td>"
+            cel += f"<td data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
         linhas += f"<tr><th class='nome'>{escape(m.posto)} {escape(m.nome)}</th>{cel}</tr>"
     # retém do dia (e descrição de eventos)
     ret, desc = "", ""
@@ -146,6 +146,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
 .prev th.util{{background:#f6f8fa}} .prev th.folga{{background:#ffd8d8}} .prev th.roxa{{background:#d8c4f5}}
 .prev th.nome{{text-align:left;background:#f6f8fa;position:sticky;left:0}}
 .prev td.para{{color:#8b949e;font-style:italic}}
+.prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:#eef6ff}} .prev td.sel{{outline:2px solid #1f6feb;outline-offset:-2px;background:#dbeafe}}
 .t{{display:inline-block;border-radius:4px;padding:1px 5px;margin:1px;font-weight:600}} .t small{{font-weight:400}}
 .t.ref{{opacity:.55;outline:1px dashed #57606a}}
 .pisca{{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2da44e;margin-left:3px;vertical-align:middle;animation:pisca 1s infinite}}

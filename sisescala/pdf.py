@@ -71,44 +71,64 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
 
 
 def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, str] = ("", "")) -> bytes:
-    """Documento da papeleta de troca de serviço, para assinatura dos dois militares e do detalhista."""
+    """Documento da papeleta (troca ou devolução), com as assinaturas já feitas, data e hora."""
     from .papeletas import hash_documento
     esc = ctx.escala(p.escala_id)
     x, y = ctx.militar(p.solicitante_id), ctx.militar(p.outro_id)
+    devolucao = p.tipo == "devolucao"
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm,
                             bottomMargin=16 * mm)
     st = getSampleStyleSheet()
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
     dado = lambda m: f"{m.posto} {m.nome}".strip() + (f" – NIP {m.nip}" if m.nip else "")  # noqa: E731
-    el = [P(f"<b>PAPELETA DE TROCA DE SERVIÇO Nº {p.numero:04d}</b>", "Title")]
+    titulo = "PAPELETA DE DEVOLUÇÃO DE SERVIÇO" if devolucao else "PAPELETA DE TROCA DE SERVIÇO"
+    el = [P(f"<b>{titulo} Nº {p.numero:04d}</b>", "Title")]
     if om:
         el.append(P(om, "Heading3"))
     dados = [
         ["Escala", esc.nome + (f" ({esc.tipo})" if esc.tipo else "")],
-        ["Pedido em", f"{p.criado_em:%d/%m/%Y} às {p.criado_em:%H:%M}"],
-        ["Solicitante", dado(x)], ["Serviço do solicitante em", f"{p.data_solicitante:%d/%m/%Y}"],
-        ["Troca com", dado(y)], ["Serviço do outro militar em", f"{p.data_outro:%d/%m/%Y}"],
+        ["Pedido em", f"{p.criado_em:%d/%m/%Y} às {p.criado_em:%H:%M:%S}"],
+        ["Solicitante", dado(x)],
+        ["Serviço não dado em" if devolucao else "Serviço do solicitante em", f"{p.data_solicitante:%d/%m/%Y}"],
+        ["Assume o serviço de" if devolucao else "Troca com", dado(y)],
+        ["Data do serviço assumido" if devolucao else "Serviço do outro militar em", f"{p.data_outro:%d/%m/%Y}"],
         ["Motivo", p.motivo or "-"], ["Antecedência mínima da escala", f"{esc.antecedencia_horas}h"]]
     t = Table([[P(f"<b>{a}</b>"), P(b)] for a, b in dados], colWidths=[55 * mm, 115 * mm])
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
                            ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    el += [Spacer(1, 6), t, Spacer(1, 10),
-           P(f"Os militares abaixo concordam em permutar os serviços: {x.nome} dará o serviço do dia "
-             f"{p.data_outro:%d/%m/%Y} e {y.nome} dará o serviço do dia {p.data_solicitante:%d/%m/%Y}, "
-             f"ficando cientes de que a troca só vale após aprovação do Detalhista."),
-           Spacer(1, 30)]
+    if devolucao:
+        texto = (f"{x.nome} devolve o serviço que deixou de dar em {p.data_solicitante:%d/%m/%Y}, assumindo o "
+                 f"serviço de {y.nome} em {p.data_outro:%d/%m/%Y}, ciente de que a devolução só vale após a "
+                 f"aprovação do Detalhista.")
+    else:
+        texto = (f"Os militares abaixo concordam em permutar os serviços: {x.nome} dará o serviço do dia "
+                 f"{p.data_outro:%d/%m/%Y} e {y.nome} dará o serviço do dia {p.data_solicitante:%d/%m/%Y}, "
+                 f"ficando cientes de que a troca só vale após aprovação do Detalhista.")
+    el += [Spacer(1, 6), t, Spacer(1, 10), P(texto), Spacer(1, 24)]
+
     def carimbo(mid):
         a = p.assinaturas.get(mid)
         if not a:
-            return "_" * 30
-        meio = "assinado pelo sistema (conta e senha)" if a.metodo == "conta" else f"assinado externamente ({a.referencia})"
-        return f"{meio}<br/>{a.em:%d/%m/%Y %H:%M}"
-    cab = [[P(carimbo(p.solicitante_id)), P(carimbo(p.outro_id)), "_" * 30],
+            return "_" * 30 + "<br/><font size=7>(aguardando assinatura)</font>"
+        m = ctx.militar(mid)
+        meio = ("assinado eletronicamente com PIN" if a.metodo == "conta"
+                else f"assinado externamente ({a.referencia})")
+        return (f"{meio}<br/><b>{m.nome}</b>{' · NIP ' + m.nip if m.nip else ''}<br/>"
+                f"em {a.em:%d/%m/%Y} às {a.em:%H:%M:%S}")
+    decisao = ""
+    if p.decidido_em and p.status != "pendente":
+        det = ctx.usuario(p.decidido_por)
+        decisao = (f"{p.status.upper()} por {det.nome if det else p.decidido_por} "
+                   f"em {p.decidido_em:%d/%m/%Y} às {p.decidido_em:%H:%M:%S}")
+    cab = [[P(carimbo(p.solicitante_id)), P(carimbo(p.outro_id)),
+            P((decisao or "_" * 30) + "<br/><font size=7>(Detalhista)</font>")],
            [P(f"{nomes_assinantes[0] or dado(x)}<br/><b>Solicitante</b>"),
-            P(f"{nomes_assinantes[1] or dado(y)}<br/><b>Militar permutante</b>"), P("<b>Detalhista</b>")]]
+            P(f"{nomes_assinantes[1] or dado(y)}<br/><b>{'Colega' if devolucao else 'Militar permutante'}</b>"),
+            P("<b>Detalhista</b>")]]
     ass = Table(cab, colWidths=[57 * mm] * 3)
-    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 8)]))
+    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 8),
+                             ("VALIGN", (0, 0), (-1, -1), "TOP")]))
     el += [ass, Spacer(1, 18),
            P(f"<font size=7>Código de verificação (SHA-256): {hash_documento(ctx, p)}<br/>"
              f"Situação: {p.status.upper()}</font>")]

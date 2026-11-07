@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from . import notificacoes as nt
 from .modelos import Contexto, Disponibilidade
 from .motor import Resultado
 from .papeletas import antecedencia_ok, militar_do_usuario, militares_em_pedido_ativo
@@ -46,6 +47,10 @@ def alternar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, da
     if not antecedencia_ok(esc, data, data, agora):
         raise ValueError(f"a troca exige pelo menos {esc.antecedencia_horas}h de antecedência do serviço")
     ctx.disponibilidades.append(Disponibilidade(escala_id, militar_id, data, agora, usuario_id))
+    m = ctx.militar(militar_id)
+    nt.notificar(ctx, nt.usuarios_da_escala(ctx, escala_id), "disponibilidade",
+                 f"{m.nome} está aberto(a) a trocar o serviço de {data:%d/%m} ({esc.nome}).", escala_id, agora,
+                 excluir=[usuario_id, *nt.usuarios_do_militar(ctx, militar_id)])
     return True
 
 

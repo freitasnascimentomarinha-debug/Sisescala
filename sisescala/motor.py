@@ -435,18 +435,27 @@ def gerar(ctx: Contexto, fim: date) -> Resultado:
     return res
 
 
-def sugerir_devolucao(ctx: Contexto, res: Resultado, dev: Devolucao) -> list[tuple[date, str]]:
-    """Dias dentro do prazo, mais próximos do original, em que o militar está livre e descansado.
+def respeita_descanso(res: Resultado, esc: Escala, mid: str, d: date) -> bool:
+    return _descansado(res, esc, mid, d)
+
+
+def sugerir_devolucao(ctx: Contexto, res: Resultado, dev: Devolucao,
+                      exigir_descanso: bool = True) -> list[tuple[date, str]]:
+    """Dias dentro do prazo, mais próximos do original, em que o militar está livre.
 
     Devolve (data, militar que serve naquele dia): é com ele que se faz a papeleta.
+    Com `exigir_descanso=False`, inclui também dias que deixam o militar com menos folgas que o mínimo
+    (a tela avisa), mas as que respeitam o descanso vêm primeiro.
     """
     esc = ctx.escala(dev.escala_id)
     out = []
     d = dev.data_origem + timedelta(days=1)
     while d <= dev.prazo:
         dia = res.dia(d, esc.id)
-        if (dia and dia.funciona and _livre(ctx, res, dev.militar_id, d, esc)
-                and _descansado(res, esc, dev.militar_id, d)):
-            out.extend((d, a.militar_id) for a in dia.efetivos if a.origem == "normal")
+        if dia and dia.funciona and _livre(ctx, res, dev.militar_id, d, esc):
+            descansado = _descansado(res, esc, dev.militar_id, d)
+            if descansado or not exigir_descanso:
+                out.extend(((d, a.militar_id), descansado) for a in dia.efetivos if a.origem == "normal")
         d += timedelta(days=1)
-    return sorted(out, key=lambda t: abs((t[0] - dev.data_origem).days))
+    out.sort(key=lambda t: (not t[1], abs((t[0][0] - dev.data_origem).days)))
+    return [x for x, _ in out]

@@ -23,6 +23,7 @@ def mk():
     e = Escala("A", "Diária", dono_id="u1", membros=[Pertinencia(m.id) for m in ms])
     c = Contexto(ms, [e], D)
     auth.criar_usuario(c, None, "det", "Detalhista", SENHA, admin=True)       # u1
+    c.usuario("u1").pin_hash = auth.hash_pin("1234")
     return c
 
 
@@ -108,7 +109,7 @@ def test_pin_assina_papeleta_e_bloqueia_apos_erros():
     u = conta(c)
     compartilhar(c, "u1", "A", u.id, "leitura")
     vc.aprovar(c, "u1", vc.solicitar(c, u.id, "A", "m1", "1.000", "1234", AGORA).id, AGORA)
-    p = pp.criar(c, u.id, "A", "m1", D, "m3", D + timedelta(days=2), "consulta", AGORA)
+    p = pp.criar(c, u.id, "A", "m1", D, "m3", D + timedelta(days=2), "consulta", AGORA, pin="1234")
     pp.aprovar(c, "u1", p.id, AGORA)
     with pytest.raises(PermissaoNegada):
         pp.assinar(c, p.id, u.id, SENHA, AGORA)                        # com PIN definido, a senha não vale
@@ -116,7 +117,7 @@ def test_pin_assina_papeleta_e_bloqueia_apos_erros():
     assert a.metodo == "conta"
     c2 = mk(); u2 = conta(c2); compartilhar(c2, "u1", "A", u2.id, "leitura")
     vc.aprovar(c2, "u1", vc.solicitar(c2, u2.id, "A", "m1", "1.000", "1234", AGORA).id, AGORA)
-    p2 = pp.criar(c2, u2.id, "A", "m1", D, "m3", D + timedelta(days=2), "x", AGORA)
+    p2 = pp.criar(c2, u2.id, "A", "m1", D, "m3", D + timedelta(days=2), "x", AGORA, pin="1234")
     pp.aprovar(c2, "u1", p2.id, AGORA)
     for _ in range(auth.MAX_TENTATIVAS):
         with pytest.raises(PermissaoNegada):
@@ -171,7 +172,7 @@ def test_disponibilidade_some_quando_o_servico_muda_ou_ha_pedido_ativo():
     c = mk(); u = logado(c)
     res = gerar(c, D + timedelta(days=10))
     alternar(c, u.id, "A", "m1", D, res, AGORA)
-    p = pp.criar(c, u.id, "A", "m1", D, "m3", D + timedelta(days=2), "x", AGORA)
+    p = pp.criar(c, u.id, "A", "m1", D, "m3", D + timedelta(days=2), "x", AGORA, pin="1234")
     assert abertas(c, res, "A") == {}                                         # pedido ativo oculta o sinal
     pp.aprovar(c, "u1", p.id, AGORA)
     res2 = gerar(c, D + timedelta(days=10))

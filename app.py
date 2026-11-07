@@ -1,7 +1,7 @@
 """SisEscala – app Streamlit (protótipo). Rodar: streamlit run app.py"""
 import dataclasses
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 
@@ -9,16 +9,18 @@ import pandas as pd
 
 from sisescala import auth
 from sisescala import disponibilidade as dp
+from sisescala import notificacoes as nt
 from sisescala import vinculos as vc
 from sisescala import cadastro as cd
 from sisescala import papeletas as pp
 from sisescala import permissoes as pm
+from sisescala.componente import previa_interativa
 from sisescala.importacao import MODELO_CSV, importar, ler_tabela
 from sisescala.calendario import pontos_facultativos
 from sisescala.demo import contexto_demo
 from sisescala.modelos import (CATEGORIAS, TIPOS_IMPEDIMENTO, DiaEspecial, Escala, Evento, Guarnecimento,
                                Impedimento, Ocorrencia, Pertinencia, quartos_padrao)
-from sisescala.motor import gerar, validar_escala
+from sisescala.motor import gerar, respeita_descanso, sugerir_devolucao, validar_escala
 from sisescala.persistencia import ConflitoDeVersao, Repositorio, criar_repositorio
 from sisescala.pdf import gerar_pdf, pdf_papeleta
 from sisescala.previa import html_previa, periodo
@@ -151,16 +153,16 @@ with st.sidebar:
                     st.success("Contato atualizado.")
                 except ValueError as ex:
                     st.error(str(ex))
-        if user.militar_id:
-            with st.form("meu_pin", clear_on_submit=True):
-                st.caption("PIN de assinatura (4 a 6 dígitos)")
-                ps, pn = st.text_input("Senha da conta", type="password"), st.text_input("Novo PIN", type="password")
-                if st.form_submit_button("Alterar PIN"):
-                    try:
-                        auth.alterar_pin(ctx, uid, ps, pn)
-                        st.success("PIN alterado.")
-                    except (ValueError, auth.AutenticacaoErro) as ex:
-                        st.error(str(ex))
+        with st.form("meu_pin", clear_on_submit=True):
+            st.caption("PIN para pedir trocas e assinar (4 a 6 dígitos). "
+                       + ("✔ você já tem um PIN; preencha para alterar." if user.pin_hash else "⚠ você ainda NÃO tem PIN: cadastre."))
+            ps, pn = st.text_input("Senha da conta", type="password"), st.text_input("PIN", type="password")
+            if st.form_submit_button("Alterar PIN" if user.pin_hash else "Cadastrar PIN"):
+                try:
+                    auth.alterar_pin(ctx, uid, ps, pn)
+                    st.success("PIN salvo.")
+                except (ValueError, auth.AutenticacaoErro) as ex:
+                    st.error(str(ex))
         if st.button("Sair"):
             st.session_state.pop("uid", None)
             st.rerun()
@@ -169,6 +171,17 @@ with st.sidebar:
         st.info("Você ainda não tem escalas." + (" Crie uma na aba Escalas." if PODE_GERIR else ""))
     eid = st.selectbox("Escala", [e.id for e in visiveis], format_func=lambda i: ctx.escala(i).nome) \
         if visiveis else None
+    nt.podar(ctx)
+    n_novas = nt.nao_lidas(ctx, uid)
+    with st.expander(f"🔔 Notificações ({n_novas} nova(s))" if n_novas else "🔔 Notificações", expanded=bool(n_novas)):
+        lista_n = nt.do_usuario(ctx, uid)[:15]
+        if not lista_n:
+            st.caption("Nada por aqui.")
+        for n_ in lista_n:
+            st.markdown(f"{'🆕 ' if not n_.lida else ''}**{n_.criado_em:%d/%m %H:%M}** — {n_.texto}")
+        if n_novas and st.button("Marcar todas como lidas"):
+            nt.marcar_lidas(ctx, uid)
+            st.rerun()
     n_vinc = len(vc.pendentes_para(ctx, uid))
     if n_vinc:
         st.warning(f"🔔 {n_vinc} pedido(s) de vínculo de militar aguardando sua decisão (aba Vínculos).")
@@ -191,7 +204,7 @@ dias = periodo(inicio, dias_n)
 res = gerar(ctx, dias[-1])
 esc = ctx.escala(eid) if eid else None
 _abas = [("prev", "Prévia"), ("pdf", "Detalhe (PDF)"), ("pap", f"Papeletas{f' ({n_pend})' if n_pend else ''}"),
-         ("reg", "Regras da escala")]
+         ("dev", "Devoluções"), ("reg", "Regras da escala")]
 if PODE_GERIR:
     _abas += [("lanc", "Lançamentos"), ("esc", "Escalas"), ("mil", "Militares"), ("imp", "Importar planilha")]
 if PODE_GERIR or not user.militar_id:
@@ -199,7 +212,7 @@ if PODE_GERIR or not user.militar_id:
 if user.admin:
     _abas += [("usr", "Usuários")]
 _tabs = dict(zip([k for k, _ in _abas], st.tabs([r for _, r in _abas])))
-aba_prev, aba_pdf, aba_pap, aba_reg = (_tabs[k] for k in ("prev", "pdf", "pap", "reg"))
+aba_prev, aba_pdf, aba_pap, aba_dev, aba_reg = (_tabs[k] for k in ("prev", "pdf", "pap", "dev", "reg"))
 aba_lanc, aba_esc, aba_mil, aba_imp, aba_usr, aba_vinc = (_tabs.get(k) for k in ("lanc", "esc", "mil", "imp", "usr", "vinc"))
 dp.podar(ctx)
 
@@ -209,12 +222,16 @@ with aba_prev:
             if av.startswith("CONFLITO"):
                 st.error(av)
         abertas_ = dp.abertas(ctx, res, esc.id)
-        st.html(html_previa(ctx, res, dias, esc.id, abertas_))
-        pend = [d for d in res.devolucoes if d.escala_id == esc.id]
-        if pend:
-            st.subheader("Serviços a devolver")
-            for dv in pend:
-                st.write(f"{nomes_m[dv.militar_id]} – origem {dv.data_origem:%d/%m}, prazo {dv.prazo:%d/%m}")
+        clique = previa_interativa(html_previa(ctx, res, dias, esc.id, abertas_),
+                                   st.session_state.get("sel"), key="previa")
+        if clique and clique.get("ts") != st.session_state.get("_ult_ts"):
+            st.session_state["_ult_ts"] = clique["ts"]
+            st.session_state["sel"] = clique
+            st.session_state["_novo_clique"] = True
+        st.caption("Clique numa célula para pré-preencher a troca (colega) ou a disponibilidade (o seu serviço).")
+        n_dev = len([x for x in pp.devolucoes_em_aberto(ctx, res, {esc.id}) if x["estado"] != "em_andamento"])
+        if n_dev:
+            st.info(f"{n_dev} serviço(s) a devolver nesta escala: veja a aba Devoluções.")
 
 with aba_prev:
     if esc:
@@ -232,8 +249,20 @@ with aba_prev:
         abertas_ = dp.abertas(ctx, res, esc.id)
         fmt_d0 = lambda d: f"{d:%d/%m/%Y} ({'seg ter qua qui sex sáb dom'.split()[d.weekday()]})"  # noqa: E731
         fmt_d = fmt_d0
-        # --- disponibilidade de troca (bolinha piscando na prévia)
         quem_sinaliza = membros if eh_editor else ([meu_militar] if meu_militar in membros else [])
+        # --- clique na prévia pré-preenche os formulários abaixo
+        if st.session_state.pop("_novo_clique", False) and st.session_state.get("sel"):
+            dsel, msel = date.fromisoformat(st.session_state["sel"]["data"]), st.session_state["sel"]["militar"]
+            if msel in membros and dsel in dias_servico(msel):
+                if msel == meu_militar and msel in quem_sinaliza and dsel >= date.today():
+                    st.session_state["dp_m"], st.session_state["dp_d"] = msel, dsel
+                    st.success(f"Disponibilidade pré-preenchida: {nomes_m[msel]} em {fmt_d0(dsel)}.")
+                elif msel not in em_pedido and msel != st.session_state.get("pp_x", meu_militar):
+                    st.session_state["pp_y"], st.session_state["pp_dy"] = msel, dsel
+                    st.success(f"Troca pré-preenchida com {nomes_m[msel]} em {fmt_d0(dsel)}.")
+                else:
+                    st.warning("Esse serviço não pode ser selecionado agora (pedido ativo ou é o seu próprio).")
+        # --- disponibilidade de troca (bolinha piscando na prévia)
         if quem_sinaliza:
             st.markdown("**Disponibilidade de troca** — sinaliza na prévia, com uma bolinha piscando, que o serviço está aberto a troca.")
             d1, d2 = st.columns(2)
@@ -289,11 +318,14 @@ with aba_prev:
                     st.error(t)
                 for t in avisos:
                     st.warning(t)
+                if not user.pin_hash:
+                    st.warning("Cadastre o seu PIN em Minha conta (barra lateral) para poder pedir a troca.")
                 if not erros and not mot.strip():
                     st.caption("Informe o motivo para continuar.")
-                if not erros and mot.strip() and st.button("Confirmar e gerar papeleta"):
+                pin_in = st.text_input("Seu PIN para confirmar o pedido", type="password", key="pp_pin")
+                if not erros and mot.strip() and user.pin_hash and st.button("Confirmar e gerar papeleta"):
                     try:
-                        novo = pp.criar(ctx, uid, esc.id, sx, dx, sy, dy, mot, agora)
+                        novo = pp.criar(ctx, uid, esc.id, sx, dx, sy, dy, mot, agora, pin=pin_in)
                         st.success(f"Papeleta {novo.numero:04d} criada. Assinem pelo sistema na aba Papeletas; "
                                    "a prévia só muda depois que o detalhista aprovar.")
                         st.download_button("Baixar documento (PDF)", pdf_papeleta(ctx, novo),
@@ -351,8 +383,8 @@ with aba_pap:
                 if eh_editor or sou_parte:
                     st.markdown("**Contas e assinaturas**")
                     for s_ in pp.situacao_partes(ctx, p):
-                        conta = f"✔ conta @{s_['login']}" if s_["tem_conta"] else "✖ sem conta no sistema"
-                        ass = (f"✔ assinou {s_['em']:%d/%m/%Y %H:%M} "
+                        conta = ((f"✔ conta @{s_['login']}" + ("" if s_["tem_pin"] else " (sem PIN)")) if s_["tem_conta"] else "✖ sem conta no sistema")
+                        ass = (f"✔ assinou em {s_['em']:%d/%m/%Y} às {s_['em']:%H:%M:%S} "
                                f"({'pelo sistema' if s_['metodo'] == 'conta' else 'documento externo: ' + s_['referencia']})"
                                if s_["assinou"] else "⏳ não assinou")
                         st.write(f"• {s_['militar'].nome} ({s_['papel']}): {conta} · {ass}")
@@ -374,8 +406,9 @@ with aba_pap:
                 minha = pp.militar_do_usuario(ctx, uid)
                 if p.status in pp.ABERTAS and sou_parte and minha not in p.assinaturas:
                     with st.form(f"as_{p.id}", clear_on_submit=True):
-                        st.caption("Assinar pelo sistema: confirme com o seu " + ("PIN" if user.pin_hash else "senha"))
-                        senha_ass = st.text_input("PIN" if user.pin_hash else "Senha", type="password")
+                        st.caption("Assinar pelo sistema com o seu PIN (data e hora ficam registradas)"
+                                   if user.pin_hash else "⚠ Cadastre o seu PIN em Minha conta para assinar")
+                        senha_ass = st.text_input("PIN", type="password")
                         if st.form_submit_button("Assinar"):
                             _agir(lambda: pp.assinar(ctx, p.id, uid, senha_ass))
                 if eh_editor and p.status in pp.ABERTAS:
@@ -398,6 +431,56 @@ with aba_pap:
         st.caption("Assinatura pelo sistema: o militar entra na própria conta e reconfirma a senha; fica registrado com "
                    "data, hora e código de verificação do documento. Não substitui certificado ICP-Brasil; para isso "
                    "o detalhista registra o documento assinado externamente.")
+
+with aba_dev:
+    st.subheader("Serviços a devolver")
+    st.caption("Quem não deu um serviço (e fez o retém avançar) devolve em outro dia, dentro do prazo, assumindo o serviço "
+               "de um colega. O pedido segue o mesmo caminho da troca: PIN, aprovação do detalhista e assinaturas.")
+    esc_ids = {e.id for e in visiveis}
+    prazo_max = max([ctx.data_base + timedelta(days=ctx.janela_devolucao_dias + 40)] +
+                    [dv.prazo for dv in res.devolucoes])
+    res_dev = gerar(ctx, prazo_max)
+    meu_m = pp.militar_do_usuario(ctx, uid)
+    lista_dev = [x for x in pp.devolucoes_em_aberto(ctx, res_dev, esc_ids)
+                 if x["devolucao"].militar_id == meu_m or pm.pode_editar(ctx, uid, ctx.escala(x["devolucao"].escala_id))]
+    if not lista_dev:
+        st.caption("Nenhum serviço a devolver.")
+    for x_ in lista_dev:
+        dv = x_["devolucao"]
+        e_ = ctx.escala(dv.escala_id)
+        mm = ctx.militar(dv.militar_id)
+        marca = {"aberta": "🟡", "em_andamento": "🔵", "vencida": "🔴"}[x_["estado"]]
+        prazo_txt = (f"vence em {x_['dias_restantes']} dia(s)" if x_["dias_restantes"] >= 0
+                     else f"vencido há {-x_['dias_restantes']} dia(s)")
+        with st.expander(f"{marca} {mm.nome} · {e_.nome} · serviço de {dv.data_origem:%d/%m/%Y} · prazo {dv.prazo:%d/%m/%Y} ({prazo_txt})",
+                         expanded=x_["estado"] == "aberta"):
+            if x_["estado"] == "em_andamento":
+                st.info(f"Devolução em andamento: papeleta {x_['papeleta'].numero:04d} ({x_['papeleta'].status}). Veja a aba Papeletas.")
+            elif x_["estado"] == "vencida":
+                st.error("Prazo vencido. A decisão agora é do comando.")
+            elif pp.pode_pedir_por(ctx, uid, e_.id, dv.militar_id):
+                sug = sugerir_devolucao(ctx, res_dev, dv, exigir_descanso=False)[:10]
+                if not sug:
+                    st.warning("Não há dia dentro do prazo em que o militar esteja livre e haja um colega de serviço.")
+                else:
+                    opc = {f"{d_:%d/%m/%Y} – assume o serviço de {nomes_m[c_]}"
+                           + ("" if respeita_descanso(res_dev, e_, dv.militar_id, d_) else "  ⚠ descanso curto"): (d_, c_)
+                           for d_, c_ in sug}
+                    escolha = st.selectbox("Devolver em", list(opc), key=f"dvs_{e_.id}_{dv.militar_id}_{dv.data_origem}")
+                    mot_d = st.text_input("Motivo (opcional)", key=f"dvm_{e_.id}_{dv.militar_id}_{dv.data_origem}")
+                    pin_d = st.text_input("Seu PIN para confirmar o pedido", type="password",
+                                          key=f"dvp_{e_.id}_{dv.militar_id}_{dv.data_origem}")
+                    if not user.pin_hash:
+                        st.warning("Cadastre o seu PIN em Minha conta para pedir a devolução.")
+                    elif st.button("Pedir devolução", key=f"dvb_{e_.id}_{dv.militar_id}_{dv.data_origem}"):
+                        d2_, c2_ = opc[escolha]
+                        try:
+                            novo = pp.criar_devolucao(ctx, uid, e_.id, dv.militar_id, dv.data_origem, c2_, d2_, mot_d,
+                                                      datetime.now(), pin=pin_d)
+                            st.success(f"Papeleta {novo.numero:04d} criada. Acompanhe na aba Papeletas.")
+                            st.rerun()
+                        except (ValueError, pm.PermissaoNegada, auth.AutenticacaoErro) as ex:
+                            st.error(str(ex))
 
 with aba_pdf:
     if esc:
@@ -440,7 +523,11 @@ if PODE_GERIR:
                     m2 = st.selectbox("Militar escalado", list(nomes_m), format_func=nomes_m.get)
                     dt, mot = st.date_input("Dia", date.today()), st.text_input("Motivo ")
                     if st.form_submit_button("Lançar falta"):
-                        ctx.ocorrencias.append(Ocorrencia(dt, e, m2, mot)); st.rerun()
+                        ctx.ocorrencias.append(Ocorrencia(dt, e, m2, mot))
+                        nt.notificar(ctx, nt.usuarios_do_militar(ctx, m2), "devolucao",
+                                     f"Você tem um serviço a devolver: falta em {dt:%d/%m/%Y} ({ctx.escala(e).nome}), "
+                                     f"prazo de {ctx.janela_devolucao_dias} dias. Veja a aba Devoluções.", e)
+                        st.rerun()
         with c2:
             st.subheader("Feriado / dia sem expediente")
             with st.form("de", clear_on_submit=True):

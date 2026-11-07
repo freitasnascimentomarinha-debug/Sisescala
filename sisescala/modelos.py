@@ -240,6 +240,18 @@ class Disponibilidade:
 
 
 @dataclass
+class Notificacao:
+    """Aviso dentro do sistema para um usuário."""
+    id: str
+    usuario_id: str
+    tipo: str                     # disponibilidade | papeleta | vinculo | devolucao ...
+    texto: str
+    criado_em: datetime
+    lida: bool = False
+    escala_id: str = ""
+
+
+@dataclass
 class Assinatura:
     militar_id: str
     em: datetime
@@ -262,6 +274,7 @@ class Papeleta:
     criado_por: str               # usuário do sistema que lançou o pedido
     motivo: str = ""
     status: str = "pendente"      # pendente | aprovada | rejeitada | confirmada | cancelada
+    tipo: str = "troca"           # "troca" (datas entre dois militares) | "devolucao" (devolver serviço devido)
     decidido_por: str = ""
     decidido_em: datetime | None = None
     motivo_rejeicao: str = ""
@@ -289,6 +302,7 @@ class Contexto:
     papeletas: list[Papeleta] = field(default_factory=list)
     vinculos: list[Vinculo] = field(default_factory=list)
     disponibilidades: list[Disponibilidade] = field(default_factory=list)
+    notificacoes: list[Notificacao] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada

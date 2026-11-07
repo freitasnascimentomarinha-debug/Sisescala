@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from . import notificacoes as nt
 from .auth import hash_pin
 from .modelos import Contexto, Vinculo
 from .permissoes import PermissaoNegada, pode_editar, pode_ver
@@ -55,6 +56,8 @@ def solicitar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, n
     v = Vinculo(f"v{max([int(x.id[1:]) for x in ctx.vinculos] + [0]) + 1}", usuario_id, militar_id, escala_id,
                 agora, hash_pin(pin))
     ctx.vinculos.append(v)
+    nt.notificar(ctx, nt.editores_da_escala(ctx, escala_id), "vinculo",
+                 f"{u.nome} pediu para ser vinculado(a) a {m.nome} na escala {esc.nome}.", escala_id, agora)
     return v
 
 
@@ -80,6 +83,8 @@ def aprovar(ctx: Contexto, usuario_id: str, vid: str, agora: datetime | None = N
         if not getattr(m, campo) and getattr(u, campo):
             setattr(m, campo, getattr(u, campo))
     v.status, v.decidido_por, v.decidido_em = "aprovado", usuario_id, agora
+    nt.notificar(ctx, [u.id], "vinculo", f"Seu vínculo com {m.nome} foi APROVADO. Você já pode pedir trocas e assinar com o PIN.",
+                 v.escala_id, agora)
 
 
 def rejeitar(ctx: Contexto, usuario_id: str, vid: str, motivo: str, agora: datetime | None = None) -> None:
@@ -91,6 +96,7 @@ def rejeitar(ctx: Contexto, usuario_id: str, vid: str, motivo: str, agora: datet
     if not motivo.strip():
         raise ValueError("informe o motivo da rejeição")
     v.status, v.decidido_por, v.decidido_em, v.motivo_rejeicao = "rejeitado", usuario_id, agora, motivo.strip()
+    nt.notificar(ctx, [v.usuario_id], "vinculo", f"Seu pedido de vínculo foi REJEITADO: {motivo.strip()}", v.escala_id, agora)
 
 
 def cancelar(ctx: Contexto, usuario_id: str, vid: str) -> None:

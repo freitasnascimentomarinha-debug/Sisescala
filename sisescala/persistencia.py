@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      Impedimento, Militar, Ocorrencia, Papeleta, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -85,7 +85,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("vagas", "s")],
     "Papeletas": [("id", "s"), ("numero", "i"), ("escala_id", "s"), ("solicitante_id", "s"),
                   ("data_solicitante", "d"), ("outro_id", "s"), ("data_outro", "d"), ("criado_em", "dt"),
-                  ("criado_por", "s"), ("motivo", "s"), ("status", "s"), ("decidido_por", "s"),
+                  ("criado_por", "s"), ("motivo", "s"), ("status", "s"), ("tipo", "s"), ("decidido_por", "s"),
                   ("decidido_em", "dt"), ("motivo_rejeicao", "s"), ("confirmada_por", "s"),
                   ("confirmada_em", "dt")],
     "Vinculos": [("id", "s"), ("usuario_id", "s"), ("militar_id", "s"), ("escala_id", "s"), ("criado_em", "dt"),
@@ -93,6 +93,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                  ("motivo_rejeicao", "s")],
     "Disponibilidades": [("escala_id", "s"), ("militar_id", "s"), ("data", "d"), ("criado_em", "dt"),
                          ("criado_por", "s")],
+    "Notificacoes": [("id", "s"), ("usuario_id", "s"), ("tipo", "s"), ("texto", "s"), ("criado_em", "dt"),
+                     ("lida", "b"), ("escala_id", "s")],
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
                             ("metodo", "s"), ("referencia", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
@@ -148,6 +150,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("Vinculos", v)
     for x in ctx.disponibilidades:
         add("Disponibilidades", x)
+    for n in ctx.notificacoes:
+        add("Notificacoes", n)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -203,8 +207,10 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
                                   int(r[5]) if str(r[5]).strip() else None))
     ctx.vinculos = [Vinculo(**d) for d in _linhas_de(T, "Vinculos")]
     ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
+    ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
+        d["tipo"] = d["tipo"] or "troca"          # planilhas antigas sem a coluna
         p = Papeleta(**d)
         papeletas[p.id] = p
         ctx.papeletas.append(p)
