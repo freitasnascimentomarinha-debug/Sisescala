@@ -89,6 +89,8 @@ def sigla_de(esc: Escala, papel: str, origem: str = "normal") -> str:
 
 # ------------------------------------------------------------------ utilidades
 def _impedido(ctx: Contexto, mid: str, d: date) -> bool:
+    if ctx.dispensado_de_servico(mid):      # detalhista: dispensado de todo serviço, sempre
+        return True
     return any(i.militar_id == mid and i.cobre(d) for i in ctx.impedimentos)
 
 
@@ -144,7 +146,7 @@ def _distribuir_quartos(quartos: list[Quarto], efetivos: list[str]) -> dict[str,
 def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
     """Erros de configuração (ex.: 1x1 não permitido)."""
     erros = []
-    n = len(esc.membros)
+    n = len(ctx.escalaveis(esc))             # detalhista não conta: não dá serviço
     precisa = esc.militares_dia * (_folgas(esc) + 1)
     if esc.modo != "eventos" and n < precisa:
         erros.append(

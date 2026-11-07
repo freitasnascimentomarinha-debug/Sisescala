@@ -27,7 +27,7 @@ def militares_livres(ctx: Contexto, escala_id: str) -> list[str]:
     esc = ctx.escala(escala_id)
     ocupados = {u.militar_id for u in ctx.usuarios if u.militar_id}
     ocupados |= {v.militar_id for v in ctx.vinculos if v.status == "pendente"}
-    ids = {p.militar_id for p in esc.membros}
+    ids = set(ctx.escalaveis(esc))           # detalhista não é escalado: não há persona de serviço para vincular
     return sorted((m for m in ids if m not in ocupados), key=lambda i: ctx.militar(i).antiguidade)
 
 

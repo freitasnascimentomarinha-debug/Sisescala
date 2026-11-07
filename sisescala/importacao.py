@@ -32,6 +32,7 @@ SINONIMOS = {
     "ordem": {"ordem", "antiguidade", "seq", "sequencia", "numero", "n", "no", "nº", "posicao"},
     "ultimo": {"ultimo servico", "ultimo serv", "data ultimo servico", "ult servico", "ultimo"},
     "data": {"data", "dia", "data do servico"},
+    "detalhista": {"detalhista", "dispensado de servico", "dispensado"},
     "email": {"email", "e-mail", "e mail", "correio eletronico"},
     "ramal": {"ramal", "telefone", "telefone fixo"},
     "celular": {"celular", "cel", "whatsapp", "telefone celular", "movel"},
@@ -177,6 +178,8 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
                     setattr(m, k, v)
             if mudou and m.nome not in rel.atualizados:
                 rel.atualizados.append(m.nome)
+        if "detalhista" in cols and g(row, "detalhista"):
+            m.detalhista = _norm(g(row, "detalhista")) in {"sim", "s", "x", "1", "true", "verdadeiro"}
         if m.id not in ordem_planilha:
             ordem_planilha.append(m.id)
         # escalas citadas

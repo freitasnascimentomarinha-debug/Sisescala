@@ -52,6 +52,7 @@ class Militar:
     email: str = ""
     ramal: str = ""
     celular: str = ""
+    detalhista: bool = False  # detalhista é dispensado de serviço: nunca é escalado para nada
 
 
 @dataclass
@@ -323,6 +324,18 @@ class Contexto:
 
     def usuario(self, uid: str) -> Usuario | None:
         return next((u for u in self.usuarios if u.id == uid), None)
+
+    def dispensado_de_servico(self, mid: str) -> bool:
+        """O detalhista não dá nenhum serviço (efetivo, retém, palestra, cerimônia...) e não é escalado.
+
+        Vale para o militar marcado como detalhista no cadastro ou ligado a uma conta de perfil detalhista."""
+        m = next((x for x in self.militares if x.id == mid), None)
+        return bool((m and m.detalhista)
+                    or any(u.militar_id == mid and u.perfil == "detalhista" and u.ativo for u in self.usuarios))
+
+    def escalaveis(self, esc: "Escala") -> list[str]:
+        """Membros da escala que podem ser escalados (sem os detalhistas)."""
+        return [p.militar_id for p in esc.membros if not self.dispensado_de_servico(p.militar_id)]
 
     def militar(self, mid: str) -> Militar:
         return next(m for m in self.militares if m.id == mid)

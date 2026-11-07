@@ -64,7 +64,7 @@ def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, sen
         raise ValueError(f"login '{login}' já existe")
     if perfil not in PERFIS:
         raise ValueError("perfil inválido")
-    if perfil == "militar" and militar_id:
+    if militar_id:
         if not any(m.id == militar_id for m in ctx.militares):
             raise ValueError("militar não encontrado no cadastro")
         if any(u.militar_id == militar_id for u in ctx.usuarios):

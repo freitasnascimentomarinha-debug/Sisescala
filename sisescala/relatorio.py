@@ -102,6 +102,8 @@ LOGICA_FIXA = [
     "A ordem da fila vai do mais antigo ao mais moderno, em círculo, a partir de quem deu o último serviço.",
     "Cada escala tem filas independentes (corrida, preta, vermelha, roxa). A fila que não é a do dia fica "
     "congelada e retoma de onde parou. A roxa começa do zero para todos.",
+    "O detalhista é dispensado de serviço: não dá nenhum serviço (efetivo, retém, palestra, cerimônia...), não é escalado "
+    "para nada e não ocupa vaga na fila nem na contagem de militares da escala.",
     "Quem está de férias, curso, dispensado (inclusive por baixa ou falta, com a justificativa lançada pelo detalhista), destaque (DTQ) ou desembarcado é pulado sem perder o seu lugar na ordem; "
     "desembarcado sai da fila.",
     "O retém do dia é o próximo da fila depois dos escalados. Se um escalado for dispensado do serviço (baixa ou falta, "
@@ -163,8 +165,12 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
         prox = ctx.militar(seq[0]).nome if seq else "—"
         out.append((f"Fila {f}: último serviço → próximo",
                     f"{ctx.militar(ult).nome if ult else 'início da fila'} → {prox}"))
-    ordem = sorted((ctx.militar(p.militar_id) for p in esc.membros if p.ativo(hoje)), key=lambda m: m.antiguidade)
+    ordem = sorted((ctx.militar(p.militar_id) for p in esc.membros
+                    if p.ativo(hoje) and not ctx.dispensado_de_servico(p.militar_id)), key=lambda m: m.antiguidade)
+    dispensados = [ctx.militar(p.militar_id).nome for p in esc.membros if ctx.dispensado_de_servico(p.militar_id)]
     out.append((f"Militares na escala ({len(ordem)})", ", ".join(f"{m.posto} {m.nome}".strip() for m in ordem) or "—"))
+    if dispensados:
+        out.append(("Detalhistas (dispensados de serviço)", ", ".join(dispensados)))
     imps = [i for i in ctx.impedimentos if i.militar_id in {p.militar_id for p in esc.membros}]
     out.append(("Impedimentos lançados", "; ".join(
         f"{ctx.militar(i.militar_id).nome} – {TIPOS_IMPEDIMENTO[i.tipo]} "

@@ -55,7 +55,9 @@ def _campos(e: Escala | None, k: str):
 @st.dialog("Nova escala", width="large")
 def dialogo_nova():
     v = _campos(None, "nova")
-    membros = st.multiselect("Militares da escala", list(nomes_m), format_func=nomes_m.get, key="nova_mem")
+    membros = st.multiselect("Militares da escala", [i for i in nomes_m if not ctx.dispensado_de_servico(i)],
+                             format_func=nomes_m.get, key="nova_mem",
+                             help="Detalhistas são dispensados de serviço e não entram em escalas.")
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
     if st.button("Criar escala", type="primary", use_container_width=True):

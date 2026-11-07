@@ -59,7 +59,7 @@ def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
     inf = [("Categoria", cat), ("Modo", modo), ("Prioridade", str(esc.prioridade)),
            ("Escalados por dia", str(esc.militares_dia)), ("Retém por dia", str(esc.retem_qtd)),
            ("Descanso mínimo", f"{_folgas(esc)} folga(s) por serviço (mín. {_folgas(esc)}x1)"),
-           ("Militares na escala", str(len(esc.membros)))]
+           ("Militares na escala", str(len(ctx.escalaveis(esc))))]
     if esc.quartos:
         q = esc.quartos[0]
         inf.append(("Quartos", f"{len(esc.quartos)} de {(int(q.fim[:2]) - int(q.inicio[:2])) % 24 or 24}h"))
@@ -91,7 +91,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                 com_card: bool = True) -> str:
     abertas = abertas or {}
     esc = ctx.escala(escala_id)
-    ids = {p.militar_id for p in esc.membros}
+    ids = set(ctx.escalaveis(esc))           # detalhista não é escalado: não aparece na prévia
     refs = [ctx.escala(r) for r in esc.referencias if any(e.id == r for e in ctx.escalas)]
     card = "".join(f"<div class='k'><span>{escape(k)}</span><b>{escape(v)}</b></div>"
                    for k, v in info_escala(ctx, esc))

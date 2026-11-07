@@ -61,7 +61,7 @@ def _r(txt: str, t: str):
 SCHEMA: dict[str, list[tuple[str, str]]] = {
     "Config": [("chave", "s"), ("valor", "s")],
     "Militares": [("id", "s"), ("nome", "s"), ("posto", "s"), ("antiguidade", "i"), ("nip", "s"), ("om", "s"),
-                  ("email", "s"), ("ramal", "s"), ("celular", "s")],
+                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("detalhista", "b")],
     "Usuarios": [("id", "s"), ("nome", "s"), ("login", "s"), ("senha_hash", "s"), ("militar_id", "s"),
                  ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s")],
