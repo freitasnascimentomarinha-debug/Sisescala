@@ -14,10 +14,10 @@ _BULLETS = [
 
 
 def _hero() -> str:
+    """Painel da esquerda: a logo do sistema (static/logo.jpg) e os três pontos fortes."""
     itens = "".join(f'<li><span class="dot">{ui.icone(i, 15)}</span><span>{ui.esc(t)}</span></li>' for i, t in _BULLETS)
-    return (f'<div class="hero"><div class="brand"><div class="ph-ic">{ui.icone("anchor", 22)}</div>SisEscala</div>'
-            f'<h1>Escalas de serviço,<br>sem planilha.</h1>'
-            f'<p>Detalhe de serviço, trocas, devoluções e documentos para assinatura, num só lugar.</p><ul>{itens}</ul></div>')
+    return ('<div class="hero"><img class="logo" alt="SisEscala: Escalas e Eventos Sempre em Ordem" '
+            f'src="app/static/logo.jpg"/><ul>{itens}</ul></div>')
 
 
 def tela_login(ctx: Contexto, armazenamento: str) -> None:

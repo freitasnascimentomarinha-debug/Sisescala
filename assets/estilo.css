@@ -121,11 +121,12 @@ div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stForm"] { border:
 /* ---------- login ---------- */
 .hero { min-height: 560px; border-radius: 26px; padding: 2.4rem; color:#fff; position:relative; overflow:hidden; border:1px solid #44552B;
   background: radial-gradient(900px 400px at 110% -10%, rgba(163,194,101,.34), transparent 60%), linear-gradient(145deg, rgba(11,15,7,.90), rgba(31,42,20,.84) 55%, rgba(63,91,34,.74)), url(app/static/camuflado.svg); background-size: auto, auto, 380px; }
+.hero .logo { display:block; width:100%; border-radius:18px; border:1px solid rgba(255,255,255,.18); box-shadow:0 10px 30px rgba(0,0,0,.45); }
 .hero h1 { color:#fff; font-size:2.3rem; line-height:1.1; margin:1.6rem 0 .8rem; font-weight:800; padding:0; }
 .hero p { color:#D8D8BF; font-size:1.02rem; max-width:34rem; }
 .hero .brand { display:flex; align-items:center; gap:.7rem; font-weight:800; font-size:1.2rem; color:#fff; }
 .hero .brand .ph-ic { width:40px; height:40px; box-shadow:none; background:rgba(255,255,255,.18); }
-.hero ul { list-style:none; padding:0; margin:1.6rem 0 0; display:grid; gap:.8rem; }
+.hero ul { list-style:none; padding:0; margin:1.4rem 0 0; display:grid; gap:.8rem; }
 .hero li { display:flex; gap:.7rem; align-items:flex-start; color:#ECE8D4; font-size:.93rem; }
 .hero li .dot { width:26px; height:26px; border-radius:8px; background:rgba(255,255,255,.16); display:flex; align-items:center; justify-content:center; flex:none; }
 .hero li .dot img { width:15px !important; height:15px !important; }
