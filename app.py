@@ -164,6 +164,7 @@ atual = st.navigation(menu, expanded=True)
 st.logo(str(ui.RAIZ / "static" / "logo_menu.png"), size="large")
 
 with st.sidebar:
+    st.html('<img class="menu-anim" alt="" src="app/static/animacao_menu.gif"/>')     # animação sob os botões do menu
     papel = ("Administrador" if user.admin else "Detalhista" if e_detalhista else "Auxiliar" if e_auxiliar else "Usuário")
     st.html(f'<div class="usercard">{ui.avatar(user.nome)}<div><b>{ui.esc(user.nome)}</b><small>{papel}</small></div></div>')
     if st.button("Sair", icon=":material/logout:", use_container_width=True):
