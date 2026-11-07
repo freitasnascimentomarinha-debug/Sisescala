@@ -13,8 +13,9 @@ import streamlit as st
 # `sisescala/` (o app.py é reexecutado, o pacote não). Isso gera ImportError ("cannot import name ...") e objetos de
 # classes velhas na sessão. Se o código mudou, descarta os módulos, o cache e a sessão (o usuário entra de novo).
 _ASSINATURA = max((p.stat().st_mtime_ns for p in (Path(__file__).parent / "sisescala").glob("*.py")), default=0)
+# (módulos de uma versão anterior nem têm `_assinatura`: contam como velhos)
 if st.session_state.get("_assinatura_codigo") not in (None, _ASSINATURA) or (
-        "sisescala" in sys.modules and getattr(sys.modules["sisescala"], "_assinatura", None) not in (None, _ASSINATURA)):
+        "sisescala" in sys.modules and getattr(sys.modules["sisescala"], "_assinatura", None) != _ASSINATURA):
     for _n in [n for n in sys.modules if n == "sisescala" or n.startswith("sisescala.")]:
         del sys.modules[_n]
     st.cache_resource.clear()
@@ -22,8 +23,7 @@ if st.session_state.get("_assinatura_codigo") not in (None, _ASSINATURA) or (
 st.session_state["_assinatura_codigo"] = _ASSINATURA
 
 from sisescala import auth, ui  # noqa: E402
-import sisescala as _pacote  # noqa: E402
-_pacote._assinatura = _ASSINATURA
+
 from sisescala import acessos as ac
 from sisescala import notificacoes as nt
 from sisescala import papeletas as pp

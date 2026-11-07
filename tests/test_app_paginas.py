@@ -182,7 +182,8 @@ def test_deploy_novo_com_modulos_velhos_na_memoria_recarrega_sem_erro(app):
 
 def _recarrega_modulos_velhos(app, sys):
     _criar_admin(app)
-    sys.modules["sisescala"]._assinatura = -1                         # "módulos de outra versão do código"
+    del sys.modules["sisescala"]._assinatura                          # deploy anterior: pacote sem assinatura
+    sys.modules["sisescala"].__dict__.pop("x", None)                         # "módulos de outra versão do código"
     del sys.modules["sisescala.modelos"].PedidoAcesso                  # o que quebrava: classe nova ausente
     app.run()
     assert not app.exception
