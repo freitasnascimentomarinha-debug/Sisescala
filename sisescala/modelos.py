@@ -8,6 +8,7 @@ from datetime import date
 SVC, SVC_TF, SVC_T = "SVÇ", "SVÇ (TF)", "SVÇ (T)"
 RT, RT_TF, RT_T = "RT", "RT (TF)", "RT (T)"
 FERIAS, DISP, DBQ, CURSO, BAIXA, FALTA = "Férias", "Disp", "DBQ", "Curso", "Baixa", "Falta"
+DTQ = "DTQ"  # destaque: militar destacado por período, não concorre à escala
 
 # tipo de impedimento -> sigla
 TIPOS_IMPEDIMENTO = {
@@ -16,7 +17,20 @@ TIPOS_IMPEDIMENTO = {
     "dispensa": DISP,   # exige motivo e arquivo
     "baixa": BAIXA,     # passou mal / baixa médica
     "desembarque": DBQ,  # sem data fim: nunca mais dá serviço
+    "destaque": DTQ,     # destacado (em outra OM etc.) durante um período
 }
+
+# categorias de escalação: (rótulo, sigla do militar escalado). "servico" usa SVÇ.
+CATEGORIAS = {
+    "servico": ("Serviço", SVC),
+    "palestra": ("Palestra", "PAL"),
+    "curso": ("Curso (escalação)", "CUR"),
+    "visita_religiosa": ("Visitação religiosa", "VIS"),
+    "cerimonia": ("Participação em cerimônia", "CER"),
+    "apoio": ("Apoio (destaque em outra OM)", "APO"),
+    "outro": ("Outro", "OUT"),
+}
+NIVEIS = ("leitura", "edicao")
 
 
 @dataclass
@@ -47,6 +61,16 @@ class Quarto:
         return f"{self.inicio}-{self.fim}"
 
 
+def hora_curta(hhmm: str) -> str:
+    h, m = hhmm.split(":")
+    return f"{int(h)}h" + (m if m != "00" else "")
+
+
+def horarios_curtos(horarios: list[str]) -> str:
+    """["04:00-08:00", "16:00-20:00"] -> "4h/16h" (hora de início de cada quarto)."""
+    return "/".join(hora_curta(h.split("-")[0]) for h in horarios)
+
+
 def quartos_padrao(horas: int = 4) -> list[Quarto]:
     """Divide as 24h em quartos de `horas` horas (4h -> 6 quartos, 2h -> 12 quartos)."""
     return [Quarto(f"{h:02d}:00", f"{(h + horas) % 24:02d}:00") for h in range(0, 24, horas)]
@@ -57,8 +81,15 @@ class Escala:
     id: str
     nome: str
     sigla: str = ""
+    dono_id: str = ""              # usuário que criou a escala
+    categoria: str = "servico"     # chave de CATEGORIAS
+    sigla_evento: str = ""         # sigla própria (categoria "outro" ou personalizada)
+    tipo: str = ""                 # texto livre de destaque no card: "Diária", "Pernoite"...
     prioridade: int = 1            # maior prevalece (pernoite > diária)
-    modo: str = "corrida"          # "corrida" | "preta_vermelha"
+    modo: str = "corrida"          # "corrida" | "preta_vermelha" | "eventos" (só nos dias de evento)
+    folgas_minimas: int = 2        # "2x1": mínimo de folgas entre dois serviços do mesmo militar
+    referencias: list[str] = field(default_factory=list)  # escalas (de outros) que prevalecem sobre esta
+    compartilhado_com: dict[str, str] = field(default_factory=dict)  # usuario_id -> "leitura"|"edicao"
     funciona_em: str = "todos"     # "todos" | "uteis" (padrão se não houver guarnecimento manual)
     militares_dia: int = 1         # efetivos por dia
     retem_qtd: int = 1
@@ -93,6 +124,23 @@ class Impedimento:
         if self.tipo != "desembarque" and self.fim is None:
             erros.append("informe a data final")
         return erros
+
+
+@dataclass
+class Evento:
+    """Dia de uma escalação avulsa (palestra, cerimônia, apoio...) numa escala de modo "eventos"."""
+    escala_id: str
+    data: date
+    descricao: str = ""
+    hora: str = ""
+    local: str = ""
+    vagas: int | None = None     # None = usa militares_dia da escala
+
+
+@dataclass
+class Usuario:
+    id: str
+    nome: str
 
 
 @dataclass
@@ -157,6 +205,8 @@ class Contexto:
     ocorrencias: list[Ocorrencia] = field(default_factory=list)
     trocas: list[Troca] = field(default_factory=list)
     uf: str = "RJ"
+    usuarios: list[Usuario] = field(default_factory=list)
+    eventos: list[Evento] = field(default_factory=list)
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
 

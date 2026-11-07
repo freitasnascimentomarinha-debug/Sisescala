@@ -1,8 +1,10 @@
 from datetime import date, timedelta
 
+import pytest
+
 from sisescala.calendario import dia_util
 from sisescala.modelos import *
-from sisescala.motor import fila_do_dia, gerar, sugerir_devolucao
+from sisescala.motor import fila_do_dia, gerar, sugerir_devolucao, validar_escala
 
 
 def mil(n):
@@ -10,6 +12,7 @@ def mil(n):
 
 
 def esc(id, ids, **kw):
+    kw.setdefault("dono_id", "u1")
     return Escala(id, id, id[:3].upper(), membros=[Pertinencia(i) for i in ids], **kw)
 
 
@@ -19,7 +22,7 @@ def ctx(escalas, n=6, base=date(2027, 3, 1), **kw):  # 01/03/2027 = segunda
 
 def quem(res, d, eid, papel="efetivo"):
     dia = res.dia(d, eid)
-    return [a.militar_id for a in dia.alocacoes if a.papel == papel and a.sigla != "Falta"]
+    return [a.militar_id for a in dia.alocacoes if a.papel == papel and a.origem != "falta"]
 
 
 D = date(2027, 3, 1)
@@ -41,7 +44,8 @@ def test_impedimento_pula_e_nao_consome():
     c = ctx([esc("A", ["m1", "m2", "m3"])],
             impedimentos=[Impedimento("m2", "ferias", D, D + timedelta(days=1))])
     r = gerar(c, D + timedelta(days=3))
-    assert [quem(r, D + timedelta(days=i), "A")[0] for i in range(4)] == ["m1", "m3", "m1", "m2"]
+    # m2 de férias; m1 ainda descansa no dia 3 (2x1) -> m2 volta e m1 não perde a vez (dia 4)
+    assert [quem(r, D + timedelta(days=i), "A")[0] for i in range(4)] == ["m1", "m3", "m2", "m1"]
 
 
 def test_desembarque_sai_da_fila():
@@ -56,13 +60,18 @@ def test_dispensa_exige_motivo_e_arquivo():
     assert not Impedimento("m1", "dispensa", D, D, "luto", "arq.pdf").validar()
 
 
-def test_preta_vermelha_filas_independentes_congeladas():
-    # sex 05/03, sáb 06, dom 07, seg 08
+def test_preta_vermelha_filas_independentes_e_descanso_entre_filas():
+    # sex 05/03 (preta), sáb 06 e dom 07 (vermelha), seg 08 (preta)
     c = ctx([esc("A", ["m1", "m2", "m3", "m4"], modo="preta_vermelha")], base=date(2027, 3, 5))
-    r = gerar(c, date(2027, 3, 8))
-    sex, sab, dom, seg = (date(2027, 3, d) for d in (5, 6, 7, 8))
-    assert [quem(r, x, "A")[0] for x in (sex, sab, dom, seg)] == ["m1", "m1", "m2", "m2"]
-    assert r.dia(sab, "A").fila == "vermelha" and r.dia(seg, "A").fila == "preta"
+    r = gerar(c, date(2027, 3, 10))
+    f = lambda d: (quem(r, date(2027, 3, d), "A")[0], r.dia(date(2027, 3, d), "A").fila)  # noqa: E731
+    assert f(5) == ("m1", "preta")
+    assert f(6) == ("m2", "vermelha")   # m1 deu sexta: não pode dar sábado (1x1 proibido)
+    assert f(7) == ("m3", "vermelha")
+    assert f(8) == ("m4", "preta")      # m2 e m3 ainda descansam
+    # nunca dois serviços do mesmo militar com menos de 2 folgas entre eles
+    dias = sorted(d for (d, e), de in r.dias.items() for a in de.efetivos if a.militar_id == "m2")
+    assert all((b - a).days >= 3 for a, b in zip(dias, dias[1:]))
 
 
 def test_servico_so_dias_uteis_para_no_fim_de_semana():
@@ -99,8 +108,9 @@ def test_roxa_comeca_do_zero_e_congela_as_outras():
     c = ctx([esc("A", ["m1", "m2", "m3"])], roxas=[roxa])
     r = gerar(c, date(2027, 3, 8))
     a = [quem(r, date(2027, 3, d), "A")[0] for d in range(1, 9)]
-    # 1,2 corrida (m1,m2); 3-5 roxa do zero (m1,m2,m3); 6.. corrida retoma depois de m2 -> m3,m1,m2
-    assert a == ["m1", "m2", "m1", "m2", "m3", "m3", "m1", "m2"]
+    # 1,2 corrida (m1,m2); roxa do zero: m1/m2 ainda descansam (2x1) -> m3, depois m1, m2;
+    # corrida retoma depois de m2 -> m3
+    assert a == ["m1", "m2", "m3", "m1", "m2", "m3", "m1", "m2"]
     assert r.dia(date(2027, 3, 4), "A").fila == "roxa:c"
 
 
@@ -117,7 +127,7 @@ def test_doze_quartos_de_2h():
 
 
 def test_ocorrencia_avanca_retem_e_gera_devolucao():
-    c = ctx([esc("A", ["m1", "m2", "m3", "m4"])],
+    c = ctx([esc("A", ["m1", "m2", "m3", "m4", "m5", "m6", "m7"])], n=7,
             ocorrencias=[Ocorrencia(D, "A", "m1", "passou mal")])
     r = gerar(c, D + timedelta(days=2))
     assert quem(r, D, "A") == ["m2"]
@@ -125,7 +135,9 @@ def test_ocorrencia_avanca_retem_e_gera_devolucao():
     assert r.devolucoes[0].militar_id == "m1"
     assert r.devolucoes[0].prazo == D + timedelta(days=30)
     sug = sugerir_devolucao(c, r, r.devolucoes[0])
-    assert sug and sug[0][0] == D + timedelta(days=1)
+    assert sug                                              # há dias que respeitam o 2x1
+    datas_m1 = [d for (d, e), de in r.dias.items() for a in de.efetivos if a.militar_id == "m1"]
+    assert all(abs((d - x).days) >= 3 for d, _ in sug for x in datas_m1)
 
 
 def test_troca_consensual_so_com_dois_aceites():
@@ -173,3 +185,95 @@ def test_resultado_independe_do_tamanho_da_previa():
         d = D + timedelta(days=i)
         for e in ("P", "D"):
             assert quem(r7, d, e) == quem(r30, d, e) and quem(r7, d, e, "retem") == quem(r30, d, e, "retem")
+
+
+def test_minimo_2x1_validacao_e_configuravel():
+    c = ctx([esc("A", ["m1", "m2"])])
+    assert validar_escala(c, c.escala("A"))              # 1x1 não é permitido por padrão
+    c.escala("A").folgas_minimas = 1                      # configurável
+    assert not validar_escala(c, c.escala("A"))
+    c.escala("A").membros.append(Pertinencia("m3"))
+    c.escala("A").folgas_minimas = 2
+    assert not validar_escala(c, c.escala("A"))
+
+
+def test_dtq_destaque_nao_concorre():
+    c = ctx([esc("A", ["m1", "m2", "m3", "m4"])],
+            impedimentos=[Impedimento("m2", "destaque", D, D + timedelta(days=20), "Destacado na OM X")])
+    r = gerar(c, D + timedelta(days=8))
+    todos = [m for i in range(9) for m in quem(r, D + timedelta(days=i), "A")]
+    assert "m2" not in todos
+    assert TIPOS_IMPEDIMENTO["destaque"] == "DTQ"
+
+
+def test_palestra_so_nos_dias_de_evento():
+    e = esc("PAL", ["m1", "m2", "m3", "m4"], categoria="palestra", modo="eventos", militares_dia=2,
+            retem_qtd=0)
+    c = ctx([e], eventos=[Evento("PAL", D + timedelta(days=2), "Palestra de segurança", "10h"),
+                          Evento("PAL", D + timedelta(days=5), "Cerimônia", vagas=1)])
+    r = gerar(c, D + timedelta(days=6))
+    assert not r.dia(D, "PAL").funciona
+    d2 = r.dia(D + timedelta(days=2), "PAL")
+    assert [a.militar_id for a in d2.efetivos] == ["m1", "m2"] and d2.efetivos[0].sigla == "PAL"
+    assert d2.descricao == "Palestra de segurança"
+    assert quem(r, D + timedelta(days=5), "PAL") == ["m3"]   # fila segue de onde parou
+
+
+def test_horario_compacto():
+    assert horarios_curtos(["04:00-08:00", "16:00-20:00"]) == "4h/16h"
+    assert horarios_curtos(["00:00-04:00", "12:00-16:00"]) == "0h/12h"
+
+
+def test_referencia_escala_do_outro_usuario_prevalece():
+    # u1 é dono da Pernoite (m1 de serviço em D). u2 faz a Diária referenciando a Pernoite.
+    per = esc("P", ["m1", "m2", "m3", "m4"], dono_id="u1", prioridade=1)
+    dia = esc("D", ["m1", "m5", "m6", "m7", "m8", "m9"], dono_id="u2", prioridade=9,
+              referencias=["P"])
+    r = gerar(ctx([per, dia], n=9), D + timedelta(days=5))
+    assert quem(r, D, "P") == ["m1"]                 # referenciada prevalece (apesar da prioridade 9)
+    assert r.dia(D, "D").efetivos[0].sigla == SVC_TF and r.dia(D, "D").efetivos[0].militar_id != "m1"
+
+
+def test_escalas_de_donos_sem_referencia_nao_interferem():
+    per = esc("P", ["m1", "m2", "m3", "m4"], dono_id="u1")
+    dia = esc("D", ["m1", "m5", "m6", "m7", "m8", "m9"], dono_id="u2")
+    r = gerar(ctx([per, dia], n=9), D)
+    assert quem(r, D, "P") == ["m1"] and quem(r, D, "D") == ["m1"]
+    assert r.dia(D, "D").efetivos[0].origem == "normal"
+
+
+def test_compartilhamento_leitura_e_edicao():
+    from sisescala import permissoes as pm
+    per = esc("P", ["m1", "m2", "m3"], dono_id="u1")
+    dia = esc("D", ["m4", "m5", "m6"], dono_id="u2")
+    c = ctx([per, dia])
+    assert not pm.pode_ver(c, "u2", per)
+    with pytest.raises(pm.PermissaoNegada):
+        pm.referenciar(c, "u2", "D", "P")                  # ainda não compartilhada
+    with pytest.raises(pm.PermissaoNegada):
+        pm.compartilhar(c, "u2", "P", "u3", "leitura")     # só o dono compartilha
+    pm.compartilhar(c, "u1", "P", "u2", "leitura")
+    assert pm.pode_ver(c, "u2", per) and not pm.pode_editar(c, "u2", per)
+    pm.referenciar(c, "u2", "D", "P")                      # leitura basta para referenciar
+    assert dia.referencias == ["P"]
+    with pytest.raises(pm.PermissaoNegada):
+        pm.referenciar(c, "u1", "P", "D")                  # u1 não vê a escala D
+    pm.compartilhar(c, "u2", "D", "u1", "leitura")
+    with pytest.raises(ValueError):
+        pm.referenciar(c, "u1", "P", "D")                  # P→D e D→P seria circular
+    pm.compartilhar(c, "u1", "P", "u2", "edicao")
+    assert pm.pode_editar(c, "u2", per)
+    pm.compartilhar(c, "u1", "P", "u2", None)              # revoga
+    assert not pm.pode_ver(c, "u2", per)
+    assert [e.id for e in pm.escalas_visiveis(c, "u2")] == ["D"]
+
+
+def test_palestra_no_dia_do_pernoite_substitui_e_gera_devolucao():
+    per = esc("P", ["m1", "m2", "m3", "m4"], prioridade=5)
+    pal = esc("PAL", ["m1", "m2", "m3", "m4", "m5", "m6"], categoria="palestra", modo="eventos",
+              militares_dia=1, retem_qtd=0, prioridade=1)
+    c = ctx([per, pal], n=6, eventos=[Evento("PAL", D, "Palestra")])
+    r = gerar(c, D + timedelta(days=1))
+    a = r.dia(D, "PAL").efetivos[0]
+    assert a.militar_id != "m1" and a.sigla == "PAL (TF)" and "TF" in a.obs
+    assert [(d.militar_id, d.escala_id) for d in r.devolucoes] == [("m1", "PAL")]
