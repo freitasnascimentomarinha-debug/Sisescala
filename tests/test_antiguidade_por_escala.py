@@ -116,3 +116,20 @@ def test_componente_ignora_valor_velho(monkeypatch):
     assert componente.ordem_interativa(itens, "k") is None            # a ordem já mudou por outro caminho
     monkeypatch.setattr(componente, "_ordem", lambda **kw: None)
     assert componente.ordem_interativa(itens, "k") is None
+
+
+def test_escala_nasce_vazia_gera_sem_erro_e_recebe_militares_por_importacao():
+    from datetime import timedelta
+    from sisescala.motor import avisos_escala
+    c = Contexto([], [], D)
+    adm, _ = auth.garantir_admin(c, "admin", SENHA)
+    e = gestao.criar_escala(c, adm.id, Escala("e1", "Portaria", data_base=D))      # sem nenhum militar
+    assert e.membros == [] and "ainda não tem militares" in avisos_escala(c, e)[0]
+    r = gerar(c, D + timedelta(days=5))                                              # não quebra
+    assert not r.dia(D, "e1").efetivos
+    linhas = [{"Nome de guerra": f"M{i}", "NIP": f"1000000{i}", "Escala": "Portaria"} for i in range(1, 5)]
+    novo, rel = imp.importar(c, linhas, usuario_id=adm.id, dono_id=adm.id, sobrescrever=False)
+    assert not rel.erros and [m.nome for m in novo.militares] == ["M1", "M2", "M3", "M4"]
+    assert len(novo.escala("e1").membros) == 4 and len(novo.escalas) == 1             # entrou na escala criada
+    assert not avisos_escala(novo, novo.escala("e1"))
+    assert gerar(novo, D + timedelta(days=2)).dia(D, "e1").efetivos

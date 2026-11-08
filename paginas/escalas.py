@@ -7,7 +7,7 @@ from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, quartos_padrao
-from sisescala.motor import validar_escala
+from sisescala.motor import avisos_escala
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -75,12 +75,19 @@ def dialogo_nova():
                              format_func=nomes_m.get, key="nova_mem",
                              help="A ordem em que você escolhe define a antiguidade NESTA escala (o 1º é o mais antigo). "
                                   "O detalhista fica fora da escala, a menos que você marque que ele concorre.")
+    if not _cand:
+        st.caption("Ainda não há militares cadastrados: tudo bem. Crie a escala vazia e depois adicione os militares em "
+                   "Militares ou importe uma planilha (em Importar planilha, use o mesmo nome da escala). Ela só gera "
+                   "serviços quando tiver militares suficientes; não precisa de vínculo de ninguém para funcionar.")
     refs = st.multiselect("Escalas que prevalecem sobre esta (compartilhadas com você)", [e.id for e in P.visiveis],
                           format_func=lambda i: ctx.escala(i).nome, key="nova_refs")
     if st.button("Criar escala", type="primary", use_container_width=True):
         nova = Escala(f"e{max([int(e.id[1:]) for e in ctx.escalas if e.id[1:].isdigit()] + [0]) + 1}", v["nome"],
                       membros=[Pertinencia(m, None, None, k) for k, m in enumerate(membros, 1)], **{k: x for k, x in v.items() if k != "nome"})
-        agir(lambda: gestao.criar_escala(ctx, uid, nova, refs), "Escala criada.")
+        def _criar():
+            e = gestao.criar_escala(ctx, uid, nova, refs)
+            return avisos_escala(ctx, e)                  # só avisa: a escala pode nascer vazia e receber militares depois
+        agir(_criar, "Escala criada.")
 
 
 @st.dialog("Editar escala", width="large")
@@ -88,7 +95,7 @@ def dialogo_editar(eid: str):
     e = ctx.escala(eid)
     v = _campos(e, f"ed_{eid}")
     if st.button("Salvar alterações", type="primary", use_container_width=True):
-        agir(lambda: gestao.editar_escala(ctx, uid, eid, **v), "Escala atualizada.")
+        agir(lambda: avisos_escala(ctx, gestao.editar_escala(ctx, uid, eid, **v)), "Escala atualizada.")
 
 
 ui.cabecalho("Escalas", "Só o detalhista cria, ajusta as regras e compartilha o acesso das escalas. O auxiliar não edita regras.", "sliders")

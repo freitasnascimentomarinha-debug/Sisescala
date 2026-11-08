@@ -145,12 +145,6 @@ def _distribuir_quartos(quartos: list[Quarto], efetivos: list[str]) -> dict[str,
 def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
     """Erros de configuração (ex.: 1x1 não permitido)."""
     erros = []
-    n = len(ctx.escalaveis(esc))             # detalhista fora da escala não conta
-    precisa = esc.militares_dia * (_folgas(esc) + 1)
-    if esc.modo != "eventos" and n < precisa:
-        erros.append(
-            f"{esc.nome}: {n} militares para {esc.militares_dia} por dia não respeita o mínimo de "
-            f"{_folgas(esc)} folga(s) entre serviços (precisa de pelo menos {precisa}).")
     for rotulo, mid in [("detalhista", esc.detalhista_id)] + [("auxiliar", a) for a in esc.auxiliares]:
         if mid and not any(m.id == mid for m in ctx.militares):
             erros.append(f"{esc.nome}: {rotulo} não encontrado no cadastro.")
@@ -161,6 +155,20 @@ def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
     if esc.categoria not in CATEGORIAS:
         erros.append(f"{esc.nome}: categoria inválida.")
     return erros
+
+
+def avisos_escala(ctx: Contexto, esc: Escala) -> list[str]:
+    """Avisos que NÃO impedem criar ou editar: a escala pode nascer vazia e receber os militares depois (cadastro,
+    importação de planilha ou vínculo). Enquanto faltar gente, ela apenas não funciona direito."""
+    n = len(ctx.escalaveis(esc))             # detalhista fora da escala não conta
+    precisa = esc.militares_dia * (_folgas(esc) + 1)
+    if esc.modo == "eventos" or n >= precisa:
+        return []
+    if n == 0:
+        return [f"{esc.nome} ainda não tem militares: cadastre-os em Militares ou importe uma planilha. "
+                f"Ela só gera serviços quando tiver pelo menos {precisa} (por dia e descanso configurados)."]
+    return [f"{esc.nome} tem {n} militar(es) para {esc.militares_dia} por dia e {_folgas(esc)} folga(s) entre serviços: "
+            f"precisa de pelo menos {precisa} para respeitar o descanso."]
 
 
 # ------------------------------------------------------------------ prevalência

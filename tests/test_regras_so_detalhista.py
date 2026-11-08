@@ -5,6 +5,7 @@ import pytest
 
 from sisescala import auth, gestao
 from sisescala.modelos import *
+from sisescala.motor import avisos_escala
 from sisescala.permissoes import PermissaoNegada, compartilhar, eh_detalhista, referenciar
 
 D = date(2027, 3, 1)
@@ -81,8 +82,9 @@ def test_outro_detalhista_com_edicao_edita_mas_nao_exclui_nem_compartilha():
 
 def test_edicao_e_validada_e_campos_protegidos_nao_passam():
     c = mk()
-    with pytest.raises(ValueError, match="mínimo"):
-        gestao.editar_escala(c, "u1", "e1", militares_dia=8)                      # 8 por dia com 2x1 é impossível
+    gestao.editar_escala(c, "u1", "e1", militares_dia=8)                          # 8 por dia com 2x1: só avisa
+    assert avisos_escala(c, c.escala("e1"))
+    gestao.editar_escala(c, "u1", "e1", militares_dia=1)
     with pytest.raises(ValueError, match="auxiliar não pode ser o próprio detalhista"):
         gestao.editar_escala(c, "u1", "e1", auxiliares=["m1"])
     for campo in ("dono_id", "membros", "compartilhado_com", "referencias", "id"):

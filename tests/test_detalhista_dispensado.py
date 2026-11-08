@@ -6,7 +6,7 @@ from sisescala import vinculos as vc
 from sisescala import papeletas as pp
 from sisescala.importacao import importar, ler_tabela
 from sisescala.modelos import *
-from sisescala.motor import gerar, validar_escala
+from sisescala.motor import avisos_escala, gerar, validar_escala
 from sisescala.persistencia import de_tabelas, para_tabelas
 from sisescala.previa import html_previa, periodo
 from sisescala.relatorio import itens_configuracao, situacao_atual, texto_funcionamento
@@ -92,15 +92,15 @@ def test_detalhista_fora_tambem_das_escalacoes_que_nao_sao_servico():
 
 def test_detalhista_fora_nao_conta_para_o_minimo_de_militares():
     c = mk(n=4)                                                       # m1 fora + 3 escaláveis, 1 por dia, 2x1
-    assert validar_escala(c, c.escala("A")) == []
+    assert avisos_escala(c, c.escala("A")) == []
     c.escala("A").militares_dia = 2                                   # precisaria de 6
-    assert validar_escala(c, c.escala("A"))
+    assert avisos_escala(c, c.escala("A"))
     c.escala("A").detalhista_escalavel = True                         # concorrendo, conta: 4 militares ainda < 6
-    assert validar_escala(c, c.escala("A"))
+    assert avisos_escala(c, c.escala("A"))
     c3 = mk(n=3)                                                      # m1 fora + 2: não respeita 2x1 (precisa de 3)
-    assert validar_escala(c3, c3.escala("A"))
+    assert avisos_escala(c3, c3.escala("A"))
     c3.escala("A").detalhista_escalavel = True                        # concorrendo: 3 militares, passa
-    assert validar_escala(c3, c3.escala("A")) == []
+    assert avisos_escala(c3, c3.escala("A")) == []
 
 
 def test_previa_mostra_o_detalhista_so_se_ele_concorre():

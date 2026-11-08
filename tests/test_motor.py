@@ -4,7 +4,7 @@ import pytest
 
 from sisescala.calendario import dia_util
 from sisescala.modelos import *
-from sisescala.motor import fila_do_dia, gerar, sugerir_devolucao, validar_escala
+from sisescala.motor import fila_do_dia, gerar, sugerir_devolucao, validar_escala, avisos_escala
 
 
 def mil(n):
@@ -189,12 +189,13 @@ def test_resultado_independe_do_tamanho_da_previa():
 
 def test_minimo_2x1_validacao_e_configuravel():
     c = ctx([esc("A", ["m1", "m2"])])
-    assert validar_escala(c, c.escala("A"))              # 1x1 não é permitido por padrão
+    assert avisos_escala(c, c.escala("A"))              # 1x1 não é recomendado por padrão (só avisa)
+    assert not validar_escala(c, c.escala("A"))        # não é erro: dá para criar e completar depois
     c.escala("A").folgas_minimas = 1                      # configurável
-    assert not validar_escala(c, c.escala("A"))
+    assert not avisos_escala(c, c.escala("A"))
     c.escala("A").membros.append(Pertinencia("m3"))
     c.escala("A").folgas_minimas = 2
-    assert not validar_escala(c, c.escala("A"))
+    assert not avisos_escala(c, c.escala("A"))
 
 
 def test_dtq_destaque_nao_concorre():
