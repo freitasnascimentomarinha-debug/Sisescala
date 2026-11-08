@@ -65,6 +65,19 @@ with st.container(border=True):
         elif al.situacao in ("pendente", "rejeitado"):
             if st.button("Aprovar cadastro", type="primary", use_container_width=True):
                 agir(lambda: auth.aprovar_usuario(ctx, uid, alvo_id), "Cadastro aprovado.")
+        if al.militar_id and any(m.id == al.militar_id for m in ctx.militares):
+            mv = ctx.militar(al.militar_id)
+            st.caption(f"Conta vinculada ao militar **{mv.nome}**.")
+            with st.popover("Desvincular do militar", icon=":material/link_off:", use_container_width=True):
+                abertas = auth.papeletas_abertas_do_militar(ctx, al.militar_id)
+                st.write(f"A conta de **{al.nome}** deixa de ser **{mv.nome}**: perde o PIN e não assina nem pede trocas "
+                         "por ele até um novo vínculo. O militar continua cadastrado e nas escalas; assinaturas já feitas "
+                         "ficam como estão.")
+                if abertas:
+                    st.warning(f"Há {abertas} papeleta(s) em andamento com {mv.nome}; elas ficarão sem quem assine por ele.")
+                st.write("**Tem certeza?**")
+                if st.button("Sim, desvincular", key=f"dv_{alvo_id}", type="primary"):
+                    agir(lambda: auth.desvincular_usuario(ctx, uid, alvo_id), "Conta desvinculada do militar.")
         nova = st.text_input("Senha provisória (8+)", type="password", key=f"rs_{alvo_id}")
         if st.button("Redefinir senha", use_container_width=True):
             agir(lambda: auth.redefinir_senha(ctx, uid, alvo_id, nova), "Senha redefinida; a pessoa troca no próximo acesso.")

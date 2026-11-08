@@ -213,3 +213,35 @@ def test_importacao_nao_sobrescreve_dados_de_escala_de_outro_detalhista():
                              sobrescrever=False)
     assert novo.militar("m2").nome == "M2" and novo.militar("m2").om == "CAAML"   # só preenche vazios
     assert c.militar("m2").nome == "M2"                                      # original intacto
+
+
+def test_admin_desvincula_conta_do_militar_e_ela_pode_ser_vinculada_de_novo():
+    from sisescala import vinculos as vc
+    c, adm = mundo()
+    det = aprovado(c, adm, "10000001")
+    nova_escala(c, det.id, "e1", n=4)
+    ana = aprovado(c, adm, "10000002", "Ana")
+    cv = vc.convidar(c, det.id, ana.id, "m2", "e1", AGORA)
+    vc.aceitar_convite(c, ana.id, cv.id, "10000002", "1234", AGORA)
+    assert ana.militar_id == "m2" and ana.pin_hash
+    with pytest.raises(PermissionError):
+        auth.desvincular_usuario(c, det.id, ana.id)                        # só o administrador
+    auth.desvincular_usuario(c, adm.id, ana.id)
+    assert ana.militar_id == "" and ana.pin_hash == "" and c.usuario(ana.id)      # conta continua
+    assert c.militar("m2") and "m2" in {p.militar_id for p in c.escala("e1").membros}   # militar e escala intactos
+    assert any(n.usuario_id == ana.id and "desfez o vínculo" in n.texto for n in c.notificacoes)
+    with pytest.raises(ValueError, match="não está vinculada"):
+        auth.desvincular_usuario(c, adm.id, ana.id)
+    assert "m2" in vc.militares_livres(c, "e1")                              # liberado para novo vínculo
+    vc.convidar(c, det.id, ana.id, "m2", "e1", AGORA)                        # e ela pode ser convidada de novo
+
+
+def test_desvincular_libera_o_militar_para_o_admin_excluir_do_cadastro_solto():
+    from sisescala import cadastro as cd
+    c, adm = mundo()
+    ana = aprovado(c, adm, "10000005", "Ana")
+    ana.militar_id = "m5"                                                    # m5 está fora de escalas
+    with pytest.raises(ValueError, match="vinculado a uma conta"):
+        cd.excluir_militares(c, ["m5"], adm.id)
+    auth.desvincular_usuario(c, adm.id, ana.id)
+    assert cd.excluir_militares(c, ["m5"], adm.id) == 1

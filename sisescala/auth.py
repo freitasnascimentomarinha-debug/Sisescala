@@ -305,6 +305,31 @@ def definir_ativo(ctx: Contexto, admin_id: str, alvo_id: str, ativo: bool) -> No
     (desbloquear_usuario if ativo else bloquear_usuario)(ctx, admin_id, alvo_id)
 
 
+def papeletas_abertas_do_militar(ctx: Contexto, militar_id: str) -> int:
+    """Papeletas ainda em andamento em que o militar é parte (para avisar antes de desvincular)."""
+    return sum(1 for p in ctx.papeletas if p.status in ("pendente", "aprovada")
+               and militar_id in (p.solicitante_id, p.outro_id))
+
+
+def desvincular_usuario(ctx: Contexto, admin_id: str, alvo_id: str) -> None:
+    """O administrador desfaz o vínculo da conta com o militar. A conta continua existindo (sem vínculo, sem PIN: o
+    próprio usuário pede outro vínculo ou recebe um convite); o militar continua cadastrado e nas escalas, e as
+    assinaturas já registradas ficam como estão."""
+    _exigir_admin(ctx, admin_id)
+    alvo = _alvo(ctx, alvo_id)
+    if not alvo.militar_id:
+        raise ValueError("essa conta não está vinculada a nenhum militar")
+    m = next((x for x in ctx.militares if x.id == alvo.militar_id), None)
+    for v in ctx.vinculos:
+        if v.usuario_id == alvo.id and v.status == "aprovado":
+            v.status = "desfeito"
+    alvo.militar_id, alvo.pin_hash = "", ""
+    from . import notificacoes as nt
+    nt.notificar(ctx, [alvo.id], "vinculo",
+                 f"O administrador desfez o vínculo da sua conta com {m.nome if m else 'o militar'}. Peça um novo vínculo "
+                 f"(ou aguarde um convite) em Vínculos.")
+
+
 def redefinir_senha(ctx: Contexto, admin_id: str, alvo_id: str, nova: str) -> None:
     """Senha provisória: o usuário será obrigado a trocá-la no próximo acesso."""
     _exigir_admin(ctx, admin_id)

@@ -220,3 +220,16 @@ def test_convite_de_vinculo_na_tela_detalhista_convida_e_usuario_aceita(app):
     next(b for b in app.button if b.label == "Aceitar convite").click().run()
     assert not app.exception
     assert app.session_state["ctx"].usuario(ana.id).militar_id == militar.id
+
+
+def test_tela_usuarios_mostra_desvincular_para_conta_vinculada(app):
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ana = auth.criar_usuario(ctx, "u1", "10000002", "Ana Souza", "senha-ana-1234", militar_id="m2")
+    app.run()
+    app.switch_page("paginas/usuarios.py").run()
+    assert not app.exception
+    sel = next(s for s in app.selectbox if s.label == "Conta")
+    sel.select(ana.id).run()
+    assert not app.exception
+    assert any("vinculada ao militar" in c.value for c in app.caption)
