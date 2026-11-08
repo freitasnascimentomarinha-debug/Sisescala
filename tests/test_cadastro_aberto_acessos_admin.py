@@ -169,18 +169,38 @@ def test_data_base_por_escala_nao_atrapalha_outra():
     assert r.dia(D + timedelta(days=10), "e2").efetivos
 
 
-def test_excluir_militar_so_se_for_so_das_escalas_do_detalhista():
+def test_excluir_do_cadastro_so_o_admin_e_so_quem_esta_fora_de_escalas_sem_conta_e_sem_papeleta():
+    from sisescala import cadastro as cd
+    c, adm = mundo()
+    u1 = aprovado(c, adm, "10000001")
+    nova_escala(c, u1.id, "e1", n=4)                                        # m1..m4; m5 e m6 ficam sem escala
+    with pytest.raises(PermissaoNegada, match="administrador"):
+        cd.excluir_militares(c, ["m5"], u1.id)                              # detalhista não exclui do cadastro
+    with pytest.raises(ValueError, match="ainda está em uma escala"):
+        cd.excluir_militares(c, ["m1"], adm.id)                             # quem está em escala: primeiro retira
+    gestao.remover_militares(c, u1.id, "e1", ["m1"])                        # retirar da escala NÃO apaga o militar
+    assert c.militar("m1") and "m1" not in {p.militar_id for p in c.escala("e1").membros}
+    ana = aprovado(c, adm, "10000005", "Ana")
+    ana.militar_id = "m5"
+    with pytest.raises(ValueError, match="vinculado a uma conta"):
+        cd.excluir_militares(c, ["m5"], adm.id)                             # com conta vinculada: recusa
+    ana.militar_id = ""
+    assert cd.excluir_militares(c, ["m5", "m1"], adm.id) == 2               # fora de escalas, sem conta: admin pode
+    assert {m.id for m in c.militares} == {"m2", "m3", "m4", "m6"}
+
+
+def test_retirar_da_escala_nao_mexe_na_conta_vinculada_nem_em_outras_escalas():
     c, adm = mundo()
     u1, u2 = aprovado(c, adm, "10000001"), aprovado(c, adm, "10000002", "Dois")
-    nova_escala(c, u1.id, "e1", n=4)                                        # m1..m4
-    gestao.criar_escala(c, u2.id, Escala("e2", "Outra", membros=[Pertinencia(m) for m in ("m4", "m5", "m6")], data_base=D))
-    with pytest.raises(PermissaoNegada):
-        from sisescala import cadastro as cd
-        cd.excluir_militares(c, ["m4"], u1.id)                              # m4 também está na e2
-    from sisescala import cadastro as cd
-    assert cd.excluir_militares(c, ["m1"], u1.id) == 1
-    with pytest.raises(PermissaoNegada):
-        cd.excluir_militares(c, ["m5"], u1.id)
+    nova_escala(c, u1.id, "e1", n=4)
+    gestao.criar_escala(c, u2.id, Escala("e2", "Outra", membros=[Pertinencia(m) for m in ("m3", "m4", "m5", "m6")], data_base=D))
+    ana = aprovado(c, adm, "10000009", "Ana")
+    ana.militar_id = "m3"
+    c.escala("e1").ultimo_servico = {"corrida": "m3"}
+    gestao.remover_militares(c, u1.id, "e1", ["m3"])
+    assert ana.militar_id == "m3"                                           # a conta continua vinculada
+    assert "m3" in {p.militar_id for p in c.escala("e2").membros}           # e a outra escala não muda
+    assert c.escala("e1").ultimo_servico["corrida"] == "m2"                 # a fila segue de onde estava
 
 
 def test_importacao_nao_sobrescreve_dados_de_escala_de_outro_detalhista():

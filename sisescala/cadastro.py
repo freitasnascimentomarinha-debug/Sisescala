@@ -90,22 +90,35 @@ def _desvincular(ctx: Contexto, mid: str) -> None:
 
 
 def excluir_militares(ctx: Contexto, ids: list[str], usuario_id: str | None = None) -> int:
-    """Exclui do cadastro (todas as escalas). Se `usuario_id` for informado, só exclui quem
-    pertence apenas a escalas que ele pode editar."""
+    """Apaga militares do cadastro INTEIRO (baixo nível, com cascata). Com `usuario_id` (uso pela tela), só o
+    administrador e só militares que não estão em nenhuma escala, sem conta vinculada e sem papeleta: tirar alguém de
+    uma escala é `remover_da_escala`, não esta função."""
     ids = [i for i in dict.fromkeys(ids) if any(m.id == i for m in ctx.militares)]
-    u = ctx.usuario(usuario_id) if usuario_id is not None else None
-    if usuario_id is not None and not (u and u.admin and u.ativo):
+    if usuario_id is not None:
+        u = ctx.usuario(usuario_id)
+        if not (u and u.admin and u.ativo):
+            raise PermissaoNegada("só o administrador exclui militares do cadastro; para tirar da escala use "
+                                  "\"Retirar da escala\"")
         for i in ids:
-            dele = [esc for esc in ctx.escalas if any(p.militar_id == i for p in esc.membros)]
-            if not dele:
-                raise PermissaoNegada(f"{ctx.militar(i).nome} não está em escala sua: só o administrador exclui")
-            for esc in dele:
-                if not eh_detalhista(ctx, usuario_id, esc):
-                    raise PermissaoNegada(
-                        f"{ctx.militar(i).nome} está na escala '{esc.nome}', que você não pode editar")
+            nome = ctx.militar(i).nome
+            if any(p.militar_id == i for e in ctx.escalas for p in e.membros):
+                raise ValueError(f"{nome} ainda está em uma escala: retire-o dela antes de excluir do cadastro")
+            if any(x.militar_id == i for x in ctx.usuarios):
+                raise ValueError(f"{nome} está vinculado a uma conta: desvincule a conta antes")
+            if any(i in (p.solicitante_id, p.outro_id) for p in ctx.papeletas):
+                raise ValueError(f"{nome} tem papeletas registradas e não pode ser excluído; deixe-o fora das escalas")
+    alvo = set(ids)
     for i in ids:
         _desvincular(ctx, i)
-    alvo = set(ids)
+    for x in ctx.usuarios:                           # conta ligada a quem sumiu não pode ficar apontando para o vazio
+        if x.militar_id in alvo:
+            x.militar_id = ""
+    for v in ctx.vinculos:
+        if v.militar_id in alvo and v.status == "pendente":
+            v.status = "cancelado"
+    for c in ctx.convites_vinculo:
+        if c.militar_id in alvo and c.status == "pendente":
+            c.status = "cancelado"
     ctx.militares = [m for m in ctx.militares if m.id not in alvo]
     ctx.impedimentos = [x for x in ctx.impedimentos if x.militar_id not in alvo]
     ctx.ocorrencias = [x for x in ctx.ocorrencias if x.militar_id not in alvo]
@@ -170,6 +183,13 @@ def remover_da_escala(ctx: Contexto, escala_id: str, ids: list[str], a_partir_de
     n = 0
     for i in ids:
         if a_partir_de is None:
+            for fila, ult in list(esc.ultimo_servico.items()):      # a fila segue de onde estava
+                if ult == i:
+                    ant = _anterior_na_escala(ctx, esc, i)
+                    if ant:
+                        esc.ultimo_servico[fila] = ant
+                    else:
+                        del esc.ultimo_servico[fila]
             antes = len(esc.membros)
             esc.membros = [p for p in esc.membros if p.militar_id != i]
             n += antes != len(esc.membros)

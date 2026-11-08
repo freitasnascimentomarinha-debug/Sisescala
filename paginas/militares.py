@@ -113,8 +113,20 @@ with st.container(border=True):
         st.write(f"{len(marcados)} militar(es) marcado(s).")
         if marcados and st.button("Confirmar retirada", key="ret_ok", type="primary"):
             agir(lambda: gestao.remover_militares(ctx, uid, esc_id, marcados, quando), "Militares retirados da escala.")
-    with c3.popover("Excluir do cadastro", icon=":material/delete:"):
-        st.warning(f"{len(marcados)} militar(es) marcado(s). Excluir apaga o militar do sistema todo (impedimentos, trocas, "
-                   "escalas). Só é possível para quem está apenas nas suas escalas. **Tem certeza?**")
-        if marcados and st.button("Sim, excluir do cadastro", key="mil_del"):
-            agir(lambda: cd.excluir_militares(ctx, marcados, uid), "Militares excluídos.")
+    c3.caption("Para tirar alguém da escala use **Retirar da escala**: ele continua cadastrado e vinculado.")
+
+if admin:
+    sem_escala = [m for m in ctx.militares if not any(p.militar_id == m.id for e in ctx.escalas for p in e.membros)]
+    with st.expander(f"Administração: militares fora de qualquer escala ({len(sem_escala)})"):
+        st.caption("Cadastros soltos (ninguém os escala). Só dá para excluir quem não está em escala, não tem conta "
+                   "vinculada e não tem papeleta.")
+        if not sem_escala:
+            st.write("Nenhum.")
+        else:
+            nomes_solto = {m.id: f"{m.posto} {m.nome} (NIP {m.nip or '—'})".strip() for m in sem_escala}
+            sel = st.multiselect("Militares para excluir do cadastro", list(nomes_solto), format_func=nomes_solto.get)
+            if sel:
+                st.warning(f"{len(sel)} militar(es) serão apagados do cadastro do sistema, com impedimentos e lançamentos deles. "
+                           "**Tem certeza?**")
+                if st.button("Sim, excluir do cadastro", key="mil_del"):
+                    agir(lambda: cd.excluir_militares(ctx, sel, uid), "Militares excluídos do cadastro.")

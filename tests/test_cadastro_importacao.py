@@ -50,9 +50,10 @@ def test_excluir_quem_deu_o_ultimo_servico_mantem_a_fila():
 def test_excluir_apaga_impedimentos_e_respeita_permissao():
     c = base()
     c.impedimentos.append(Impedimento("m2", "ferias", D, D + timedelta(days=5)))
-    with pytest.raises(PermissaoNegada):
-        cd.excluir_militares(c, ["m2"], usuario_id="u9")
-    cd.excluir_militares(c, ["m2"], usuario_id="u1")                     # detalhista da única escala dele
+    for quem in ("u9", "u1"):                                            # nem o detalhista exclui do cadastro
+        with pytest.raises(PermissaoNegada, match="administrador"):
+            cd.excluir_militares(c, ["m2"], usuario_id=quem)
+    assert cd.excluir_militares(c, ["m2"]) == 1                           # baixo nível (cascata)
     assert c.impedimentos == []
 
 
