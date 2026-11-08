@@ -8,6 +8,7 @@ from sisescala import cadastro as cd
 from sisescala import gestao
 from sisescala import ui
 from sisescala.componente import ordem_interativa
+from sisescala.modelos import ROTULO_IMPEDIMENTO
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -65,6 +66,13 @@ def dialogo_incluir():
     st.caption(f"Escolha quem já está cadastrado (em outra escala sua) e quer entrar também em {esc.nome}.")
     nomes = {m.id: f"{m.posto} {m.nome}".strip() for m in ctx.militares}
     sel = st.multiselect("Militares", livres, format_func=nomes.get)
+    hoje = date.today()
+    obices = [f"**{ctx.militar(i.militar_id).nome}**: {ROTULO_IMPEDIMENTO.get(i.tipo, i.tipo)} de {i.inicio:%d/%m/%Y}"
+              + (f" a {i.fim:%d/%m/%Y}" if i.fim else " (sem data final)")
+              for i in ctx.impedimentos if i.militar_id in sel and (i.fim is None or i.fim >= hoje)]
+    if obices:
+        st.info("Esses militares já têm impedimentos lançados. Eles **valem sozinhos nesta escala** (ninguém de férias, "
+                "curso ou dispensado é escalado nem entra na fila nesses dias):\n\n" + "\n\n".join(f"- {o}" for o in obices))
     a, b = st.columns(2)
     desde = a.date_input("Entra na escala em", date.today(), format="DD/MM/YYYY")
     pos = b.number_input("Posição na antiguidade", 0, len(membros) + len(sel) + 1, 0,

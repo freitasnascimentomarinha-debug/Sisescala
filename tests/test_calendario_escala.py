@@ -167,3 +167,52 @@ def test_periodo_roxo_em_varias_escalas_exige_participar_da_roxa_em_todas():
     assert lc.lancar_periodo_roxo_em(c, det.id, PeriodoRoxa("", "Recesso", d1, d1 + timedelta(days=2)), ["e1", "e2"]) == ["Um", "Dois"]
     assert sorted(r.id for r in c.roxas) == ["r1", "r2"]                    # ids próprios, uma fila por período/escala
     assert fila_do_dia(c, c.escala("e1"), d1) == "roxa:r1" and fila_do_dia(c, c.escala("e2"), d1) == "roxa:r2"
+
+
+def test_guarnecimento_em_varias_escalas_substitui_decisao_e_e_tudo_ou_nada():
+    c, adm, det, aux_u = mundo()
+    outro = auth.criar_usuario(c, adm.id, "20000003", "Outro Detalhista", SENHA)
+    for eid in ("e2", "e3"):
+        gestao.criar_escala(c, det.id, Escala(eid, eid, modo="preta_vermelha", data_base=D,
+                                               membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    gestao.criar_escala(c, outro.id, Escala("x1", "Do outro", modo="preta_vermelha", data_base=D,
+                                             membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    dia = D + timedelta(days=1)
+    assert lc.lancar_guarnecimento_em(c, det.id, Guarnecimento(dia, "", False), ["e1", "e2", "e3"], AGORA) == ["Um", "e2", "e3"]
+    assert all(not funciona(c, c.escala(e), dia) for e in ("e1", "e2", "e3")) and funciona(c, c.escala("x1"), dia)
+    assert all(g.criado_por == det.id and g.criado_em == AGORA for g in c.guarnecimentos)
+    # repetir a mesma decisão não duplica; decisão oposta SUBSTITUI a anterior (antes a primeira ficava valendo)
+    assert lc.lancar_guarnecimento_em(c, det.id, Guarnecimento(dia, "", False), ["e1", "e2"]) == []
+    assert len(c.guarnecimentos) == 3
+    assert lc.lancar_guarnecimento_em(c, det.id, Guarnecimento(dia, "", True), ["e1", "e2"]) == ["Um", "e2"]
+    assert len(c.guarnecimentos) == 3 and funciona(c, c.escala("e1"), dia) and not funciona(c, c.escala("e3"), dia)
+    # escala de outro detalhista na lista: nada muda
+    antes = [(g.escala_id, g.data, g.guarnece) for g in c.guarnecimentos]
+    with pytest.raises(PermissaoNegada, match="detalhista de cada uma"):
+        lc.lancar_guarnecimento_em(c, det.id, Guarnecimento(dia, "", False), ["e1", "e2", "x1"])
+    assert [(g.escala_id, g.data, g.guarnece) for g in c.guarnecimentos] == antes
+    with pytest.raises(PermissaoNegada):
+        lc.lancar_guarnecimento_em(c, aux_u.id, Guarnecimento(dia, "", False), ["e1", "e2"])
+
+
+def test_obice_do_militar_vale_sozinho_em_escala_nova_e_em_palestra():
+    """Impedimento é do militar: qualquer escala ou escalação criada depois já o respeita e o mostra."""
+    from sisescala.previa import html_previa, periodo
+    c, adm, det, _ = mundo()
+    lc.lancar_impedimento(c, det.id, Impedimento("m5", "ferias", D, D + timedelta(days=20)), AGORA)
+    gestao.criar_escala(c, det.id, Escala("nova", "Escala nova", data_base=D, militares_dia=2,
+                                           membros=[Pertinencia(f"m{i}") for i in range(3, 8)]))
+    gestao.criar_escala(c, det.id, Escala("pal", "Palestra", modo="eventos", categoria="palestra", data_base=D,
+                                           militares_dia=2, membros=[Pertinencia(f"m{i}") for i in range(3, 8)]))
+    c.eventos.append(Evento("pal", D + timedelta(days=2), "Palestra de segurança"))
+    r = gerar(c, D + timedelta(days=15))
+    for eid in ("nova", "pal"):
+        for i in range(16):
+            assert all(a.militar_id != "m5" for a in r.dia(D + timedelta(days=i), eid).efetivos)    # ninguém de férias é escalado
+    dias = periodo(D, 7)
+    html = html_previa(c, r, dias, "nova")
+    assert "Férias" in html                                                                           # e a prévia mostra o óbice
+    assert "Férias" in html_previa(c, r, dias, "pal")
+    # depois das férias, ele volta à fila da escala nova
+    r2 = gerar(c, D + timedelta(days=60))
+    assert any(a.militar_id == "m5" for i in range(21, 60) for a in r2.dia(D + timedelta(days=i), "nova").efetivos)

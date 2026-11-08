@@ -7,6 +7,7 @@ responsável.
 """
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import datetime
 
 from . import notificacoes as nt
@@ -112,36 +113,35 @@ def lancar_dia_especial(ctx: Contexto, usuario_id: str, de: DiaEspecial, agora: 
     ctx.dias_especiais.append(_carimbo(de, usuario_id, agora))
 
 
+def _lista_e_chave(ctx: Contexto, item):
+    lista = {DiaEspecial: ctx.dias_especiais, PeriodoRoxa: ctx.roxas, Guarnecimento: ctx.guarnecimentos}[type(item)]
+    ignora = {"criado_por", "criado_em", "escala_id", "id"}
+    return lista, lambda x: tuple(getattr(x, f.name) for f in fields(x) if f.name not in ignora)
+
+
 def _em_varias(ctx: Contexto, usuario_id: str, modelo, escala_ids: list[str], lancar, agora) -> list[str]:
-    """Lança o mesmo item em várias escalas de uma vez. Tudo ou nada: se uma falhar (permissão ou regra), nenhuma fica.
+    """Lança o mesmo item em várias escalas de uma vez. Tudo ou nada: se uma falhar (permissão ou regra), nenhuma muda.
     Quem já tem item idêntico na escala é pulado. Devolve os nomes das escalas em que realmente lançou."""
     import copy
     ids = [i for i in dict.fromkeys(escala_ids) if i]
     if not ids:
         raise ValueError("escolha pelo menos uma escala")
-    feitos: list[tuple[list, object]] = []
+    lista, chave = _lista_e_chave(ctx, modelo)
+    antes = list(lista)
     nomes: list[str] = []
     try:
         for eid in ids:
             esc = ctx.escala(eid)
-            if not eh_detalhista(ctx, usuario_id, esc) and len(ids) > 1:
+            if len(ids) > 1 and not eh_detalhista(ctx, usuario_id, esc):
                 raise PermissaoNegada(f"para lançar em várias escalas você precisa ser o detalhista de cada uma ({esc.nome})")
             item = copy.copy(modelo)
             item.escala_id = eid
-            igual = [x for x in (ctx.dias_especiais if isinstance(item, DiaEspecial) else ctx.roxas)
-                     if x.escala_id == eid and all(getattr(x, c) == getattr(item, c)
-                                                   for c in ("data", "data_fim", "tipo", "conta_como", "descricao")
-                                                   if hasattr(item, c))
-                     and (isinstance(item, DiaEspecial) or (x.inicio, x.fim, x.nome) == (item.inicio, item.fim, item.nome))]
-            if igual:
+            if any(x.escala_id == eid and chave(x) == chave(item) for x in lista):
                 continue
-            lista = ctx.dias_especiais if isinstance(item, DiaEspecial) else ctx.roxas
             lancar(ctx, usuario_id, item, agora)
-            feitos.append((lista, item))
             nomes.append(esc.nome)
     except Exception:
-        for lista, item in feitos:
-            lista.remove(item)
+        lista[:] = antes                                  # desfaz tudo
         raise
     return nomes
 
@@ -185,8 +185,16 @@ def lancar_periodo_roxo(ctx: Contexto, usuario_id: str, r: PeriodoRoxa, agora: d
 
 
 def lancar_guarnecimento(ctx: Contexto, usuario_id: str, g: Guarnecimento, agora: datetime | None = None) -> None:
+    """Decisão do comando para o dia. Uma nova decisão para a mesma escala e dia SUBSTITUI a anterior."""
     _exigir_escala(ctx, usuario_id, g.escala_id)
+    ctx.guarnecimentos[:] = [x for x in ctx.guarnecimentos if not (x.escala_id == g.escala_id and x.data == g.data)]
     ctx.guarnecimentos.append(_carimbo(g, usuario_id, agora))
+
+
+def lancar_guarnecimento_em(ctx: Contexto, usuario_id: str, g: Guarnecimento, escala_ids: list[str],
+                            agora: datetime | None = None) -> list[str]:
+    """A mesma decisão do comando (guarnece ou não, no dia) em várias escalas (só as que o usuário é detalhista)."""
+    return _em_varias(ctx, usuario_id, g, escala_ids, lancar_guarnecimento, agora)
 
 
 def lancar_evento(ctx: Contexto, usuario_id: str, ev: Evento, agora: datetime | None = None) -> None:

@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from sisescala import lancamentos as lc
+from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.modelos import (ROTULO_IMPEDIMENTO, TIPOS_IMPEDIMENTO, TIPOS_VISIVEIS, Evento, Guarnecimento,
                                Impedimento, Ocorrencia)
@@ -84,8 +85,16 @@ def dialogo_incluir():
     elif tipo == "guarnece":
         dg = st.date_input("3 · Dia", date.today(), format="DD/MM/YYYY", key="lc_dg")
         gu = st.toggle("Guarnece neste dia", True, key="lc_gu")
+        suas = [e.id for e in escalas_ok if pm.eh_detalhista(ctx, uid, e)]        # só onde a pessoa é detalhista
+        destinos = [eid]
+        if len(suas) > 1 and eid in suas:
+            destinos = st.multiselect("Vale para estas escalas (só as que você é detalhista)", suas, default=[eid],
+                                      format_func=lambda i: ctx.escala(i).nome, key=f"lc_dest_{eid}",
+                                      help="A mesma decisão é lançada em cada escala escolhida. Uma decisão nova para o "
+                                           "mesmo dia substitui a anterior.")
         if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok4"):
-            agir(lambda: lc.lancar_guarnecimento(ctx, uid, Guarnecimento(dg, eid, gu)), "Decisão lançada.")
+            agir(lambda: lc.lancar_guarnecimento_em(ctx, uid, Guarnecimento(dg, eid, gu), destinos),
+                 "Decisão lançada." if len(destinos) <= 1 else f"Decisão lançada em {len(destinos)} escalas.")
     else:
         a, b = st.columns(2)
         de = a.date_input("3 · Data do evento", date.today(), format="DD/MM/YYYY", key="lc_de")
