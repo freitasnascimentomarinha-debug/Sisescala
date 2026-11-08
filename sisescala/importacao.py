@@ -109,6 +109,8 @@ class Relatorio:
     datas_base: dict[str, date] = field(default_factory=dict)   # escala -> dia em que ela continua
     avisos: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
+    removidos: list[str] = field(default_factory=list)          # "militar (escala)": saíram da escala (modo substituir)
+    protegidos: int = 0                                         # militares cujos dados não foram trocados (são de outras escalas)
 
 
 def _achar_escala(ctx: Contexto, nome: str) -> Escala | None:
@@ -133,14 +135,36 @@ def _achar_militar(ctx: Contexto, nome: str, posto: str, nip: str) -> Militar | 
 def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_antigo",
              criar_escalas: bool = True, dono_id: str = "",
              substituir_membros: bool = False, usuario_id: str | None = None,
-             sobrescrever: bool = True) -> tuple[Contexto, Relatorio]:
+             sobrescrever: bool = True, escala_destino: str = "") -> tuple[Contexto, Relatorio]:
     """Aplica a planilha sobre uma CÓPIA do contexto (use para pré-visualizar; aceite trocando o ctx).
 
     sentido: "topo_mais_antigo" (1ª linha = mais antigo) ou "base_mais_antigo" (última = mais antigo).
     substituir_membros: nas escalas citadas, os membros passam a ser exatamente os da planilha.
+    sobrescrever: troca os dados cadastrais (nome, posto, NIP, OM, contato) pelos da planilha. Quem não é
+    administrador só troca os de militares que estão apenas em escalas dele; os demais são só completados.
+    escala_destino: id de uma escala existente; todas as linhas vão para ela (a coluna Escala é ignorada).
     """
     ctx = copy.deepcopy(ctx)
     rel = Relatorio()
+    quem = ctx.usuario(usuario_id) if usuario_id else None
+    admin = usuario_id is None or bool(quem and quem.admin)
+    glob = sobrescrever and admin            # renumerar a antiguidade GLOBAL (legado) só o administrador
+    escalas_de: dict[str, list[Escala]] = {}
+    for e_ in ctx.escalas:
+        for p_ in e_.membros:
+            escalas_de.setdefault(p_.militar_id, []).append(e_)
+    destino = ctx.escala(escala_destino) if escala_destino else None
+    if escala_destino and (destino is None or (usuario_id and not eh_detalhista(ctx, usuario_id, destino))):
+        rel.erros.append("Escala de destino inválida ou que não é sua.")
+        return ctx, rel
+
+    def pode_trocar_dados(m_) -> bool:
+        if not sobrescrever:
+            return False
+        if admin:
+            return True
+        suas = escalas_de.get(m_.id, [])
+        return bool(suas) and all(eh_detalhista(ctx, usuario_id, e_) for e_ in suas)
     if not linhas:
         rel.erros.append("Planilha vazia.")
         return ctx, rel
@@ -180,7 +204,9 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         else:
             campos = (("nome", nome), ("posto", posto), ("nip", nip), ("om", om),
                       ("email", email_), ("ramal", ramal_), ("celular", cel_))
-            if not sobrescrever:        # usuário comum: completa o que está vazio, sem alterar dados já existentes
+            if not pode_trocar_dados(m):        # completa só o que está vazio, sem alterar dados já existentes
+                if sobrescrever and any(v and getattr(m, k) and getattr(m, k) != v for k, v in campos):
+                    rel.protegidos += 1             # queria trocar, mas o militar também é de outra escala
                 campos = tuple((k, v) for k, v in campos if not getattr(m, k))
             mudou = [k for k, v in campos if v and getattr(m, k) != v and k in ("nome", "posto", "nip", "om")]
             for k, v in campos:
@@ -192,7 +218,8 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         if m.id not in ordem_planilha:
             ordem_planilha.append(m.id)
         # escalas citadas
-        escalas_txt = [t.strip() for t in re.split(r"[;,]", g(row, "escala")) if t.strip()]
+        escalas_txt = ([destino.nome] if destino else
+                       [t.strip() for t in re.split(r"[;,]", g(row, "escala")) if t.strip()])
         d_hist = parse_data(gv(row, "data"))
         d_ult = parse_data(gv(row, "ultimo"))
         for nome_esc in escalas_txt:
@@ -228,12 +255,12 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         if "ordem" in cols and g(row, "ordem"):
             try:
                 ordem_col[m.id] = int(float(g(row, "ordem")))
-                if sobrescrever or m.antiguidade >= 10 ** 6:
+                if glob or m.antiguidade >= 10 ** 6:
                     m.antiguidade = ordem_col[m.id]
                 continue
             except ValueError:
                 rel.avisos.append(f"Linha {n_lin}: ordem inválida '{g(row, 'ordem')}'.")
-    if not sobrescrever:
+    if not glob:
         # usuário comum: os militares que já existiam mantêm a antiguidade; os novos entram depois, na ordem da planilha
         ultimo_n = max([m.antiguidade for m in ctx.militares if m.antiguidade < 10 ** 6] + [0])
         novos = [ctx.militar(i) for i in ordem_planilha if ctx.militar(i).antiguidade >= 10 ** 6]
@@ -246,7 +273,7 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     # antiguidade: ordem explícita (se houver) senão a ordem das linhas; quem não está na planilha segue depois
     tem_ordem = "ordem" in cols
     na_planilha = [ctx.militar(i) for i in ordem_planilha]
-    if not sobrescrever:
+    if not glob:
         pass
     elif tem_ordem:
         sem = [m for m in na_planilha if m.antiguidade >= 10 ** 6]
@@ -254,7 +281,7 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         base = com + sem
     else:
         base = na_planilha if sentido == "topo_mais_antigo" else list(reversed(na_planilha))
-    if sobrescrever:
+    if glob:
         resto = sorted((m for m in ctx.militares if m.id not in {x.id for x in base}), key=lambda m: m.antiguidade)
         for i, m in enumerate(base + resto, 1):
             m.antiguidade = i
@@ -262,7 +289,10 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     if substituir_membros:
         for eid, ids in vinc.items():
             esc = ctx.escala(eid)
+            rel.removidos += [f"{ctx.militar(p.militar_id).nome} ({esc.nome})" for p in esc.membros
+                              if p.militar_id not in ids]
             esc.membros = [p for p in esc.membros if p.militar_id in ids]
+            esc.ultimo_servico = {f: u for f, u in esc.ultimo_servico.items() if u in ids}   # fila sem ponteiro solto
     # antiguidade DENTRO de cada escala citada: ordem da planilha (ou da coluna Ordem); em escala que já existia e
     # que o usuário não sobrescreve, quem já estava mantém o lugar e os novos entram depois
     if "ordem" in cols and ordem_col:

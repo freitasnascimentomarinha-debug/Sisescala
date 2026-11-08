@@ -133,3 +133,38 @@ def test_escala_nasce_vazia_gera_sem_erro_e_recebe_militares_por_importacao():
     assert len(novo.escala("e1").membros) == 4 and len(novo.escalas) == 1             # entrou na escala criada
     assert not avisos_escala(novo, novo.escala("e1"))
     assert gerar(novo, D + timedelta(days=2)).dia(D, "e1").efetivos
+
+
+def test_importar_em_escala_existente_acrescenta_ou_substitui_com_protecao():
+    c, a, b = mundo()
+    # e1 = m1..m4 (detalhista a); e2 = m3..m6 (detalhista b). m3 e m4 são das duas.
+    linhas = [{"Nome de guerra": "Novo Nome", "NIP": "10000001", "OM": "XYZ", "Posto": "1T"},
+              {"Nome de guerra": "Outro Nome", "NIP": "10000003", "OM": "XYZ"},
+              {"Nome de guerra": "Zé", "NIP": "10000008", "OM": "XYZ"}]
+    # acrescentar: ninguém sai e dados existentes não mudam
+    n1, r1 = imp.importar(c, linhas, usuario_id=a.id, dono_id=a.id, sobrescrever=False, escala_destino="e1")
+    assert not r1.erros and ordem(n1, "e1")[:4] == ["m1", "m2", "m3", "m4"] and len(ordem(n1, "e1")) == 5
+    assert n1.militar("m1").nome == "M1" and r1.removidos == []
+    # substituir: a escala fica exatamente como a planilha; m1 (só da e1) tem os dados trocados; m3 (também da e2) é protegido
+    n2, r2 = imp.importar(c, linhas, usuario_id=a.id, dono_id=a.id, sobrescrever=True, substituir_membros=True,
+                          escala_destino="e1")
+    assert [n2.militar(i).nip for i in ordem(n2, "e1")] == ["10000001", "10000003", "10000008"]
+    assert n2.militar("m1").nome == "Novo Nome" and n2.militar("m1").om == "XYZ"
+    assert n2.militar("m3").nome == "M3" and r2.protegidos == 2                       # m3 (de outra escala) e m8 (sem escala) não são trocados
+    assert sorted(r2.removidos) == ["M2 (Um)", "M4 (Um)"]
+    assert ordem(n2, "e2") == ["m3", "m4", "m5", "m6"]                                # a escala do outro intacta
+    # escala de destino que não é sua
+    n3, r3 = imp.importar(c, linhas, usuario_id=a.id, dono_id=a.id, escala_destino="e2")
+    assert r3.erros
+
+
+def test_posicao_ao_cadastrar_1_e_o_mais_antigo_0_e_no_fim():
+    c, a, b = mundo()                                    # e1 = m1..m4
+    gestao.adicionar_militares(c, a.id, "e1", ["m5"], None, 1)
+    assert ordem(c, "e1") == ["m5", "m1", "m2", "m3", "m4"]          # 1 = o mais antigo
+    gestao.adicionar_militares(c, a.id, "e1", ["m6"], None, 3)
+    assert ordem(c, "e1") == ["m5", "m1", "m6", "m2", "m3", "m4"]    # 3 = terceiro da fila
+    gestao.adicionar_militares(c, a.id, "e1", ["m7"], None, None)
+    assert ordem(c, "e1")[-1] == "m7"                                # sem posição (0): no fim, o mais moderno
+    gestao.adicionar_militares(c, a.id, "e1", ["m8"], None, 99)
+    assert ordem(c, "e1")[-1] == "m8"                                # posição além do fim: no fim
