@@ -123,3 +123,47 @@ def test_roxo_antigo_sem_escala_continua_valendo_para_todas():
     with pytest.raises(PermissaoNegada):
         lc.remover(c, det.id, c.roxas[0])                                                         # geral só o administrador
     lc.remover(c, adm.id, c.roxas[0])
+
+
+def test_mesmo_lancamento_em_varias_escalas_so_onde_e_detalhista_tudo_ou_nada():
+    c, adm, det, aux_u = mundo()
+    outro = auth.criar_usuario(c, adm.id, "20000003", "Outro Detalhista", SENHA)
+    for eid in ("e2", "e3"):
+        gestao.criar_escala(c, det.id, Escala(eid, eid, modo="preta_vermelha", data_base=D,
+                                               membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    gestao.criar_escala(c, outro.id, Escala("x1", "Do outro", modo="preta_vermelha", data_base=D,
+                                             membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    ter = D + timedelta(days=1)
+    nomes = lc.lancar_dia_especial_em(c, det.id, DiaEspecial(ter, "sem_expediente", "Licença adm.", "", ter + timedelta(days=1)),
+                                      ["e1", "e2", "e3"], AGORA)
+    assert nomes == ["Um", "e2", "e3"]
+    assert sorted(x.escala_id for x in c.dias_especiais) == ["e1", "e2", "e3"]
+    assert all(not dia_util(ter, c, c.escala(e)) for e in ("e1", "e2", "e3")) and dia_util(ter, c, c.escala("x1"))
+    assert all(x.criado_por == det.id and x.criado_em == AGORA for x in c.dias_especiais)
+    # repetir é seguro: escalas que já têm o mesmo lançamento são puladas
+    assert lc.lancar_dia_especial_em(c, det.id, DiaEspecial(ter, "sem_expediente", "Licença adm.", "", ter + timedelta(days=1)),
+                                     ["e1", "e2"]) == []
+    assert len(c.dias_especiais) == 3
+    # escala de outro detalhista na lista: nada é lançado (tudo ou nada)
+    antes = len(c.dias_especiais)
+    with pytest.raises(PermissaoNegada, match="detalhista de cada uma"):
+        lc.lancar_dia_especial_em(c, det.id, DiaEspecial(D + timedelta(days=9), "feriado", "x", ""), ["e1", "e2", "x1"])
+    assert len(c.dias_especiais) == antes
+    with pytest.raises(PermissaoNegada, match="detalhista de cada uma"):
+        lc.lancar_dia_especial_em(c, aux_u.id, DiaEspecial(D + timedelta(days=9), "feriado", "x", ""), ["e1", "e2"])  # auxiliar
+    with pytest.raises(ValueError, match="pelo menos uma"):
+        lc.lancar_dia_especial_em(c, det.id, DiaEspecial(ter, "feriado", "x", ""), [])
+
+
+def test_periodo_roxo_em_varias_escalas_exige_participar_da_roxa_em_todas():
+    c, adm, det, _ = mundo()
+    gestao.criar_escala(c, det.id, Escala("e2", "Dois", modo="preta_vermelha", data_base=D, participa_roxa=False,
+                                           membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    d1 = D + timedelta(days=7)
+    with pytest.raises(ValueError, match="não participa da roxa"):
+        lc.lancar_periodo_roxo_em(c, det.id, PeriodoRoxa("", "Recesso", d1, d1 + timedelta(days=2)), ["e1", "e2"])
+    assert c.roxas == []                                                    # nada ficou pela metade
+    c.escala("e2").participa_roxa = True
+    assert lc.lancar_periodo_roxo_em(c, det.id, PeriodoRoxa("", "Recesso", d1, d1 + timedelta(days=2)), ["e1", "e2"]) == ["Um", "Dois"]
+    assert sorted(r.id for r in c.roxas) == ["r1", "r2"]                    # ids próprios, uma fila por período/escala
+    assert fila_do_dia(c, c.escala("e1"), d1) == "roxa:r1" and fila_do_dia(c, c.escala("e2"), d1) == "roxa:r2"

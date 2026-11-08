@@ -67,14 +67,37 @@ def dialogo_incluir():
             st.warning("Esta escala não participa da roxa. Ative em Escalas → Editar para o período valer.")
     else:
         conta = st.radio("4 · Como o dia conta", list(CONTA), format_func=CONTA.get, key=f"cal_conta_{k}")
-    todas = P.user.admin and st.checkbox("Vale para todas as escalas (administrador)", key=f"cal_todas_{k}")
+    todas = P.user.admin and st.checkbox("Vale para todas as escalas do sistema (administrador)", key=f"cal_todas_{k}")
+    suas = [e.id for e in escalas_ok if pm.eh_detalhista(ctx, uid, e)]        # só onde a pessoa é detalhista
+    destinos = [eid]
+    if not todas:
+        if len(suas) > 1 and eid in suas:
+            destinos = st.multiselect("Vale para estas escalas (só as que você é detalhista)", suas, default=[eid],
+                                      format_func=lambda i: ctx.escala(i).nome, key=f"cal_dest_{k}_{eid}",
+                                      help="O mesmo lançamento é feito em cada escala escolhida, sem precisar repetir.")
+        elif len(suas) == 1 or eid not in suas:
+            st.caption(f"Vale para a escala {esc.nome}.")
     if st.button("Salvar", type="primary", use_container_width=True, key=f"cal_ok_{k}"):
-        alvo = "" if todas else eid
-        if tipo == "roxa":
-            agir(lambda: lc.lancar_periodo_roxo(ctx, uid, PeriodoRoxa("", nome, ini, fim or ini, alvo)), "Período roxo lançado.")
-        else:
-            tp = "feriado" if tipo == "feriado" else "sem_expediente"
-            agir(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(ini, tp, nome, alvo, fim, conta)), "Lançado no calendário.")
+        def _salvar():
+            if todas:
+                alvos = [""]
+            else:
+                alvos = destinos
+            if tipo == "roxa":
+                if todas:
+                    lc.lancar_periodo_roxo(ctx, uid, PeriodoRoxa("", nome, ini, fim or ini, ""))
+                    return
+                feitos = lc.lancar_periodo_roxo_em(ctx, uid, PeriodoRoxa("", nome, ini, fim or ini, ""), alvos)
+            else:
+                tp = "feriado" if tipo == "feriado" else "sem_expediente"
+                if todas:
+                    lc.lancar_dia_especial(ctx, uid, DiaEspecial(ini, tp, nome, "", fim, conta))
+                    return
+                feitos = lc.lancar_dia_especial_em(ctx, uid, DiaEspecial(ini, tp, nome, "", fim, conta), alvos)
+            pulou = len(alvos) - len(feitos)
+            if pulou:
+                st.session_state["aviso"] = f"{pulou} escala(s) já tinham esse mesmo lançamento e foram puladas."
+        agir(_salvar, "Lançado no calendário." if len(destinos) <= 1 or todas else f"Lançado em {len(destinos)} escalas.")
 
 
 if st.button("Incluir", type="primary", icon=":material/add:"):

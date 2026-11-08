@@ -112,6 +112,52 @@ def lancar_dia_especial(ctx: Contexto, usuario_id: str, de: DiaEspecial, agora: 
     ctx.dias_especiais.append(_carimbo(de, usuario_id, agora))
 
 
+def _em_varias(ctx: Contexto, usuario_id: str, modelo, escala_ids: list[str], lancar, agora) -> list[str]:
+    """Lança o mesmo item em várias escalas de uma vez. Tudo ou nada: se uma falhar (permissão ou regra), nenhuma fica.
+    Quem já tem item idêntico na escala é pulado. Devolve os nomes das escalas em que realmente lançou."""
+    import copy
+    ids = [i for i in dict.fromkeys(escala_ids) if i]
+    if not ids:
+        raise ValueError("escolha pelo menos uma escala")
+    feitos: list[tuple[list, object]] = []
+    nomes: list[str] = []
+    try:
+        for eid in ids:
+            esc = ctx.escala(eid)
+            if not eh_detalhista(ctx, usuario_id, esc) and len(ids) > 1:
+                raise PermissaoNegada(f"para lançar em várias escalas você precisa ser o detalhista de cada uma ({esc.nome})")
+            item = copy.copy(modelo)
+            item.escala_id = eid
+            igual = [x for x in (ctx.dias_especiais if isinstance(item, DiaEspecial) else ctx.roxas)
+                     if x.escala_id == eid and all(getattr(x, c) == getattr(item, c)
+                                                   for c in ("data", "data_fim", "tipo", "conta_como", "descricao")
+                                                   if hasattr(item, c))
+                     and (isinstance(item, DiaEspecial) or (x.inicio, x.fim, x.nome) == (item.inicio, item.fim, item.nome))]
+            if igual:
+                continue
+            lista = ctx.dias_especiais if isinstance(item, DiaEspecial) else ctx.roxas
+            lancar(ctx, usuario_id, item, agora)
+            feitos.append((lista, item))
+            nomes.append(esc.nome)
+    except Exception:
+        for lista, item in feitos:
+            lista.remove(item)
+        raise
+    return nomes
+
+
+def lancar_dia_especial_em(ctx: Contexto, usuario_id: str, de: DiaEspecial, escala_ids: list[str],
+                           agora: datetime | None = None) -> list[str]:
+    """Mesmo feriado/licença/ponto facultativo em várias escalas (só nas que o usuário é detalhista)."""
+    return _em_varias(ctx, usuario_id, de, escala_ids, lancar_dia_especial, agora)
+
+
+def lancar_periodo_roxo_em(ctx: Contexto, usuario_id: str, r: PeriodoRoxa, escala_ids: list[str],
+                           agora: datetime | None = None) -> list[str]:
+    """Mesmo período roxo em várias escalas (cada uma precisa participar da roxa)."""
+    return _em_varias(ctx, usuario_id, r, escala_ids, lancar_periodo_roxo, agora)
+
+
 def _exigir_roxo(ctx: Contexto, usuario_id: str, r: PeriodoRoxa) -> None:
     """Período roxo é regra da escala: só o detalhista (ou o administrador, para todas as escalas)."""
     if r.escala_id:
