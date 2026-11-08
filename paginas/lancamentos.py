@@ -9,8 +9,7 @@ import streamlit as st
 
 from sisescala import lancamentos as lc
 from sisescala import ui
-from sisescala.calendario import pontos_facultativos
-from sisescala.modelos import (ROTULO_IMPEDIMENTO, TIPOS_IMPEDIMENTO, TIPOS_VISIVEIS, DiaEspecial, Evento, Guarnecimento,
+from sisescala.modelos import (ROTULO_IMPEDIMENTO, TIPOS_IMPEDIMENTO, TIPOS_VISIVEIS, Evento, Guarnecimento,
                                Impedimento, Ocorrencia)
 from sisescala.sessao import agir, pagina
 
@@ -18,7 +17,7 @@ P = pagina()
 ctx, uid = P.ctx, P.uid
 nomes_m = P.nomes_m
 escalas_ok = lc.escalas_lancaveis(ctx, uid)
-ui.cabecalho("Lançamentos", "Dispensas, impedimentos, dias sem expediente, guarnecimento e eventos das suas escalas.",
+ui.cabecalho("Lançamentos", "Dispensas, impedimentos, guarnecimento e eventos das suas escalas. Feriados e licenças ficam em Calendário da escala.",
              "calendar", [ui.chip("Escalas", ", ".join(e.nome for e in escalas_ok) or "—")])
 if not escalas_ok:
     ui.vazio("Sem permissão para lançar", "Só o detalhista e o auxiliar de uma escala lançam.", "shield")
@@ -30,7 +29,6 @@ meu_mil = P.user.militar_id
 TIPOS_LANC = {
     "impedimento": "Impedimento ou dispensa (férias, curso, dispensa, destaque…)",
     "dispensa_dia": "Dispensa do serviço em que está escalado (o retém avança)",
-    "dia_especial": "Feriado ou dia sem expediente",
     "guarnece": "Decisão do comando: guarnece ou não",
     "evento": "Evento (palestra, cerimônia, apoio…)",
 }
@@ -83,15 +81,6 @@ def dialogo_incluir():
         if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok2"):
             agir(lambda: lc.lancar_dispensa_no_dia(ctx, uid, Ocorrencia(dt, eid, mid, just.strip())),
                  "Dispensa lançada; o retém avançou e a escala foi reconfigurada.")
-    elif tipo == "dia_especial":
-        a, b = st.columns(2)
-        dd = a.date_input("3 · Data", date.today(), format="DD/MM/YYYY", key="lc_dd")
-        tp = b.selectbox("4 · Tipo", ["feriado", "sem_expediente"], key="lc_tp",
-                         format_func=lambda t: "Feriado" if t == "feriado" else "Sem expediente")
-        ds = st.text_input("5 · Descrição", placeholder="Aniversário da cidade, licença administrativa…", key="lc_ds")
-        todas = P.user.admin and st.checkbox("Vale para todas as escalas (administrador)", key="lc_todas")
-        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok3"):
-            agir(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(dd, tp, ds, "" if todas else eid)), "Dia lançado.")
     elif tipo == "guarnece":
         dg = st.date_input("3 · Dia", date.today(), format="DD/MM/YYYY", key="lc_dg")
         gu = st.toggle("Guarnece neste dia", True, key="lc_gu")
@@ -132,11 +121,6 @@ for x in ctx.ocorrencias:
         itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Dispensa no dia do serviço",
                           "Escala": minhas[x.escala_id].nome, "Militar": nomes_m.get(x.militar_id, x.militar_id),
                           "Justificativa / detalhe": x.motivo}))
-for x in ctx.dias_especiais:
-    if not x.escala_id or x.escala_id in minhas:
-        itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Feriado" if x.tipo == "feriado" else "Sem expediente",
-                          "Escala": minhas[x.escala_id].nome if x.escala_id else "Todas as escalas", "Militar": "—",
-                          "Justificativa / detalhe": x.descricao}))
 for x in ctx.guarnecimentos:
     if x.escala_id in minhas:
         itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Guarnece" if x.guarnece else "Não guarnece",
@@ -145,6 +129,14 @@ for x in ctx.eventos:
     if x.escala_id in minhas:
         itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Evento", "Escala": minhas[x.escala_id].nome,
                           "Militar": "—", "Justificativa / detalhe": " · ".join(t for t in (x.descricao, x.hora, x.local) if t)}))
+
+def _quem(x) -> str:
+    u = ctx.usuario(x.criado_por) if x.criado_por else None
+    return u.nome if u else "—"
+
+
+for x, d in itens:                                  # quem lançou e quando (dados antigos não têm)
+    d["Lançado por"], d["Lançado em"] = _quem(x), (f"{x.criado_em:%d/%m/%Y %H:%M}" if x.criado_em else "—")
 
 with st.container(border=True):
     ui.secao("Lançamentos")
@@ -157,6 +149,7 @@ with st.container(border=True):
     f_tipo = f2.multiselect("Tipo", tipos_disp, key="lf_tipo", placeholder="Todos os tipos")
     f_esc = f2.multiselect("Escala (detalhe)", sorted({e.nome for e in escalas_ok}), key="lf_esc", placeholder="Todas as escalas")
     f_mil = f3.text_input("Militar", key="lf_mil", placeholder="Nome ou parte do nome")
+    f_por = f3.multiselect("Lançado por", sorted({d["Lançado por"] for _, d in itens}), key="lf_por", placeholder="Qualquer pessoa")
     f_txt = f3.text_input("Buscar no texto", key="lf_txt", placeholder="Justificativa, local, descrição…")
 
     def passa(d: dict) -> bool:
@@ -170,7 +163,9 @@ with st.container(border=True):
             return False
         if f_mil and f_mil.lower() not in d["Militar"].lower():
             return False
-        if f_txt and f_txt.lower() not in " ".join(str(v) for v in d.values()).lower():
+        if f_por and d["Lançado por"] not in f_por:
+            return False
+        if f_txt and f_txt.lower() not in " ".join(str(v) for v in d.values() if v is not None).lower():
             return False
         return True
 
@@ -190,7 +185,3 @@ with st.container(border=True):
             st.write(f"{len(marcados)} lançamento(s) marcado(s). A escala volta a ser calculada sem eles. **Tem certeza?**")
             if st.button("Sim, remover", key="lf_rm", type="primary"):
                 agir(lambda: [lc.remover(ctx, uid, x) for x in marcados] and None, "Lançamentos removidos.")
-
-with st.expander(f"Pontos facultativos de {P.inicio.year} (sugestões para lançar como dia sem expediente)"):
-    for d, n in sorted(pontos_facultativos(P.inicio.year, ctx.uf).items()):
-        st.write(f"{d:%d/%m} – {n}")

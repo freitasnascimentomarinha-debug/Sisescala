@@ -7,9 +7,11 @@ responsável.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from . import notificacoes as nt
-from .modelos import Contexto, DiaEspecial, Escala, Evento, Guarnecimento, Impedimento, Ocorrencia
-from .permissoes import PermissaoNegada, eh_auxiliar, pode_decidir
+from .modelos import (Contexto, DiaEspecial, Escala, Evento, Guarnecimento, Impedimento, Ocorrencia, PeriodoRoxa)
+from .permissoes import PermissaoNegada, eh_auxiliar, eh_detalhista, pode_decidir
 
 PROPRIO = "ninguém lança dispensa ou impedimento para si mesmo: peça a outro responsável (detalhista ou auxiliar)"
 
@@ -17,6 +19,15 @@ PROPRIO = "ninguém lança dispensa ou impedimento para si mesmo: peça a outro 
 def _meu_militar(ctx: Contexto, usuario_id: str) -> str:
     u = ctx.usuario(usuario_id)
     return u.militar_id if u else ""
+
+
+def _carimbo(item, usuario_id: str, agora: datetime | None):
+    """Registra quem lançou e quando (o que já vem com carimbo, de importação ou dado antigo, não muda)."""
+    if not item.criado_por:
+        item.criado_por = usuario_id
+    if item.criado_em is None:
+        item.criado_em = agora or datetime.now()
+    return item
 
 
 def escalas_lancaveis(ctx: Contexto, usuario_id: str) -> list[Escala]:
@@ -54,14 +65,14 @@ def _exigir_alguma_escala(ctx: Contexto, usuario_id: str) -> None:
         raise PermissaoNegada("somente o detalhista e o auxiliar lançam")
 
 
-def lancar_impedimento(ctx: Contexto, usuario_id: str, imp: Impedimento) -> None:
+def lancar_impedimento(ctx: Contexto, usuario_id: str, imp: Impedimento, agora: datetime | None = None) -> None:
     _exigir_militar(ctx, usuario_id, imp.militar_id)
     if erros := imp.validar():
         raise ValueError("; ".join(erros))
-    ctx.impedimentos.append(imp)
+    ctx.impedimentos.append(_carimbo(imp, usuario_id, agora))
 
 
-def lancar_dispensa_no_dia(ctx: Contexto, usuario_id: str, oc: Ocorrencia) -> None:
+def lancar_dispensa_no_dia(ctx: Contexto, usuario_id: str, oc: Ocorrencia, agora: datetime | None = None) -> None:
     """Dispensa o militar do serviço em que estava escalado: Disp com justificativa, retém avança, devolução."""
     esc = _exigir_escala(ctx, usuario_id, oc.escala_id)
     if oc.militar_id == _meu_militar(ctx, usuario_id):
@@ -70,7 +81,7 @@ def lancar_dispensa_no_dia(ctx: Contexto, usuario_id: str, oc: Ocorrencia) -> No
         raise ValueError("o militar não faz parte desta escala")
     if erros := oc.validar():
         raise ValueError("; ".join(erros))
-    ctx.ocorrencias.append(oc)
+    ctx.ocorrencias.append(_carimbo(oc, usuario_id, agora))
     nt.notificar(ctx, nt.usuarios_do_militar(ctx, oc.militar_id), "devolucao",
                  f"Você foi dispensado do serviço de {oc.data:%d/%m/%Y} ({esc.nome}): {oc.motivo}. "
                  f"Você tem um serviço a devolver em até {ctx.janela_devolucao_dias} dias (página Devoluções).", esc.id)
@@ -89,26 +100,59 @@ def _exigir_dia(ctx: Contexto, usuario_id: str, de: DiaEspecial) -> None:
         raise PermissaoNegada("dia especial para todas as escalas só o administrador lança; escolha uma escala sua")
 
 
-def lancar_dia_especial(ctx: Contexto, usuario_id: str, de: DiaEspecial) -> None:
+def lancar_dia_especial(ctx: Contexto, usuario_id: str, de: DiaEspecial, agora: datetime | None = None) -> None:
+    """Feriado, licença administrativa ou outro dia/período sem expediente. `conta_como` força preta ou vermelha."""
     _exigir_dia(ctx, usuario_id, de)
-    ctx.dias_especiais.append(de)
+    if de.tipo not in ("feriado", "sem_expediente"):
+        raise ValueError("tipo inválido: use feriado ou sem expediente")
+    if de.conta_como not in ("", "preta", "vermelha"):
+        raise ValueError("conta como inválido: use automático, preta ou vermelha (roxa é um período roxo)")
+    if de.data_fim is not None and de.data_fim < de.data:
+        raise ValueError("a data final não pode ser anterior à inicial")
+    ctx.dias_especiais.append(_carimbo(de, usuario_id, agora))
 
 
-def lancar_guarnecimento(ctx: Contexto, usuario_id: str, g: Guarnecimento) -> None:
+def _exigir_roxo(ctx: Contexto, usuario_id: str, r: PeriodoRoxa) -> None:
+    """Período roxo é regra da escala: só o detalhista (ou o administrador, para todas as escalas)."""
+    if r.escala_id:
+        if not eh_detalhista(ctx, usuario_id, ctx.escala(r.escala_id)):
+            raise PermissaoNegada("só o detalhista da escala cria ou remove período roxo")
+    elif not _eh_admin(ctx, usuario_id):
+        raise PermissaoNegada("período roxo para todas as escalas só o administrador lança; escolha uma escala sua")
+
+
+def lancar_periodo_roxo(ctx: Contexto, usuario_id: str, r: PeriodoRoxa, agora: datetime | None = None) -> None:
+    """Período em que o dia conta como roxa para a escala (fila própria, funciona todos os dias)."""
+    _exigir_roxo(ctx, usuario_id, r)
+    if not r.nome.strip():
+        raise ValueError("informe o nome do período roxo")
+    if r.fim < r.inicio:
+        raise ValueError("a data final não pode ser anterior à inicial")
+    if r.escala_id and not ctx.escala(r.escala_id).participa_roxa:
+        raise ValueError("esta escala não participa da roxa: ative em Escalas → Editar (\"Participa da escala roxa\")")
+    if any(o.inicio <= r.fim and r.inicio <= o.fim and (not o.escala_id or not r.escala_id or o.escala_id == r.escala_id)
+           for o in ctx.roxas):
+        raise ValueError("já existe um período roxo que coincide com essas datas nesta escala")
+    if not r.id:
+        r.id = f"r{max([int(o.id[1:]) for o in ctx.roxas if o.id[1:].isdigit()] + [0]) + 1}"
+    ctx.roxas.append(_carimbo(r, usuario_id, agora))
+
+
+def lancar_guarnecimento(ctx: Contexto, usuario_id: str, g: Guarnecimento, agora: datetime | None = None) -> None:
     _exigir_escala(ctx, usuario_id, g.escala_id)
-    ctx.guarnecimentos.append(g)
+    ctx.guarnecimentos.append(_carimbo(g, usuario_id, agora))
 
 
-def lancar_evento(ctx: Contexto, usuario_id: str, ev: Evento) -> None:
+def lancar_evento(ctx: Contexto, usuario_id: str, ev: Evento, agora: datetime | None = None) -> None:
     esc = _exigir_escala(ctx, usuario_id, ev.escala_id)
     if esc.modo != "eventos":
         raise ValueError("esta escala não é do modo “Por evento”")
-    ctx.eventos.append(ev)
+    ctx.eventos.append(_carimbo(ev, usuario_id, agora))
 
 
 def _lista_do(ctx: Contexto, item) -> list:
     return {Impedimento: ctx.impedimentos, Ocorrencia: ctx.ocorrencias, Guarnecimento: ctx.guarnecimentos,
-            Evento: ctx.eventos, DiaEspecial: ctx.dias_especiais}[type(item)]
+            Evento: ctx.eventos, DiaEspecial: ctx.dias_especiais, PeriodoRoxa: ctx.roxas}[type(item)]
 
 
 def remover(ctx: Contexto, usuario_id: str, item) -> None:
@@ -121,6 +165,8 @@ def remover(ctx: Contexto, usuario_id: str, item) -> None:
             raise PermissaoNegada(PROPRIO)
     elif isinstance(item, (Guarnecimento, Evento)):
         _exigir_escala(ctx, usuario_id, item.escala_id)
+    elif isinstance(item, PeriodoRoxa):
+        _exigir_roxo(ctx, usuario_id, item)
     else:
         _exigir_dia(ctx, usuario_id, item)
     _lista_do(ctx, item).remove(item)
@@ -135,6 +181,8 @@ def pode_remover(ctx: Contexto, usuario_id: str, item) -> bool:
             return item.militar_id != _meu_militar(ctx, usuario_id)
         elif isinstance(item, (Guarnecimento, Evento)):
             _exigir_escala(ctx, usuario_id, item.escala_id)
+        elif isinstance(item, PeriodoRoxa):
+            _exigir_roxo(ctx, usuario_id, item)
         else:
             _exigir_dia(ctx, usuario_id, item)
         return True

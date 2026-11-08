@@ -106,7 +106,7 @@ def funciona(ctx: Contexto, esc: Escala, d: date) -> bool:
     manual = next((g for g in ctx.guarnecimentos if g.data == d and g.escala_id == esc.id), None)
     if manual is not None:
         return manual.guarnece
-    if esc.participa_roxa and roxa_do_dia(d, ctx):
+    if esc.participa_roxa and roxa_do_dia(d, ctx, esc):
         return True
     return esc.funciona_em == "todos" or dia_util(d, ctx, esc)
 
@@ -115,7 +115,7 @@ def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
     if esc.modo == "eventos":
         return "corrida"
     if esc.participa_roxa:
-        r = roxa_do_dia(d, ctx)
+        r = roxa_do_dia(d, ctx, esc)
         if r:
             return f"roxa:{r.id}"
     if esc.modo == "corrida":

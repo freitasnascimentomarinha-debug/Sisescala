@@ -167,7 +167,8 @@ menu = {
                        _pg("buscar", "Buscar escalas", "search", "buscar")],
 }
 if e_detalhista or e_auxiliar:
-    gestao_pgs = [_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos")]
+    gestao_pgs = [_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos"),
+                      _pg("calendario", "Calendário da escala", "event", "calendario")]
     if e_detalhista:
         gestao_pgs = [_pg("militares", "Militares", "group", "militares")] + gestao_pgs + [
             _pg("acessos", "Pedidos de acesso" + _c(n_acessos), "how_to_reg", "acessos")]

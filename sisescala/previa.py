@@ -85,7 +85,7 @@ def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None) -> str:
     cab = ""
     for d in dias:
         nome = nome_dia_nao_util(d, ctx, esc)
-        classe = "roxa" if roxa_do_dia(d, ctx) else ("util" if dia_util(d, ctx, esc) else "folga")
+        classe = "roxa" if (esc.participa_roxa and roxa_do_dia(d, ctx, esc)) else ("util" if dia_util(d, ctx, esc) else "folga")
         dow = "SEG TER QUA QUI SEX SÁB DOM".split()[d.weekday()]
         cab += (f'<th class="{classe}" title="{escape(nome or "")}">{d:%d/%m}<br>{dow}'
                 f'{"<br><small>" + escape(nome) + "</small>" if nome else ""}</th>')

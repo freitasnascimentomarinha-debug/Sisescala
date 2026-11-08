@@ -9,7 +9,7 @@ from sisescala import auth
 
 RAIZ = Path(__file__).resolve().parent.parent
 PAGINAS_GESTAO = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "escalas", "militares",
-                  "lancamentos", "importar", "buscar", "acessos", "vinculos", "usuarios", "conta", "notificacoes"]
+                  "lancamentos", "calendario", "importar", "buscar", "acessos", "vinculos", "usuarios", "conta", "notificacoes"]
 PAGINAS_MILITAR = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "escalas", "importar", "buscar",
                    "vinculos", "conta", "notificacoes"]
 

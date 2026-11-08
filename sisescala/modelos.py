@@ -133,6 +133,8 @@ class Impedimento:
     fim: date | None = None   # None = indeterminado (ex.: desembarque)
     motivo: str = ""
     anexo: str = ""           # link/arquivo (obrigatório para dispensa)
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
 
     def cobre(self, d: date) -> bool:
         return d >= self.inicio and (self.fim is None or d <= self.fim)
@@ -159,6 +161,8 @@ class Evento:
     hora: str = ""
     local: str = ""
     vagas: int | None = None     # None = usa militares_dia da escala
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
 
 
 @dataclass
@@ -192,6 +196,13 @@ class DiaEspecial:
     tipo: str = "sem_expediente"  # "feriado" | "sem_expediente"
     descricao: str = ""
     escala_id: str = ""           # vazio = vale para todas as escalas (só o administrador cria); senão, só para essa escala
+    data_fim: date | None = None  # período (licença administrativa, recesso…): de `data` até `data_fim`
+    conta_como: str = ""          # "" = pelo tipo (feriado e sem expediente contam como vermelha) | "preta" | "vermelha"
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
+
+    def abrange(self, d: date) -> bool:
+        return self.data <= d <= (self.data_fim or self.data)
 
 
 @dataclass
@@ -200,6 +211,8 @@ class Guarnecimento:
     data: date
     escala_id: str
     guarnece: bool = True
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
 
 
 @dataclass
@@ -208,6 +221,9 @@ class PeriodoRoxa:
     nome: str
     inicio: date
     fim: date
+    escala_id: str = ""           # vazio = vale para todas as escalas (só o administrador cria)
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
 
 
 @dataclass
@@ -217,6 +233,8 @@ class Ocorrencia:
     escala_id: str
     militar_id: str
     motivo: str = ""              # justificativa lançada pelo detalhista (obrigatória na tela)
+    criado_por: str = ""          # conta de quem lançou
+    criado_em: datetime | None = None
 
     def validar(self) -> list[str]:
         return [] if self.motivo.strip() else ["informe a justificativa da dispensa"]

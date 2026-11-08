@@ -198,12 +198,15 @@ def situacao_atual(ctx: Contexto, esc: Escala, hoje: date | None = None) -> list
         f"{i.inicio:%d/%m}{'–' + format(i.fim, '%d/%m') if i.fim else '→'}" for i in imps) or "nenhum"))
     esp = [e for e in ctx.dias_especiais if not e.escala_id or e.escala_id == esc.id]
     out.append(("Dias especiais lançados", "; ".join(
-        f"{e.data:%d/%m} {e.descricao or e.tipo}" for e in sorted(esp, key=lambda e: e.data)) or "nenhum"))
+        f"{e.data:%d/%m}{'–' + format(e.data_fim, '%d/%m') if e.data_fim else ''} {e.descricao or e.tipo}"
+        f"{' (conta como ' + e.conta_como + ')' if e.conta_como else ''}"
+        for e in sorted(esp, key=lambda e: e.data)) or "nenhum"))
     gu = [g for g in ctx.guarnecimentos if g.escala_id == esc.id]
     out.append(("Guarnecimento decidido pelo comando", "; ".join(
         f"{g.data:%d/%m} {'guarnece' if g.guarnece else 'não guarnece'}" for g in gu) or "nenhum"))
     out.append(("Períodos roxos", "; ".join(
-        f"{r.nome} ({r.inicio:%d/%m}–{r.fim:%d/%m})" for r in ctx.roxas) or "nenhum"))
+        f"{r.nome} ({r.inicio:%d/%m}–{r.fim:%d/%m})" for r in ctx.roxas
+        if not r.escala_id or r.escala_id == esc.id) or "nenhum"))
     if esc.modo == "eventos":
         ev = [e for e in ctx.eventos if e.escala_id == esc.id]
         out.append(("Eventos lançados", "; ".join(
