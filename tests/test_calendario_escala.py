@@ -227,7 +227,7 @@ def test_previa_ocupa_a_largura_e_ajusta_as_colunas_por_periodo_e_pdf_gera():
         html = html_previa(c, gerar(c, dias[-1]), dias, "e1", com_card=False)
         assert "table-layout:fixed" in html and html.count("<col ") == n + 1       # uma coluna de nomes + n dias iguais
         assert ('class="prev dens"' in html) == denso
-        assert f"min-width:{128 + (96 if n == 7 else 48 if n == 15 else 52) * n}px" in html
+        assert f"min-width:{132 + (96 if n == 7 else 48 if n == 15 else 52) * n}px" in html
     dias = periodo(D, 15)
     pdf = gerar_pdf(c, gerar(c, dias[-1]), dias, "e1", "OM Teste", "Instruções", "Recomendações", "Regras", ("A", "B", "C"))
     assert pdf.startswith(b"%PDF")
