@@ -216,3 +216,18 @@ def test_obice_do_militar_vale_sozinho_em_escala_nova_e_em_palestra():
     # depois das férias, ele volta à fila da escala nova
     r2 = gerar(c, D + timedelta(days=60))
     assert any(a.militar_id == "m5" for i in range(21, 60) for a in r2.dia(D + timedelta(days=i), "nova").efetivos)
+
+
+def test_previa_ocupa_a_largura_e_ajusta_as_colunas_por_periodo_e_pdf_gera():
+    from sisescala.pdf import gerar_pdf
+    from sisescala.previa import html_previa, periodo
+    c, adm, det, _ = mundo()
+    for n, denso in ((7, False), (15, True), (30, True)):
+        dias = periodo(D, n)
+        html = html_previa(c, gerar(c, dias[-1]), dias, "e1", com_card=False)
+        assert "table-layout:fixed" in html and html.count("<col ") == n + 1       # uma coluna de nomes + n dias iguais
+        assert ('class="prev dens"' in html) == denso
+        assert f"min-width:{128 + (96 if n == 7 else 48 if n == 15 else 52) * n}px" in html
+    dias = periodo(D, 15)
+    pdf = gerar_pdf(c, gerar(c, dias[-1]), dias, "e1", "OM Teste", "Instruções", "Recomendações", "Regras", ("A", "B", "C"))
+    assert pdf.startswith(b"%PDF")

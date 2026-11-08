@@ -35,24 +35,36 @@ def cabecalho_documento(st, om: str, titulo: str = "") -> list:
 def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
               instrucoes: str = "", recomendacoes: str = "", regras: str = "",
               nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> bytes:
+    from reportlab.lib.styles import ParagraphStyle
+    from .calendario import dia_util
+
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12 * mm, rightMargin=12 * mm,
-                            topMargin=12 * mm, bottomMargin=12 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+                            topMargin=14 * mm, bottomMargin=14 * mm)
     st = getSampleStyleSheet()
     esc = ctx.escala(escala_id)
     cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]
+    info = ParagraphStyle("info", parent=st["Normal"], alignment=1, fontSize=9.5, leading=12)
+    cel = ParagraphStyle("cel", parent=st["Normal"], alignment=1, fontSize=8.5, leading=10.5)     # texto centralizado
+    cab = ParagraphStyle("cab", parent=cel, fontName="Helvetica-Bold")
+    eventos = esc.modo == "eventos"
     el = cabecalho_documento(st, om or esc.om, f"DETALHE DE SERVIÇO – {esc.nome.upper()}") + [
           Paragraph(f"{cat}{' · ' + esc.tipo if esc.tipo else ''} · "
                     f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y} · "
-                    f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}", st["Normal"]),
-          Spacer(1, 6)]
-    linhas = [["Data", "Escalados", "Retém"] + (["Evento"] if esc.modo == "eventos" else [])]
+                    f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}", info),
+          Spacer(1, 8)]
+    linhas = [[Paragraph(t, cab) for t in ("Data", "Escalados", "Retém") + (("Evento",) if eventos else ())]]
+    sombreados: list[int] = []
     obs: list[str] = []
     for d in dias:
         dia = res.dia(d, esc.id)
         dow = "SEG TER QUA QUI SEX SÁB DOM".split()[d.weekday()]
+        data_cel = Paragraph(f"<b>{d:%d/%m}</b><br/>{dow}", cel)
+        if not dia_util(d, ctx, esc):
+            sombreados.append(len(linhas))                   # sáb, dom, feriado: fundo suave, como na prévia
         if not dia or not dia.funciona:
-            linhas.append([f"{d:%d/%m} {dow}", "não guarnece", "-"] + (["-"] if esc.modo == "eventos" else []))
+            linhas.append([data_cel, Paragraph("<i>não guarnece</i>", cel), Paragraph("-", cel)]
+                          + ([Paragraph("-", cel)] if eventos else []))
             continue
         partes = []
         for a in dia.efetivos:
@@ -66,15 +78,18 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
                 obs.append(f"{d:%d/%m}: {ctx.militar(a.militar_id).nome} – {a.obs}")
         rets = [f"{ctx.militar(a.militar_id).nome} [{a.sigla}]" for a in dia.retens]
         obs += [f"{d:%d/%m}: {a.obs}" for a in dia.retens if a.obs]
-        lin = [f"{d:%d/%m} {dow}", Paragraph("<br/>".join(partes) or "-", st["BodyText"]),
-               Paragraph("<br/>".join(rets) or "-", st["BodyText"])]
-        if esc.modo == "eventos":
-            lin.append(Paragraph(dia.descricao or "-", st["BodyText"]))
+        lin = [data_cel, Paragraph("<br/>".join(partes) or "-", cel), Paragraph("<br/>".join(rets) or "-", cel)]
+        if eventos:
+            lin.append(Paragraph(dia.descricao or "-", cel))
         linhas.append(lin)
-    t = Table(linhas, repeatRows=1)
-    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-                           ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                           ("VALIGN", (0, 0), (-1, -1), "TOP"), ("FONTSIZE", (0, 0), (-1, -1), 8)]))
+    # tabela mais estreita que as linhas de texto e centralizada no documento
+    larguras = [18 * mm, 62 * mm, 38 * mm] + ([40 * mm] if eventos else [])
+    t = Table(linhas, colWidths=larguras, repeatRows=1, hAlign="CENTER")
+    estilo = [("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+              ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+              ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
+    estilo += [("BACKGROUND", (0, i), (-1, i), colors.Color(1, 0.94, 0.92)) for i in sombreados]
+    t.setStyle(TableStyle(estilo))
     el.append(t)
     for i in ctx.impedimentos:                  # dispensas por período, com a justificativa
         if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.motivo and any(i.cobre(d) for d in dias) \
@@ -88,7 +103,8 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
             el += [Spacer(1, 8), Paragraph(f"<b>{titulo}</b>", st["Heading4"]),
                    Paragraph(texto.replace("\n", "<br/>"), st["BodyText"])]
     el.append(Spacer(1, 40))
-    ass = Table([["_" * 32] * 3, [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)])
+    ass = Table([["_" * 26] * 3, [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
+                colWidths=[57 * mm] * 3, hAlign="CENTER")
     ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9)]))
     el.append(ass)
     doc.build(el)

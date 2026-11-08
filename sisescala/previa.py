@@ -149,6 +149,12 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     obs_html = "".join(f"<li><b>{d:%d/%m}</b> – {escape(t)}</li>" for d, t in sorted(set(obs)))
     if abertas:
         leg += ' <span class="pisca"></span> aberto a troca de serviço'
+    # larguras: a tabela ocupa a largura disponível (7, 15 ou 30 dias), colunas de dias iguais; com muitos dias ganha
+    # largura mínima por dia e rola na horizontal só se não couber
+    n = len(dias)
+    nome_w, dia_min = 132, (96 if n <= 7 else 48 if n <= 15 else 52)
+    larg_min = nome_w + dia_min * n
+    colgrupo = f'<colgroup><col style="width:{nome_w}px">' + f'<col style="width:calc((100% - {nome_w}px) / {n})">' * n + '</colgroup>'
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 body,.prev,.card{{font-family:'Inter','Segoe UI',system-ui,sans-serif}}
@@ -157,11 +163,16 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .card{{border:1px solid #323D24;border-left:6px solid #7FA24A;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;background:#192012}}
 .card h3{{margin:0 0 6px;font-size:18px;color:#EFEBDD}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
 .k span{{display:block;color:#9AA183;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
-.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #323D24;border-radius:12px;overflow:hidden;background:#141A0E}}
+.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #323D24;border-radius:12px;overflow:hidden;background:#141A0E;
+  width:100%;table-layout:fixed}}
+.prev th small{{display:block;font-weight:400;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.prev.dens .t{{display:block;padding:2px 2px;font-size:10.5px;line-height:1.15;text-align:center;margin:2px auto;max-width:100%;overflow:hidden}}
+.prev.dens .t small{{display:block;font-size:9px}}
+.prev.dens th,.prev.dens td{{padding:4px 2px}}
 .prev th,.prev td{{border-bottom:1px solid #2A3420;border-right:1px solid #2A3420;padding:5px 6px;text-align:center;white-space:nowrap}}
 .prev th{{font-weight:700;color:#D3D0BC;background:#1F2817}} .prev th.util{{background:#1F2817}}
 .prev th.folga{{background:rgba(239,68,68,.20);color:#F0B09A}} .prev th.roxa{{background:rgba(160,130,70,.28);color:#E3D3A8}}
-.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD}}
+.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis}}
 .prev td.para{{color:#9AA183;font-style:italic}}
 .prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(127,162,74,.14)}}
 .prev td.sel{{outline:2px solid #A3C265;outline-offset:-2px;background:rgba(127,162,74,.26)}}
@@ -171,7 +182,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
-<div style="overflow-x:auto"><table class="prev"><tr><th></th>{_cabecalho_dias(ctx, dias, esc)}</tr>{linhas}
+<div style="overflow-x:auto"><table class="prev{' dens' if len(dias) > 7 else ''}" style="min-width:{larg_min}px">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc)}</tr>{linhas}
 <tr><th colspan="{len(dias) + 1}" style="background:#1F2817;color:#9AA183;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
 <tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
