@@ -1,9 +1,10 @@
-"""Lançamentos: impedimentos e dispensas, dias especiais, guarnecimento, dispensa no dia e eventos.
+"""Lançamentos: um botão para incluir (escala → tipo → militar → motivo → salvar) e uma lista com filtros.
 
 Detalhista e auxiliar lançam. O auxiliar só nas escalas dele e só para os militares delas, e ninguém lança para si mesmo.
 """
-from datetime import date
+from datetime import date, timedelta
 
+import pandas as pd
 import streamlit as st
 
 from sisescala import lancamentos as lc
@@ -17,120 +18,179 @@ P = pagina()
 ctx, uid = P.ctx, P.uid
 nomes_m = P.nomes_m
 escalas_ok = lc.escalas_lancaveis(ctx, uid)
-editaveis = [e.id for e in escalas_ok]
-militares = lc.militares_lancaveis(ctx, uid)            # sem o próprio usuário
-ui.cabecalho("Lançamentos", "Tudo que muda a escala: impedimentos e dispensas, dias sem expediente, guarnecimento e eventos.",
+ui.cabecalho("Lançamentos", "Dispensas, impedimentos, dias sem expediente, guarnecimento e eventos das suas escalas.",
              "calendar", [ui.chip("Escalas", ", ".join(e.nome for e in escalas_ok) or "—")])
-if not P.gerir:
-    st.caption("Como auxiliar, você lança nas escalas em que é auxiliar e para os militares delas, menos para você mesmo.")
 if not escalas_ok:
     ui.vazio("Sem permissão para lançar", "Só o detalhista e o auxiliar de uma escala lançam.", "shield")
     st.stop()
+if not P.gerir:
+    st.caption("Como auxiliar, você lança nas escalas em que é auxiliar e para os militares delas, menos para você mesmo.")
 
-SECOES = {"Impedimentos": "Impedimentos e dispensas", "Dias": "Feriados e dias sem expediente",
-          "Guarnece": "Comando guarnece", "Faltas": "Dispensado no dia do serviço", "Eventos": "Eventos"}
-sec = st.segmented_control("Tipo de lançamento", list(SECOES), default="Impedimentos", format_func=SECOES.get,
-                           key="lanc_sec", label_visibility="collapsed") or "Impedimentos"
+meu_mil = P.user.militar_id
+TIPOS_LANC = {
+    "impedimento": "Impedimento ou dispensa (férias, curso, dispensa, destaque…)",
+    "dispensa_dia": "Dispensa do serviço em que está escalado (o retém avança)",
+    "dia_especial": "Feriado ou dia sem expediente",
+    "guarnece": "Decisão do comando: guarnece ou não",
+    "evento": "Evento (palestra, cerimônia, apoio…)",
+}
 
 
-def removivel(lista, rotulo, chave=""):
-    itens = [x for x in lista if lc.pode_remover(ctx, uid, x)]
-    with st.container(border=True):
-        ui.secao("Lançados")
-        if not itens:
-            ui.vazio("Nada lançado", "", "list")
+def _militares_da(eid: str) -> list[str]:
+    """Militares da escala, do mais antigo ao mais moderno, sem o próprio usuário (ninguém lança para si)."""
+    esc = ctx.escala(eid)
+    return [i for i in ctx.ordem_na_escala(esc) if i != meu_mil]
+
+
+def _rotulo_mil(i: str) -> str:
+    m = ctx.militar(i)
+    return f"{m.posto} {m.nome}".strip()
+
+
+@st.dialog("Incluir lançamento", width="large")
+def dialogo_incluir():
+    ids = [e.id for e in escalas_ok]
+    eid = st.selectbox("1 · Escala", ids, format_func=lambda i: ctx.escala(i).nome, key="lc_esc")
+    esc = ctx.escala(eid)
+    opcoes = [k for k in TIPOS_LANC if k != "evento" or esc.modo == "eventos"]
+    tipo = st.selectbox("2 · O que lançar", opcoes, format_func=TIPOS_LANC.get, key="lc_tipo")
+    st.divider()
+    mil = _militares_da(eid)
+
+    if tipo in ("impedimento", "dispensa_dia"):
+        if not mil:
+            st.info("Esta escala não tem outros militares para receber lançamento.")
             return
-        sel = st.multiselect("Selecione para remover", range(len(itens)), format_func=lambda i: rotulo(itens[i]), key=f"rm_{chave}")
-        if sel and st.button("Remover selecionados", key=f"btn_{chave}", icon=":material/delete:"):
-            escolhidos = [itens[i] for i in sel]
-            agir(lambda: [lc.remover(ctx, uid, x) for x in escolhidos] and None, "Removido.")
+        mid = st.selectbox("3 · Militar", mil, format_func=_rotulo_mil, key="lc_mil")
+    if tipo == "impedimento":
+        sit = st.selectbox("4 · Motivo (situação)", TIPOS_VISIVEIS, key="lc_sit",
+                           format_func=lambda t: f"{ROTULO_IMPEDIMENTO[t]}  ·  {TIPOS_IMPEDIMENTO[t]}")
+        a, b = st.columns(2)
+        ini = a.date_input("Início", date.today(), format="DD/MM/YYYY", key="lc_ini")
+        fim = b.date_input("Fim", ini, format="DD/MM/YYYY", key="lc_fim", disabled=sit == "desembarque",
+                           help="Desembarque não tem data final." if sit == "desembarque" else None)
+        just = st.text_area("5 · Justificativa / OM de destino", key="lc_just", height=90,
+                            help="Obrigatória para dispensas (baixa, falta ou com documento).")
+        anexo = st.text_input("Arquivo ou link (obrigatório na dispensa com documento)", key="lc_anexo")
+        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok"):
+            agir(lambda: lc.lancar_impedimento(ctx, uid, Impedimento(
+                mid, sit, ini, None if sit == "desembarque" else fim, just.strip(), anexo.strip())), "Lançamento salvo.")
+    elif tipo == "dispensa_dia":
+        dt = st.date_input("4 · Dia do serviço", date.today(), format="DD/MM/YYYY", key="lc_dia")
+        just = st.text_area("5 · Justificativa (obrigatória)", key="lc_just2", height=90,
+                            help="Baixa, falta ou outro motivo. Aparece na prévia e no detalhe.")
+        st.caption("O militar passa a Dispensado (Disp) nesse dia, o retém avança e a prévia e o detalhe se reconfiguram.")
+        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok2"):
+            agir(lambda: lc.lancar_dispensa_no_dia(ctx, uid, Ocorrencia(dt, eid, mid, just.strip())),
+                 "Dispensa lançada; o retém avançou e a escala foi reconfigurada.")
+    elif tipo == "dia_especial":
+        a, b = st.columns(2)
+        dd = a.date_input("3 · Data", date.today(), format="DD/MM/YYYY", key="lc_dd")
+        tp = b.selectbox("4 · Tipo", ["feriado", "sem_expediente"], key="lc_tp",
+                         format_func=lambda t: "Feriado" if t == "feriado" else "Sem expediente")
+        ds = st.text_input("5 · Descrição", placeholder="Aniversário da cidade, licença administrativa…", key="lc_ds")
+        todas = P.user.admin and st.checkbox("Vale para todas as escalas (administrador)", key="lc_todas")
+        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok3"):
+            agir(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(dd, tp, ds, "" if todas else eid)), "Dia lançado.")
+    elif tipo == "guarnece":
+        dg = st.date_input("3 · Dia", date.today(), format="DD/MM/YYYY", key="lc_dg")
+        gu = st.toggle("Guarnece neste dia", True, key="lc_gu")
+        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok4"):
+            agir(lambda: lc.lancar_guarnecimento(ctx, uid, Guarnecimento(dg, eid, gu)), "Decisão lançada.")
+    else:
+        a, b = st.columns(2)
+        de = a.date_input("3 · Data do evento", date.today(), format="DD/MM/YYYY", key="lc_de")
+        desc = b.text_input("4 · Descrição", key="lc_desc")
+        a, b, c = st.columns(3)
+        hora, local = a.text_input("Hora", key="lc_hora"), b.text_input("Local", key="lc_local")
+        vagas = c.number_input("Vagas (0 = padrão)", 0, 99, 0, key="lc_vagas")
+        if st.button("Salvar lançamento", type="primary", use_container_width=True, key="lc_ok5"):
+            agir(lambda: lc.lancar_evento(ctx, uid, Evento(eid, de, desc, hora, local, vagas or None)), "Evento lançado.")
 
 
-def lancar(acao, ok):
-    agir(acao, ok)
+c1, _ = st.columns([1.2, 4.8])
+if c1.button("Incluir", type="primary", icon=":material/add:"):
+    dialogo_incluir()
 
+# ------------------------------------------------------------------ lista: tudo que está lançado nas minhas escalas
+minhas = {e.id: e for e in escalas_ok}
+escalas_do_mil: dict[str, list[str]] = {}
+for e in escalas_ok:
+    for p in e.membros:
+        if e.nome not in escalas_do_mil.setdefault(p.militar_id, []):
+            escalas_do_mil[p.militar_id].append(e.nome)
 
-esq, dir_ = st.columns([1, 1.1], gap="large")
-if sec == "Impedimentos":
-    with esq, st.container(border=True):
-        ui.secao("Novo impedimento ou dispensa")
-        if not militares:
-            ui.vazio("Sem militares", "Não há militares nas suas escalas.", "users")
-        else:
-            with st.form("imp", clear_on_submit=True, border=False):
-                mid = st.selectbox("Militar", militares, format_func=nomes_m.get)
-                tipo = st.selectbox("Situação", TIPOS_VISIVEIS,
-                                    format_func=lambda t: f"{ROTULO_IMPEDIMENTO[t]}  ·  {TIPOS_IMPEDIMENTO[t]}")
-                a, b = st.columns(2)
-                i, f = a.date_input("Início", date.today(), format="DD/MM/YYYY"), b.date_input("Fim", date.today(), format="DD/MM/YYYY")
-                motivo = st.text_input("Justificativa / OM de destino", help="Obrigatória para dispensas (baixa, falta ou com documento).")
-                anexo = st.text_input("Arquivo ou link (obrigatório na dispensa com documento)")
-                if st.form_submit_button("Lançar", type="primary", use_container_width=True):
-                    lancar(lambda: lc.lancar_impedimento(ctx, uid, Impedimento(
-                        mid, tipo, i, None if tipo == "desembarque" else f, motivo, anexo)), "Impedimento lançado.")
-    with dir_:
-        removivel(ctx.impedimentos, lambda x: f"{nomes_m.get(x.militar_id, x.militar_id)} – {ROTULO_IMPEDIMENTO.get(x.tipo, x.tipo)} "
-                  f"{x.inicio:%d/%m}{'–' + format(x.fim, '%d/%m') if x.fim else ''} {x.motivo}", "imp")
-elif sec == "Dias":
-    with esq, st.container(border=True):
-        ui.secao("Novo dia especial")
-        with st.form("de", clear_on_submit=True, border=False):
-            dd = st.date_input("Data", date.today(), format="DD/MM/YYYY")
-            tp = st.selectbox("Tipo", ["feriado", "sem_expediente"], format_func=lambda t: "Feriado" if t == "feriado" else "Sem expediente")
-            ds = st.text_input("Descrição", placeholder="Aniversário da cidade, licença administrativa…")
-            alvos = (["", *editaveis] if P.user.admin else editaveis)
-            ee = st.selectbox("Vale para", alvos, format_func=lambda x: ctx.escala(x).nome if x else "Todas as escalas (administrador)")
-            if st.form_submit_button("Lançar", type="primary", use_container_width=True):
-                lancar(lambda: lc.lancar_dia_especial(ctx, uid, DiaEspecial(dd, tp, ds, ee)), "Dia lançado.")
-        with st.expander(f"Pontos facultativos de {P.inicio.year} (sugestões)"):
-            for d, n in sorted(pontos_facultativos(P.inicio.year, ctx.uf).items()):
-                st.write(f"{d:%d/%m} – {n}")
-    with dir_:
-        removivel(ctx.dias_especiais, lambda x: f"{x.data:%d/%m} {x.tipo} {x.descricao}", "dias")
-elif sec == "Guarnece":
-    with esq, st.container(border=True):
-        ui.secao("Decisão do comando")
-        with st.form("gu", clear_on_submit=True, border=False):
-            e2 = st.selectbox("Escala", editaveis, format_func=lambda x: ctx.escala(x).nome)
-            dg = st.date_input("Dia", date.today(), format="DD/MM/YYYY")
-            gu = st.toggle("Guarnece neste dia", True)
-            if st.form_submit_button("Lançar", type="primary", use_container_width=True):
-                lancar(lambda: lc.lancar_guarnecimento(ctx, uid, Guarnecimento(dg, e2, gu)), "Decisão lançada.")
-    with dir_:
-        removivel(ctx.guarnecimentos, lambda x: f"{x.data:%d/%m} {ctx.escala(x.escala_id).nome}: "
-                  f"{'guarnece' if x.guarnece else 'não guarnece'}", "gu")
-elif sec == "Faltas":
-    with esq, st.container(border=True):
-        ui.secao("Dispensado do serviço escalado (o retém avança)")
-        if not militares:
-            ui.vazio("Sem militares", "Não há militares nas suas escalas.", "users")
-        else:
-            with st.form("oc", clear_on_submit=True, border=False):
-                e = st.selectbox("Escala", editaveis, format_func=lambda x: ctx.escala(x).nome)
-                m2 = st.selectbox("Militar escalado", militares, format_func=nomes_m.get)
-                dt = st.date_input("Dia do serviço", date.today(), format="DD/MM/YYYY")
-                mot = st.text_input("Justificativa (obrigatória)", help="Baixa, falta ou outro motivo. Aparece na prévia e no detalhe.")
-                st.caption("O militar passa a Dispensado (Disp) nesse dia, o retém avança e a prévia e o detalhe se reconfiguram.")
-                if st.form_submit_button("Dispensar do serviço", type="primary", use_container_width=True):
-                    lancar(lambda: lc.lancar_dispensa_no_dia(ctx, uid, Ocorrencia(dt, e, m2, mot.strip())),
-                           "Dispensa lançada; o retém avançou e a escala foi reconfigurada.")
-    with dir_:
-        removivel(ctx.ocorrencias, lambda x: f"{x.data:%d/%m} {ctx.escala(x.escala_id).nome}: {nomes_m.get(x.militar_id)} dispensado – {x.motivo}", "falta")
-else:
-    evt = [e for e in editaveis if ctx.escala(e).modo == "eventos"]
-    with esq, st.container(border=True):
-        ui.secao("Novo evento (palestra, cerimônia, apoio…)")
-        if not evt:
-            ui.vazio("Nenhuma escala por evento", "Crie uma escala no modo “Por evento” em Escalas.", "calendar")
-        else:
-            with st.form("ev", clear_on_submit=True, border=False):
-                e3 = st.selectbox("Escala", evt, format_func=lambda x: ctx.escala(x).nome)
-                a, b = st.columns(2)
-                de, desc = a.date_input("Data do evento", date.today(), format="DD/MM/YYYY"), b.text_input("Descrição")
-                a, b, c = st.columns(3)
-                hora, local = a.text_input("Hora"), b.text_input("Local")
-                vagas = c.number_input("Vagas (0 = padrão)", 0, 99, 0)
-                if st.form_submit_button("Lançar evento", type="primary", use_container_width=True):
-                    lancar(lambda: lc.lancar_evento(ctx, uid, Evento(e3, de, desc, hora, local, vagas or None)), "Evento lançado.")
-    with dir_:
-        removivel(ctx.eventos, lambda x: f"{x.data:%d/%m} {ctx.escala(x.escala_id).nome}: {x.descricao}", "ev")
+itens: list[tuple[object, dict]] = []
+for x in ctx.impedimentos:
+    if x.militar_id in escalas_do_mil:
+        itens.append((x, {"Início": x.inicio, "Fim": x.fim, "Tipo": ROTULO_IMPEDIMENTO.get(x.tipo, x.tipo),
+                          "Escala": ", ".join(escalas_do_mil[x.militar_id]),
+                          "Militar": nomes_m.get(x.militar_id, x.militar_id),
+                          "Justificativa / detalhe": " · ".join(t for t in (x.motivo, x.anexo) if t)}))
+for x in ctx.ocorrencias:
+    if x.escala_id in minhas:
+        itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Dispensa no dia do serviço",
+                          "Escala": minhas[x.escala_id].nome, "Militar": nomes_m.get(x.militar_id, x.militar_id),
+                          "Justificativa / detalhe": x.motivo}))
+for x in ctx.dias_especiais:
+    if not x.escala_id or x.escala_id in minhas:
+        itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Feriado" if x.tipo == "feriado" else "Sem expediente",
+                          "Escala": minhas[x.escala_id].nome if x.escala_id else "Todas as escalas", "Militar": "—",
+                          "Justificativa / detalhe": x.descricao}))
+for x in ctx.guarnecimentos:
+    if x.escala_id in minhas:
+        itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Guarnece" if x.guarnece else "Não guarnece",
+                          "Escala": minhas[x.escala_id].nome, "Militar": "—", "Justificativa / detalhe": "Decisão do comando"}))
+for x in ctx.eventos:
+    if x.escala_id in minhas:
+        itens.append((x, {"Início": x.data, "Fim": x.data, "Tipo": "Evento", "Escala": minhas[x.escala_id].nome,
+                          "Militar": "—", "Justificativa / detalhe": " · ".join(t for t in (x.descricao, x.hora, x.local) if t)}))
+
+with st.container(border=True):
+    ui.secao("Lançamentos")
+    f1, f2, f3 = st.columns([1.3, 1.2, 1.2])
+    todos_periodos = f1.checkbox("Todos os períodos", True, key="lf_todos")
+    hoje = date.today()
+    per = f1.date_input("Período", (hoje - timedelta(days=30), hoje + timedelta(days=60)), format="DD/MM/YYYY",
+                        key="lf_per", disabled=todos_periodos)
+    tipos_disp = sorted({d["Tipo"] for _, d in itens})
+    f_tipo = f2.multiselect("Tipo", tipos_disp, key="lf_tipo", placeholder="Todos os tipos")
+    f_esc = f2.multiselect("Escala (detalhe)", sorted({e.nome for e in escalas_ok}), key="lf_esc", placeholder="Todas as escalas")
+    f_mil = f3.text_input("Militar", key="lf_mil", placeholder="Nome ou parte do nome")
+    f_txt = f3.text_input("Buscar no texto", key="lf_txt", placeholder="Justificativa, local, descrição…")
+
+    def passa(d: dict) -> bool:
+        if not todos_periodos and isinstance(per, (tuple, list)) and len(per) == 2:
+            ini, fim = d["Início"], d["Fim"] or date.max          # sem data final: vale daí em diante
+            if not (ini <= per[1] and fim >= per[0]):
+                return False
+        if f_tipo and d["Tipo"] not in f_tipo:
+            return False
+        if f_esc and not any(n in f_esc for n in d["Escala"].split(", ")):
+            return False
+        if f_mil and f_mil.lower() not in d["Militar"].lower():
+            return False
+        if f_txt and f_txt.lower() not in " ".join(str(v) for v in d.values()).lower():
+            return False
+        return True
+
+    vistos = sorted((par for par in itens if passa(par[1])), key=lambda par: (par[1]["Início"], par[1]["Tipo"]), reverse=True)
+    if not vistos:
+        ui.vazio("Nenhum lançamento", "Nada com esses filtros. Use Incluir para lançar." if itens else "Use Incluir para lançar.", "list")
+    else:
+        df = pd.DataFrame([{"Remover": False, **d} for _, d in vistos])
+        ed = st.data_editor(df, hide_index=True, width="stretch", key=f"lf_tab_{len(vistos)}",
+                            disabled=[c for c in df.columns if c != "Remover"],
+                            column_config={"Remover": st.column_config.CheckboxColumn(width="small"),
+                                           "Início": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                           "Fim": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        st.caption(f"{len(vistos)} lançamento(s)" + (f" de {len(itens)}" if len(vistos) != len(itens) else "") + ".")
+        marcados = [vistos[i][0] for i in ed.index[ed["Remover"]]]
+        with st.popover("Remover marcados", icon=":material/delete:", disabled=not marcados):
+            st.write(f"{len(marcados)} lançamento(s) marcado(s). A escala volta a ser calculada sem eles. **Tem certeza?**")
+            if st.button("Sim, remover", key="lf_rm", type="primary"):
+                agir(lambda: [lc.remover(ctx, uid, x) for x in marcados] and None, "Lançamentos removidos.")
+
+with st.expander(f"Pontos facultativos de {P.inicio.year} (sugestões para lançar como dia sem expediente)"):
+    for d, n in sorted(pontos_facultativos(P.inicio.year, ctx.uf).items()):
+        st.write(f"{d:%d/%m} – {n}")

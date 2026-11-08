@@ -100,8 +100,11 @@ def test_auxiliar_abre_a_pagina_de_lancamentos(app):
     _entrar(app, "aux", "senha-aux-1234")
     app.switch_page("paginas/lancamentos.py").run()
     assert not app.exception
-    militares = next(s for s in app.selectbox if s.label == "Militar")
-    assert "Militar 02" not in militares.options and "Militar 03" in militares.options       # sem ele mesmo
+    next(b for b in app.button if b.label == "Incluir").click().run()          # abre o pop-up de inclusão
+    assert not app.exception
+    assert next(s for s in app.selectbox if s.label == "1 · Escala").options          # só escalas em que ele decide
+    militares = next(s for s in app.selectbox if s.label == "3 · Militar")
+    assert "Militar 02" not in " ".join(militares.options) and "Militar 03" in " ".join(militares.options)   # sem ele mesmo
 
 
 def test_admin_sem_senha_configurada_recebe_senha_provisoria_e_troca(tmp_path, monkeypatch, capsys):
