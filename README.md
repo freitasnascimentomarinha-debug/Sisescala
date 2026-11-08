@@ -40,7 +40,7 @@ O menu mostra só o que o perfil pode usar. Código: `app.py` (login, navegaçã
 - PDF do detalhe por escala, com assinaturas (Detalhista, Encarregado do Detalhe, Vice-Diretor).
 
 ## Cadastro, importação e relatório de regras
-- **Militares:** adicionar, editar (inclusive antiguidade), excluir um ou vários (a fila segue de onde estava) e vincular/encerrar participação em escalas. Excluir do cadastro exige poder editar todas as escalas do militar.
+- **Militares:** cadastrar, incluir um já cadastrado, editar dados, reordenar a antiguidade na escala e retirar da escala (a fila segue de onde estava). Excluir do cadastro é só do administrador, para cadastros soltos.
 - **Importar planilha (CSV/XLSX):** reconhece nome de guerra, posto/graduação, NIP, OM (sigla/código), escala, ordem e último serviço/data. Mostra uma pré-visualização (novos, atualizados, avisos) antes de aplicar, e a escala continua do dia seguinte à última data da planilha, depois de quem deu o último serviço em cada fila. Há modelo para baixar.
 - **Regras da escala (relatório):** mostra, com a configuração atual, como a escala funciona, o que está no padrão e o que foi alterado, a situação atual e a lógica fixa do sistema. Atualiza sozinho ao mudar qualquer configuração; baixa em PDF.
 - Escalações que não são serviço (palestra etc.) **nunca** têm prioridade sobre serviço e só escalam quem não está de efetivo serviço no dia.
