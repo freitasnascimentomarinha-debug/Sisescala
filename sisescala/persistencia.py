@@ -77,16 +77,16 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "EscalaRefs": [("escala_id", "s"), ("referencia_id", "s")],
     "EscalaCompart": [("escala_id", "s"), ("usuario_id", "s"), ("nivel", "s")],
     "Impedimentos": [("militar_id", "s"), ("tipo", "s"), ("inicio", "d"), ("fim", "d"), ("motivo", "s"),
-                     ("anexo", "s"), ("criado_por", "s"), ("criado_em", "dt")],
+                     ("anexo", "s"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
     "DiasEspeciais": [("data", "d"), ("tipo", "s"), ("descricao", "s"), ("escala_id", "s"), ("data_fim", "d"),
-                      ("conta_como", "s"), ("criado_por", "s"), ("criado_em", "dt")],
-    "Guarnecimentos": [("data", "d"), ("escala_id", "s"), ("guarnece", "b"), ("criado_por", "s"), ("criado_em", "dt")],
-    "Roxas": [("id", "s"), ("nome", "s"), ("inicio", "d"), ("fim", "d"), ("escala_id", "s"), ("criado_por", "s"), ("criado_em", "dt")],
-    "Ocorrencias": [("data", "d"), ("escala_id", "s"), ("militar_id", "s"), ("motivo", "s"), ("criado_por", "s"), ("criado_em", "dt")],
+                      ("conta_como", "s"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
+    "Guarnecimentos": [("data", "d"), ("escala_id", "s"), ("guarnece", "b"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
+    "Roxas": [("id", "s"), ("nome", "s"), ("inicio", "d"), ("fim", "d"), ("escala_id", "s"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
+    "Ocorrencias": [("data", "d"), ("escala_id", "s"), ("militar_id", "s"), ("motivo", "s"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
     "Trocas": [("data", "d"), ("escala_id", "s"), ("saindo", "s"), ("entrando", "s"), ("aceite_saindo", "b"),
                ("aceite_entrando", "b"), ("observacao", "s"), ("papeleta_id", "s")],
     "Eventos": [("escala_id", "s"), ("data", "d"), ("descricao", "s"), ("hora", "s"), ("local", "s"),
-                ("vagas", "s"), ("criado_por", "s"), ("criado_em", "dt")],
+                ("vagas", "s"), ("criado_por", "s"), ("criado_em", "dt"), ("alterado_por", "s"), ("alterado_em", "dt")],
     "Papeletas": [("id", "s"), ("numero", "i"), ("escala_id", "s"), ("solicitante_id", "s"),
                   ("data_solicitante", "d"), ("outro_id", "s"), ("data_outro", "d"), ("criado_em", "dt"),
                   ("criado_por", "s"), ("motivo", "s"), ("status", "s"), ("tipo", "s"), ("decidido_por", "s"),
@@ -256,7 +256,8 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.trocas = [Troca(**d) for d in _linhas_de(T, "Trocas")]
     for d in _linhas_de(T, "Eventos"):
         ctx.eventos.append(Evento(d["escala_id"], d["data"], d["descricao"], d["hora"], d["local"],
-                                  int(d["vagas"]) if str(d["vagas"]).strip() else None, d["criado_por"], d["criado_em"]))
+                                  int(d["vagas"]) if str(d["vagas"]).strip() else None, d["criado_por"], d["criado_em"],
+                                  d["alterado_por"], d["alterado_em"]))
     ctx.vinculos = [Vinculo(**d) for d in _linhas_de(T, "Vinculos")]
     ctx.disponibilidades = [Disponibilidade(**d) for d in _linhas_de(T, "Disponibilidades")]
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]

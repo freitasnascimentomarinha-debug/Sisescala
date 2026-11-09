@@ -226,6 +226,37 @@ def remover(ctx: Contexto, usuario_id: str, item) -> None:
     _lista_do(ctx, item).remove(item)
 
 
+_LANCAR = {Impedimento: "lancar_impedimento", Ocorrencia: "lancar_dispensa_no_dia", Guarnecimento: "lancar_guarnecimento",
+           Evento: "lancar_evento", DiaEspecial: "lancar_dia_especial", PeriodoRoxa: "lancar_periodo_roxo"}
+
+
+def editar_lancamento(ctx: Contexto, usuario_id: str, antigo, novo, agora: datetime | None = None) -> None:
+    """Troca um lançamento por outra versão dele (mesmo tipo), com as regras de quem lança E de quem remove: é preciso
+    poder mexer no lançamento antigo e no novo. Tudo ou nada: se o novo for recusado, o antigo continua como estava.
+    Mantém quem lançou e quando, e registra quem alterou e quando."""
+    if type(novo) is not type(antigo) or type(antigo) not in _LANCAR:
+        raise ValueError("só é possível editar mantendo o mesmo tipo de lançamento")
+    lista = _lista_do(ctx, antigo)
+    pos = next((i for i, x in enumerate(lista) if x is antigo), None)
+    if pos is None:
+        raise ValueError("esse lançamento não existe mais; recarregue a página")
+    if not pode_remover(ctx, usuario_id, antigo):
+        raise PermissaoNegada("você não pode alterar este lançamento")
+    antes = list(lista)
+    lista.pop(pos)
+    try:
+        globals()[_LANCAR[type(antigo)]](ctx, usuario_id, novo, agora)
+    except Exception:
+        lista[:] = antes
+        raise
+    atual = next((i for i, x in enumerate(lista) if x is novo), None)       # volta para o mesmo lugar da lista
+    if atual is not None:
+        lista.pop(atual)
+    lista.insert(min(pos, len(lista)), novo)
+    novo.criado_por, novo.criado_em = antigo.criado_por or novo.criado_por, antigo.criado_em or novo.criado_em
+    novo.alterado_por, novo.alterado_em = usuario_id, agora or datetime.now()
+
+
 def pode_remover(ctx: Contexto, usuario_id: str, item) -> bool:
     try:
         if isinstance(item, Impedimento):

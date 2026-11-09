@@ -106,6 +106,64 @@ def dialogo_incluir():
             agir(lambda: lc.lancar_evento(ctx, uid, Evento(eid, de, desc, hora, local, vagas or None)), "Evento lançado.")
 
 
+@st.dialog("Editar lançamento", width="large")
+def dialogo_editar(item):
+    """Mesmo formulário do Incluir, já preenchido com o lançamento. Ao salvar, o lançamento é substituído pela nova versão."""
+    k = f"ed{id(item)}"
+    ids = [e.id for e in escalas_ok]
+
+    def salvar(novo, msg="Lançamento atualizado."):
+        if st.button("Salvar alterações", type="primary", use_container_width=True, key=f"{k}_ok"):
+            agir(lambda: lc.editar_lancamento(ctx, uid, item, novo), msg)
+
+    if isinstance(item, Impedimento):
+        mil = lc.militares_lancaveis(ctx, uid)
+        if item.militar_id not in mil:
+            st.info("Você não pode alterar este lançamento (o militar não é de uma escala em que você lança, ou é você mesmo).")
+            return
+        mid = st.selectbox("Militar", mil, mil.index(item.militar_id), format_func=_rotulo_mil, key=f"{k}_mil")
+        sit = st.selectbox("Motivo (situação)", TIPOS_VISIVEIS, TIPOS_VISIVEIS.index(item.tipo) if item.tipo in TIPOS_VISIVEIS else 0,
+                           key=f"{k}_sit", format_func=lambda t: f"{ROTULO_IMPEDIMENTO[t]}  ·  {TIPOS_IMPEDIMENTO[t]}")
+        a, b = st.columns(2)
+        ini = a.date_input("Início", item.inicio, format="DD/MM/YYYY", key=f"{k}_ini")
+        fim = b.date_input("Fim", item.fim or ini, format="DD/MM/YYYY", key=f"{k}_fim", disabled=sit == "desembarque")
+        just = st.text_area("Justificativa / OM de destino", item.motivo, key=f"{k}_just", height=90)
+        anexo = st.text_input("Arquivo ou link", item.anexo, key=f"{k}_anexo")
+        salvar(Impedimento(mid, sit, ini, None if sit == "desembarque" else fim, just.strip(), anexo.strip()))
+    elif isinstance(item, Ocorrencia):
+        eid = st.selectbox("Escala", ids, ids.index(item.escala_id) if item.escala_id in ids else 0,
+                           format_func=lambda i: ctx.escala(i).nome, key=f"{k}_esc")
+        mil = _militares_da(eid)
+        if not mil:
+            st.info("Esta escala não tem outros militares.")
+            return
+        mid = st.selectbox("Militar", mil, mil.index(item.militar_id) if item.militar_id in mil else 0,
+                           format_func=_rotulo_mil, key=f"{k}_mil")
+        dt = st.date_input("Dia do serviço", item.data, format="DD/MM/YYYY", key=f"{k}_dia")
+        just = st.text_area("Justificativa (obrigatória)", item.motivo, key=f"{k}_just", height=90)
+        salvar(Ocorrencia(dt, eid, mid, just.strip()))
+    elif isinstance(item, Guarnecimento):
+        eid = st.selectbox("Escala", ids, ids.index(item.escala_id) if item.escala_id in ids else 0,
+                           format_func=lambda i: ctx.escala(i).nome, key=f"{k}_esc")
+        dg = st.date_input("Dia", item.data, format="DD/MM/YYYY", key=f"{k}_dia")
+        gu = st.toggle("Guarnece neste dia", item.guarnece, key=f"{k}_gu")
+        salvar(Guarnecimento(dg, eid, gu))
+    elif isinstance(item, Evento):
+        evt = [i for i in ids if ctx.escala(i).modo == "eventos"]
+        eid = st.selectbox("Escala", evt, evt.index(item.escala_id) if item.escala_id in evt else 0,
+                           format_func=lambda i: ctx.escala(i).nome, key=f"{k}_esc")
+        a, b = st.columns(2)
+        de = a.date_input("Data do evento", item.data, format="DD/MM/YYYY", key=f"{k}_de")
+        desc = b.text_input("Descrição", item.descricao, key=f"{k}_desc")
+        a, b, c = st.columns(3)
+        hora, local = a.text_input("Hora", item.hora, key=f"{k}_hora"), b.text_input("Local", item.local, key=f"{k}_local")
+        vagas = c.number_input("Vagas (0 = padrão)", 0, 99, item.vagas or 0, key=f"{k}_vagas")
+        salvar(Evento(eid, de, desc, hora, local, vagas or None))
+    if item.criado_por:
+        st.caption(f"Lançado por {ctx.usuario(item.criado_por).nome if ctx.usuario(item.criado_por) else '—'}"
+                   + (f" em {item.criado_em:%d/%m/%Y %H:%M}" if item.criado_em else "") + ".")
+
+
 c1, _ = st.columns([1.2, 4.8])
 if c1.button("Incluir", type="primary", icon=":material/add:"):
     dialogo_incluir()
@@ -144,8 +202,10 @@ def _quem(x) -> str:
     return u.nome if u else "—"
 
 
-for x, d in itens:                                  # quem lançou e quando (dados antigos não têm)
+for x, d in itens:                                  # quem lançou e quando (dados antigos não têm); e a última edição
     d["Lançado por"], d["Lançado em"] = _quem(x), (f"{x.criado_em:%d/%m/%Y %H:%M}" if x.criado_em else "—")
+    ua = ctx.usuario(x.alterado_por) if x.alterado_por else None
+    d["Alterado"] = (f"{ua.nome if ua else '—'} em {x.alterado_em:%d/%m/%Y %H:%M}" if x.alterado_em else "")
 
 with st.container(border=True):
     ui.secao("Lançamentos")
@@ -182,15 +242,19 @@ with st.container(border=True):
     if not vistos:
         ui.vazio("Nenhum lançamento", "Nada com esses filtros. Use Incluir para lançar." if itens else "Use Incluir para lançar.", "list")
     else:
-        df = pd.DataFrame([{"Remover": False, **d} for _, d in vistos])
+        df = pd.DataFrame([{"Marcar": False, **d} for _, d in vistos])
         ed = st.data_editor(df, hide_index=True, width="stretch", key=f"lf_tab_{len(vistos)}",
-                            disabled=[c for c in df.columns if c != "Remover"],
-                            column_config={"Remover": st.column_config.CheckboxColumn(width="small"),
+                            disabled=[c for c in df.columns if c != "Marcar"],
+                            column_config={"Marcar": st.column_config.CheckboxColumn(width="small"),
                                            "Início": st.column_config.DateColumn(format="DD/MM/YYYY"),
                                            "Fim": st.column_config.DateColumn(format="DD/MM/YYYY")})
         st.caption(f"{len(vistos)} lançamento(s)" + (f" de {len(itens)}" if len(vistos) != len(itens) else "") + ".")
-        marcados = [vistos[i][0] for i in ed.index[ed["Remover"]]]
-        with st.popover("Remover marcados", icon=":material/delete:", disabled=not marcados):
+        marcados = [vistos[i][0] for i in ed.index[ed["Marcar"]]]
+        b_ed, b_rm, _ = st.columns([1, 1.4, 3])
+        if b_ed.button("Editar", icon=":material/edit:", disabled=len(marcados) != 1, key="lf_ed",
+                       help="Marque um lançamento na tabela para editar." if len(marcados) != 1 else None):
+            dialogo_editar(marcados[0])
+        with b_rm.popover("Remover marcados", icon=":material/delete:", disabled=not marcados):
             st.write(f"{len(marcados)} lançamento(s) marcado(s). A escala volta a ser calculada sem eles. **Tem certeza?**")
             if st.button("Sim, remover", key="lf_rm", type="primary"):
                 agir(lambda: [lc.remover(ctx, uid, x) for x in marcados] and None, "Lançamentos removidos.")

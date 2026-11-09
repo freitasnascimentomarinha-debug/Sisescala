@@ -161,6 +161,8 @@ class Impedimento:
     anexo: str = ""           # link/arquivo (obrigatório para dispensa)
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
     def cobre(self, d: date) -> bool:
         return d >= self.inicio and (self.fim is None or d <= self.fim)
@@ -189,6 +191,8 @@ class Evento:
     vagas: int | None = None     # None = usa militares_dia da escala
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
 
 @dataclass
@@ -229,6 +233,8 @@ class DiaEspecial:
     conta_como: str = ""          # "" = pelo tipo (feriado e sem expediente contam como vermelha) | "preta" | "vermelha"
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
     def abrange(self, d: date) -> bool:
         return self.data <= d <= (self.data_fim or self.data)
@@ -242,6 +248,8 @@ class Guarnecimento:
     guarnece: bool = True
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
 
 @dataclass
@@ -253,6 +261,8 @@ class PeriodoRoxa:
     escala_id: str = ""           # vazio = vale para todas as escalas (só o administrador cria)
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
 
 @dataclass
@@ -264,6 +274,8 @@ class Ocorrencia:
     motivo: str = ""              # justificativa lançada pelo detalhista (obrigatória na tela)
     criado_por: str = ""          # conta de quem lançou
     criado_em: datetime | None = None
+    alterado_por: str = ""         # última edição do lançamento (quem e quando)
+    alterado_em: datetime | None = None
 
     def validar(self) -> list[str]:
         return [] if self.motivo.strip() else ["informe a justificativa da dispensa"]

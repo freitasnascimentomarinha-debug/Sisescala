@@ -254,3 +254,62 @@ def test_cores_das_etiquetas_ferias_vermelho_e_dbq_preto():
     assert cor_da_sigla(FERIAS)[0] == "#C23B3B"                           # Férias: vermelho
     assert cor_da_sigla(DBQ)[0] == "#0B0B0B"                              # DBQ: preto
     assert "border:1px solid" in _tag(DBQ) and "border:1px solid" not in _tag(FERIAS)   # preto ganha contorno no fundo escuro
+
+
+def test_editar_lancamento_mantem_quem_lancou_registra_quem_alterou_e_e_tudo_ou_nada():
+    c, adm, det, aux_u = mundo()
+    t0, t1 = datetime(2027, 2, 20, 10, 0), datetime(2027, 2, 22, 15, 30)
+    lc.lancar_impedimento(c, det.id, Impedimento("m3", "ferias", D, D + timedelta(days=5), "", ""), t0)
+    lc.lancar_impedimento(c, det.id, Impedimento("m4", "curso", D, D + timedelta(days=2)), t0)
+    antigo = c.impedimentos[0]
+    novo = Impedimento("m5", "dispensa_justificada", D + timedelta(days=1), D + timedelta(days=3), "Baixa médica")
+    lc.editar_lancamento(c, det.id, antigo, novo, t1)
+    assert len(c.impedimentos) == 2 and c.impedimentos[0] is novo                       # no mesmo lugar da lista
+    assert (novo.militar_id, novo.tipo, novo.motivo) == ("m5", "dispensa_justificada", "Baixa médica")
+    assert (novo.criado_por, novo.criado_em) == (det.id, t0)                              # quem lançou e quando: preservado
+    assert (novo.alterado_por, novo.alterado_em) == (det.id, t1)                          # quem editou e quando
+    # recusado (dispensa sem justificativa): o lançamento antigo fica como estava
+    with pytest.raises(ValueError):
+        lc.editar_lancamento(c, det.id, novo, Impedimento("m5", "dispensa_justificada", D, D, ""))
+    assert c.impedimentos[0] is novo and novo.motivo == "Baixa médica" and len(c.impedimentos) == 2
+    # tipos diferentes não se misturam
+    with pytest.raises(ValueError, match="mesmo tipo"):
+        lc.editar_lancamento(c, det.id, novo, Ocorrencia(D, "e1", "m5", "x"))
+    # o auxiliar não edita o que é de militar fora das escalas dele, nem lançamento para si mesmo
+    outro = Impedimento("m1", "ferias", D, D)
+    c.impedimentos.append(outro)                                                          # m1 é o detalhista de e1? (membro)
+    with pytest.raises(PermissaoNegada):
+        lc.editar_lancamento(c, aux_u.id, outro, Impedimento("m2", "ferias", D, D))        # m2 é o militar do auxiliar
+    # o lançamento já removido por outra pessoa
+    c.impedimentos.remove(outro)
+    with pytest.raises(ValueError, match="não existe mais"):
+        lc.editar_lancamento(c, det.id, outro, Impedimento("m1", "ferias", D, D + timedelta(days=1)))
+
+
+def test_editar_dispensa_no_dia_guarnecimento_e_evento():
+    c, adm, det, aux_u = mundo()
+    gestao.criar_escala(c, det.id, Escala("ev", "Palestra", modo="eventos", categoria="palestra", data_base=D, militares_dia=2,
+                                           membros=[Pertinencia(f"m{i}") for i in range(1, 8)]))
+    lc.lancar_dispensa_no_dia(c, det.id, Ocorrencia(D, "e1", "m4", "Falta"), AGORA)
+    lc.editar_lancamento(c, det.id, c.ocorrencias[0], Ocorrencia(D + timedelta(days=1), "e1", "m4", "Falta justificada"))
+    assert (c.ocorrencias[0].data, c.ocorrencias[0].motivo) == (D + timedelta(days=1), "Falta justificada")
+    lc.lancar_guarnecimento(c, det.id, Guarnecimento(D, "e1", False))
+    lc.editar_lancamento(c, det.id, c.guarnecimentos[0], Guarnecimento(D + timedelta(days=2), "e1", True))
+    assert [(g.data, g.guarnece) for g in c.guarnecimentos] == [(D + timedelta(days=2), True)]
+    lc.lancar_evento(c, det.id, Evento("ev", D, "Palestra A", "10h", "Auditório"))
+    lc.editar_lancamento(c, det.id, c.eventos[0], Evento("ev", D + timedelta(days=3), "Palestra B", "14h", "Sala 2", 3))
+    e = c.eventos[0]
+    assert (e.data, e.descricao, e.vagas, e.alterado_por) == (D + timedelta(days=3), "Palestra B", 3, det.id)
+    with pytest.raises(ValueError, match="Por evento"):
+        lc.editar_lancamento(c, det.id, e, Evento("e1", D, "x"))                             # escala que não é por evento
+    assert c.eventos[0] is e
+
+
+def test_edicao_persiste_com_alterado_por_e_em():
+    c, adm, det, _ = mundo()
+    lc.lancar_impedimento(c, det.id, Impedimento("m3", "ferias", D, D + timedelta(days=5)), AGORA)
+    lc.editar_lancamento(c, det.id, c.impedimentos[0], Impedimento("m3", "ferias", D, D + timedelta(days=9)),
+                         datetime(2027, 3, 1, 8, 0))
+    c2 = de_tabelas(para_tabelas(c))
+    i = c2.impedimentos[0]
+    assert (i.fim, i.criado_em, i.alterado_por, i.alterado_em) == (D + timedelta(days=9), AGORA, det.id, datetime(2027, 3, 1, 8, 0))
