@@ -231,3 +231,18 @@ def test_previa_ocupa_a_largura_e_ajusta_as_colunas_por_periodo_e_pdf_gera():
     dias = periodo(D, 15)
     pdf = gerar_pdf(c, gerar(c, dias[-1]), dias, "e1", "OM Teste", "Instruções", "Recomendações", "Regras", ("A", "B", "C"))
     assert pdf.startswith(b"%PDF")
+
+
+def test_previa_sem_linha_retem_do_dia_e_colunas_de_folga_em_vermelho():
+    from sisescala.previa import html_previa, periodo
+    c, adm, det, _ = mundo()
+    e = c.escala("e1")
+    lc.lancar_guarnecimento(c, det.id, Guarnecimento(D + timedelta(days=2), "e1", False))        # um dia que não guarnece
+    dias = periodo(D, 7)                                                                          # seg..dom
+    html = html_previa(c, gerar(c, dias[-1]), dias, "e1", com_card=False)
+    assert "Retém do dia" not in html and "<th class='nome'>RT</th>" not in html                  # linha removida
+    assert ">RT<" in html                                                                         # o retém segue nas células
+    assert html.count("<td class='folga") == 7 * 2                                                # sáb e dom, para os 7 militares
+    assert "td.folga{background:rgba(239,68,68" in html                                          # coluna inteira avermelhada
+    assert 'th class="folga"' in html and 'th class="util"' in html
+    assert "não guarnece" in html and "class='util sem" in html                                   # o dia sem serviço é sinalizado

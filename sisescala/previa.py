@@ -87,14 +87,24 @@ def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
     return inf
 
 
-def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None) -> str:
+def _classe_do_dia(ctx: Contexto, d: date, esc) -> str:
+    """Como o dia conta para a coluna da tabela: roxa, útil (preta) ou folga (vermelha)."""
+    if esc.participa_roxa and roxa_do_dia(d, ctx, esc):
+        return "roxa"
+    return "util" if dia_util(d, ctx, esc) else "folga"
+
+
+def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None, res=None) -> str:
     cab = ""
     for d in dias:
         nome = nome_dia_nao_util(d, ctx, esc)
-        classe = "roxa" if (esc.participa_roxa and roxa_do_dia(d, ctx, esc)) else ("util" if dia_util(d, ctx, esc) else "folga")
+        classe = _classe_do_dia(ctx, d, esc)
         dow = "SEG TER QUA QUI SEX SÁB DOM".split()[d.weekday()]
-        cab += (f'<th class="{classe}" title="{escape(nome or "")}">{d:%d/%m}<br>{dow}'
-                f'{"<br><small>" + escape(nome) + "</small>" if nome else ""}</th>')
+        dia = res.dia(d, esc.id) if (res is not None and esc is not None) else None
+        sem = res is not None and (dia is None or not dia.funciona)
+        legenda = nome or ("não guarnece" if sem else "")
+        cab += (f'<th class="{classe}" title="{escape(legenda)}">{d:%d/%m}<br>{dow}'
+                f'{"<br><small>" + escape(legenda) + "</small>" if legenda else ""}</th>')
     return cab
 
 
@@ -129,24 +139,19 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                         tags.append(_tag(a.sigla, r.nome, "ref"))
             if not tags and (s := _sigla_imp(ctx, m.id, d)):
                 tags.append(_tag(s))
-            cel += f"<td data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
+            classe_td = _classe_do_dia(ctx, d, esc) + ("" if (dia and dia.funciona) else " sem")
+            cel += f"<td class='{classe_td}' data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
         linhas += f"<tr><th class='nome'>{_nome_html(m)}</th>{cel}</tr>"
     for i in ctx.impedimentos:
         if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.militar_id in ids and i.motivo \
                 and any(i.cobre(d) for d in dias):
             fim = f"–{i.fim:%d/%m}" if i.fim else ""
             obs.append((max(i.inicio, dias[0]), f"{ctx.militar(i.militar_id).nome}: Dispensado ({i.inicio:%d/%m}{fim}): {i.motivo}"))
-    # retém do dia (e descrição de eventos)
-    ret, desc = "", ""
+    # descrição dos eventos (o retém já aparece na própria tabela, na linha de cada militar)
+    desc = ""
     for d in dias:
         dia = res.dia(d, esc.id)
-        if not dia or not dia.funciona:
-            ret += "<td class='para'>não guarnece</td>"
-            desc += "<td></td>"
-        else:
-            nomes = [f"{_tag(a.sigla)} {escape(ctx.militar(a.militar_id).nome)}" for a in dia.retens]
-            ret += f"<td>{'<br>'.join(nomes) or '–'}</td>"
-            desc += f"<td><small>{escape(dia.descricao)}</small></td>"
+        desc += ("<td></td>" if (not dia or not dia.funciona) else f"<td><small>{escape(dia.descricao)}</small></td>")
     extra_desc = f"<tr><th class='nome'>Evento</th>{desc}</tr>" if esc.modo == "eventos" else ""
     sigla = sigla_base(esc)
     leg = " ".join(_tag(s) + f" {escape(t)}" for s, t in LEGENDA_FIXA)
@@ -180,6 +185,8 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .prev th.folga{{background:rgba(239,68,68,.20);color:#F0B09A}} .prev th.roxa{{background:rgba(160,130,70,.28);color:#E3D3A8}}
 .prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.25}}
 .prev th.nome small{{white-space:nowrap}}
+.prev td.folga{{background:rgba(239,68,68,.11)}} .prev td.roxa{{background:rgba(160,130,70,.16)}}
+.prev td.sem{{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 6px,transparent 6px 12px)}}
 .prev td.para{{color:#9AA183;font-style:italic}}
 .prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(127,162,74,.14)}}
 .prev td.sel{{outline:2px solid #A3C265;outline-offset:-2px;background:rgba(127,162,74,.26)}}
@@ -189,8 +196,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
-<div style="overflow-x:auto"><table class="prev{' dens' if len(dias) > 7 else ''}" style="min-width:{larg_min}px">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc)}</tr>{linhas}
-<tr><th colspan="{len(dias) + 1}" style="background:#1F2817;color:#9AA183;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Retém do dia</th></tr>
-<tr><th class='nome'>RT</th>{ret}</tr>{extra_desc}</table></div>
+<div style="overflow-x:auto"><table class="prev{' dens' if len(dias) > 7 else ''}" style="min-width:{larg_min}px">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc, res)}</tr>{linhas}
+{extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
 <h4>Observações</h4><ul>{obs_html or '<li>Sem trocas ou ocorrências no período.</li>'}</ul>"""
