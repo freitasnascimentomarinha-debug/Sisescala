@@ -238,3 +238,25 @@ def test_planilha_de_versao_antiga_sem_coluna_nova_e_em_outra_ordem_continua_car
     c2 = de_tabelas(antigas)
     assert [e.nome for e in c2.escalas] == [e.nome for e in c.escalas] and all(e.om == "" for e in c2.escalas)
     assert c2.militares == c.militares
+
+
+def test_chave_do_sheets_colada_de_varios_jeitos_carrega_e_chave_ruim_da_erro_amigavel():
+    import google.oauth2.service_account as sa
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from sisescala.persistencia import ConfiguracaoSheetsErro, SheetsBackend, normalizar_conta_servico
+    pem = rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    base = {"type": "service_account", "client_email": "x@y.iam.gserviceaccount.com",
+            "token_uri": "https://oauth2.googleapis.com/token"}
+    for v in (pem, pem.replace("\n", "\\n"), '"' + pem.replace("\n", "\\n") + '"', pem.replace("\n", " ").strip(),
+              pem.replace("\n", ""), pem.strip()):
+        sa.Credentials.from_service_account_info(normalizar_conta_servico({**base, "private_key": v}))
+    for ruim in ("", "abc", "-----BEGIN PRIVATE KEY-----"):
+        with pytest.raises(ConfiguracaoSheetsErro, match="private_key"):
+            normalizar_conta_servico({**base, "private_key": ruim})
+    truncada = pem[: len(pem) // 2] + "\n-----END PRIVATE KEY-----\n"          # colada pela metade
+    with pytest.raises(ConfiguracaoSheetsErro, match="corrompida"):
+        SheetsBackend({**base, "private_key": truncada}, "id")
+    with pytest.raises(ConfiguracaoSheetsErro, match="client_email"):
+        SheetsBackend({"private_key": pem, "token_uri": "x"}, "id")

@@ -33,7 +33,7 @@ from sisescala import vinculos as vc
 from sisescala import disponibilidade as dp
 from sisescala.demo import contexto_demo
 from sisescala.motor import gerar
-from sisescala.persistencia import ConflitoDeVersao, Repositorio, criar_repositorio
+from sisescala.persistencia import ConfiguracaoSheetsErro, ConflitoDeVersao, Repositorio, criar_repositorio
 from sisescala.previa import periodo
 from sisescala.telas import tela_login, tela_troca_senha
 
@@ -52,7 +52,12 @@ def _backend():
     return repo.backend, nome
 
 
-backend, ARMAZENAMENTO = _backend()
+try:
+    backend, ARMAZENAMENTO = _backend()
+except ConfiguracaoSheetsErro as _ex:        # segredos do Google Sheets malformados: explica em vez de "erro redigido"
+    st.error(f"**Configuração do Google Sheets inválida.** {_ex}")
+    st.info("Corrija em **Manage app → Settings → Secrets** (modelo em `.streamlit/secrets.toml.example`) e reinicie o app.")
+    st.stop()
 
 
 def _carregar_novo():

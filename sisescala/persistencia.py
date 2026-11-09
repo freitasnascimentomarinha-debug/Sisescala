@@ -338,6 +338,28 @@ class ArquivoBackend(MemoriaBackend):
         return nova
 
 
+class ConfiguracaoSheetsErro(ValueError):
+    """Credenciais do Google Sheets inválidas nos segredos (mensagem segura: nunca inclui a chave)."""
+
+
+def normalizar_conta_servico(info: dict) -> dict:
+    """Conserta a `private_key` colada nos segredos: \\n literal, aspas sobrando, espaços no lugar de quebras de linha,
+    cabeçalho e rodapé na mesma linha. Reescreve o PEM no formato exato (64 colunas)."""
+    import re
+    d = dict(info)
+    chave = str(d.get("private_key", "") or "").strip().strip("\"'").replace("\\n", "\n").replace("\r", "")
+    m = re.search(r"-----BEGIN ([A-Z ]*PRIVATE KEY)-----(.*?)-----END \1-----", chave, re.S)
+    if not m:
+        raise ConfiguracaoSheetsErro(
+            "A private_key dos segredos não está no formato esperado: ela deve começar com "
+            "-----BEGIN PRIVATE KEY----- e terminar com -----END PRIVATE KEY-----. Copie o campo private_key do "
+            "arquivo JSON da conta de serviço exatamente como está.")
+    corpo = re.sub(r"\s+", "", m.group(2).replace("\\n", ""))
+    linhas = [corpo[i:i + 64] for i in range(0, len(corpo), 64)]
+    d["private_key"] = f"-----BEGIN {m.group(1)}-----\n" + "\n".join(linhas) + f"\n-----END {m.group(1)}-----\n"
+    return d
+
+
 class SheetsBackend:
     """Google Sheets via conta de serviço (gspread). A planilha precisa estar compartilhada com o e-mail
     da conta de serviço. A versão fica em Config!B1 ("versao")."""
@@ -347,7 +369,16 @@ class SheetsBackend:
     def __init__(self, info_conta_servico: dict, spreadsheet_id: str, cliente=None) -> None:
         if cliente is None:
             import gspread
-            cliente = gspread.service_account_from_dict(dict(info_conta_servico))
+            info = normalizar_conta_servico(info_conta_servico)
+            faltam = [c for c in ("client_email", "token_uri") if not info.get(c)]
+            if faltam:
+                raise ConfiguracaoSheetsErro("Faltam campos em [gcp_service_account] nos segredos: " + ", ".join(faltam))
+            try:
+                cliente = gspread.service_account_from_dict(info)
+            except ValueError as ex:             # chave que ainda assim não carrega (corrompida ou incompleta)
+                raise ConfiguracaoSheetsErro(
+                    "A chave privada da conta de serviço nos segredos está corrompida ou incompleta. Gere uma nova chave "
+                    "JSON no Google Cloud e copie o private_key inteiro.") from ex
         self.sh = cliente.open_by_key(spreadsheet_id)
 
     # --- utilidades
