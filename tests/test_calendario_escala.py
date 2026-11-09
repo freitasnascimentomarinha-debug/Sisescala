@@ -246,3 +246,11 @@ def test_previa_sem_linha_retem_do_dia_e_colunas_de_folga_em_vermelho():
     assert "td.folga{background:rgba(239,68,68" in html                                          # coluna inteira avermelhada
     assert 'th class="folga"' in html and 'th class="util"' in html
     assert "não guarnece" in html and "class='util sem" in html                                   # o dia sem serviço é sinalizado
+
+
+def test_cores_das_etiquetas_ferias_vermelho_e_dbq_preto():
+    from sisescala.previa import cor_da_sigla, _tag
+    from sisescala.modelos import DBQ, FERIAS
+    assert cor_da_sigla(FERIAS)[0] == "#C23B3B"                           # Férias: vermelho
+    assert cor_da_sigla(DBQ)[0] == "#0B0B0B"                              # DBQ: preto
+    assert "border:1px solid" in _tag(DBQ) and "border:1px solid" not in _tag(FERIAS)   # preto ganha contorno no fundo escuro

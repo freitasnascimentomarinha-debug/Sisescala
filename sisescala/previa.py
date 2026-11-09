@@ -13,7 +13,7 @@ CORES = {  # sigla base -> (fundo, texto)
     "SVÇ": ("#4B6A2B", "#fff"), "RT": ("#6B7360", "#fff"),
     "PAL": ("#2F6F8F", "#fff"), "CUR": ("#4F7387", "#fff"), "VIS": ("#7D5B2C", "#fff"),
     "CER": ("#8A4B2A", "#fff"), "APO": ("#3B7A46", "#fff"), "OUT": ("#5A5F4F", "#fff"),
-    FERIAS: ("#2F7D4F", "#fff"), DISP: ("#3F7F78", "#fff"), DBQ: ("#A8452F", "#fff"),
+    FERIAS: ("#C23B3B", "#fff"), DISP: ("#3F7F78", "#fff"), DBQ: ("#0B0B0B", "#fff"),   # férias vermelho, DBQ preto
     CURSO: ("#4F7387", "#fff"),
     DTQ: ("#7A5C86", "#fff"),
 }
@@ -40,8 +40,9 @@ def cor_da_sigla(sigla: str) -> tuple[str, str]:
 
 def _tag(sigla: str, extra: str = "", cls: str = "") -> str:
     bg, fg = cor_da_sigla(sigla)
+    borda = "border:1px solid #8A8F78;" if bg == "#0B0B0B" else ""        # a etiqueta preta precisa de contorno no fundo escuro
     txt = escape(sigla) + (f" <small>{escape(extra)}</small>" if extra else "")
-    return f'<span class="t {cls}" style="background:{bg};color:{fg}">{txt}</span>'
+    return f'<span class="t {cls}" style="background:{bg};color:{fg};{borda}">{txt}</span>'
 
 
 def _nome_html(m) -> str:
