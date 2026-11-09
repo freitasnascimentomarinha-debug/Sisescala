@@ -60,6 +60,14 @@ def tela_login(ctx: Contexto, armazenamento: str) -> None:
                         except (ValueError, PermissionError) as ex:
                             st.error(str(ex))
         st.caption(f"Armazenamento: {armazenamento}")
+        if not armazenamento.startswith("Google Sheets"):
+            # Configuração inicial: enquanto o Sheets não está ligado, oferece a ferramenta que monta o texto dos Secrets.
+            # Roda só no navegador (nada é enviado) e some sozinha quando o Sheets estiver configurado.
+            with st.expander("Configuração inicial: montar os Secrets do Google Sheets"):
+                arq = ui.RAIZ / "static" / "conversor_segredos.html"
+                if arq.exists():
+                    import streamlit.components.v1 as components
+                    components.html(arq.read_text("utf-8"), height=1100, scrolling=True)
 
 
 def tela_troca_senha(ctx: Contexto, user) -> None:
