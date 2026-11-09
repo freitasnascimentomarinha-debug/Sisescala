@@ -95,6 +95,7 @@ A prévia é um componente Streamlit próprio (`componentes/previa/index.html`, 
 1. No Google Cloud: crie um projeto, ative a **Google Sheets API** e crie uma **conta de serviço** com chave JSON.
 2. Crie uma planilha **vazia e privada** e compartilhe com o e-mail da conta de serviço como **Editor**. Não compartilhe com mais ninguém: a aba `Usuarios` guarda os hashes de senha e há dados de militares (NIP).
 3. Preencha `.streamlit/secrets.toml` (modelo em `secrets.toml.example`) ou, no Streamlit Community Cloud, **Settings → Secrets**. Mantenha o app privado também no Community Cloud.
+3a. **Atalho:** abra `/app/static/conversor_segredos.html` no endereço do app (ex.: `https://seu-app.streamlit.app/app/static/conversor_segredos.html`), cole o JSON da chave, o link da planilha e o NIP/senha do administrador, e copie o texto pronto para os Secrets (roda só no navegador, nada é enviado).
 4. Preencha também `[admin]` (`nip` e `senha`) nos segredos. Abra o app e entre com esse NIP e senha: o administrador é criado sozinho na primeira execução e as abas da planilha são criadas sozinhas. Sem `[admin]`, o app gera uma senha provisória e a escreve no log do servidor (Manage app → Logs).
 - **Importante no Community Cloud:** sem Sheets o app grava em arquivo local, que é apagado a cada reinício do servidor (os dados somem). Em produção, configure o Sheets.
 - Sem credenciais, o app grava em `data/sisescala.json` (apenas desenvolvimento). `SISESCALA_DEMO=1` carrega dados de demonstração num armazenamento vazio.
