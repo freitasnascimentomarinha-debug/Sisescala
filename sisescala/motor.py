@@ -3,7 +3,8 @@
 Regras principais
 - Cada escala tem filas independentes (corrida | preta | vermelha | roxa:<período>).
   A fila que não é do dia fica congelada e retoma de onde parou.
-- Ordem: do mais antigo (antiguidade 1) ao mais moderno, circular, a partir de quem deu o último serviço.
+- Ordem: começa pelo mais MODERNO e sobe até o mais antigo (antiguidade 1), circular, a partir de quem deu o último
+  serviço. Cada escala pode inverter o sentido (`sentido_fila`).
 - Descanso mínimo ("2x1"): entre dois serviços na mesma escala o militar tem `folgas_minimas` folgas,
   inclusive entre filas diferentes (sexta preta / sábado vermelha). Quem é pulado por descanso
   não perde a vez (fica "pendente" e entra na primeira oportunidade).
@@ -125,12 +126,23 @@ def fila_do_dia(ctx: Contexto, esc: Escala, d: date) -> str:
 
 def _sequencia(ctx: Contexto, esc: Escala, d: date, ultimo: str | None) -> list[str]:
     """Militares ativos e disponíveis, em ordem circular depois de `ultimo`."""
-    antig = {p.militar_id: ctx.antig(esc, p.militar_id) for p in esc.membros}
+    rodada = {m: i for i, m in enumerate(ctx.ordem_da_fila(esc))}          # ordem em que a fila gira (padrão: moderno → antigo)
     ativos = sorted(dict.fromkeys(m for m in esc.membros_ativos(d) if not ctx.dispensado_na_escala(m, esc)),
-                    key=lambda m: antig[m])
-    ref = antig.get(ultimo, 0) if ultimo else 0
-    ordem = [m for m in ativos if antig[m] > ref] + [m for m in ativos if antig[m] <= ref]
+                    key=lambda m: rodada[m])
+    ref = rodada.get(ultimo, -1) if ultimo else -1
+    ordem = [m for m in ativos if rodada[m] > ref] + [m for m in ativos if rodada[m] <= ref]
     return [m for m in ordem if not _impedido(ctx, m, d)]
+
+
+def filas_da_escala(esc: Escala) -> list[str]:
+    """Filas que o detalhista acompanha na escala (o período roxo tem a sua, criada pelo próprio período)."""
+    return ["preta", "vermelha"] if esc.modo == "preta_vermelha" else ["corrida"]
+
+
+def proximo_da_fila(ctx: Contexto, esc: Escala, fila: str, d: date) -> str | None:
+    """Quem é o primeiro a entrar nesta fila a partir de `d` (considera impedimentos e descanso só pela ordem da fila)."""
+    seq = _sequencia(ctx, esc, d, esc.ultimo_servico.get(fila))
+    return seq[0] if seq else None
 
 
 def _distribuir_quartos(quartos: list[Quarto], efetivos: list[str]) -> dict[str, list[str]]:

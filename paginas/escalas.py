@@ -7,7 +7,7 @@ from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
 from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, quartos_padrao
-from sisescala.motor import avisos_escala
+from sisescala.motor import avisos_escala, filas_da_escala, proximo_da_fila
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -58,6 +58,13 @@ def _campos(e: Escala | None, k: str):
     hq = dd.selectbox("Quartos", QUARTOS, QUARTOS.index(h) if h in QUARTOS else 0, key=f"{k}_q",
                       format_func=lambda x: "sem quartos" if x == 0 else f"de {x}h")
     ant = st.number_input("Antecedência mínima da papeleta de troca (horas)", 0, 720, d.antecedencia_horas, key=f"{k}_ant")
+    sentidos = ["moderno_antigo", "antigo_moderno"]
+    sentido = st.selectbox("Sentido da fila", sentidos, sentidos.index(d.sentido_fila if d.sentido_fila in sentidos else sentidos[0]),
+                           key=f"{k}_sent",
+                           format_func={"moderno_antigo": "Do mais moderno para o mais antigo (padrão)",
+                                        "antigo_moderno": "Do mais antigo para o mais moderno"}.get,
+                           help="Quem tira o próximo serviço depois de quem acabou de servir. A numeração da antiguidade "
+                                "continua: 1 é o mais antigo.")
     st.html('<div class="secao">Detalhista e auxiliar</div>')
     dono = ctx.usuario(e.dono_id) if e and e.dono_id else user
     st.html(f'<div class="f"><small>Detalhista (responsável pela escala)</small><b>{ui.esc(nomes_u.get(dono.id, dono.nome)) if dono else "—"}</b></div>')
@@ -84,7 +91,7 @@ def _campos(e: Escala | None, k: str):
     resp = b.checkbox("Não-serviço só escala quem não está de serviço", d.respeita_servicos, key=f"{k}_resp")
     return dict(nome=nome, om=om, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
                 retem_qtd=ret, folgas_minimas=fol, quartos=quartos_padrao(hq) if hq else [], antecedencia_horas=ant,
-                participa_roxa=rox and modo != "eventos", respeita_servicos=resp, detalhista_id=det,
+                participa_roxa=rox and modo != "eventos", respeita_servicos=resp, detalhista_id=det, sentido_fila=sentido,
                 detalhista_escalavel=det_esc, auxiliares=aux)
 
 
@@ -120,6 +127,34 @@ def dialogo_editar(eid: str):
         agir(lambda: avisos_escala(ctx, gestao.editar_escala(ctx, uid, eid, **v)), "Escala atualizada.")
 
 
+@st.dialog("Ponto de partida da escala", width="large")
+def dialogo_partida(eid: str):
+    e = ctx.escala(eid)
+    ordem = [m for m in ctx.ordem_da_fila(e) if m in ctx.escalaveis(e)]
+    if not ordem:
+        st.info("Esta escala ainda não tem militares que possam ser escalados. Cadastre-os em Militares ou importe uma planilha.")
+        return
+    sentido = "do mais antigo ao mais moderno" if e.sentido_fila == "antigo_moderno" else "do mais moderno ao mais antigo"
+    st.caption(f"Diga onde a escala está hoje, para o sistema continuar dela. A fila gira {sentido}. "
+               f"Em cada fila, escolha o militar que **está de serviço** (ou que entra primeiro) na data.")
+    desde = st.date_input("A escala passa a ser calculada a partir de", e.data_base or date.today(), format="DD/MM/YYYY",
+                          key=f"pp_data_{eid}")
+    escolhas: dict[str, str] = {}
+    nomes_fila = {"corrida": "Fila única", "preta": "Fila preta (dias úteis)", "vermelha": "Fila vermelha (sáb, dom e feriados)"}
+    for fila in filas_da_escala(e):
+        atual = proximo_da_fila(ctx, e, fila, desde)
+        opcoes = [""] + ordem
+        escolhas[fila] = st.selectbox(
+            f"{nomes_fila[fila]}: quem está de serviço", opcoes, opcoes.index(atual) if atual in opcoes else 0,
+            format_func=lambda i: "— início da fila —" if not i else ctx.militar(i).rotulo, key=f"pp_{eid}_{fila}",
+            help="O militar escolhido é o primeiro a servir nessa fila a partir da data. Quem vem antes dele na fila "
+                 "é tratado como quem acabou de servir.")
+    st.warning("Os dias anteriores à data deixam de ser calculados e a fila recomeça desse ponto. "
+               "Trocas, dispensas e lançamentos já feitos continuam registrados. **Tem certeza?**")
+    if st.button("Sim, definir o ponto de partida", type="primary", use_container_width=True, key=f"pp_ok_{eid}"):
+        agir(lambda: gestao.definir_ponto_de_partida(ctx, uid, eid, desde, escolhas), "Ponto de partida definido.")
+
+
 ui.cabecalho("Gerenciar escalas", "Só o detalhista cria, ajusta as regras e compartilha o acesso das escalas. O auxiliar não edita regras.", "sliders")
 if st.button("Nova escala", type="primary", icon=":material/add:"):
     dialogo_nova()
@@ -141,6 +176,9 @@ for e in minhas:
         b1, b2, b4, b3, _ = st.columns([1, 1.2, 1.7, 1, 1.2])
         if b1.button("Editar", key=f"ed_{e.id}", icon=":material/edit:"):
             dialogo_editar(e.id)
+        if dono and st.button("Ponto de partida da fila", key=f"pp_{e.id}", icon=":material/flag:",
+                              help="Informe onde a escala está hoje e quem está de serviço."):
+            dialogo_partida(e.id)
         if dono:
             with b2.popover("Compartilhar", icon=":material/share:"):
                 outros = [u for u in nomes_u if u != uid]

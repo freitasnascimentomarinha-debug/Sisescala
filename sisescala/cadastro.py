@@ -71,10 +71,11 @@ def editar_militar(ctx: Contexto, mid: str, **campos) -> Militar:
 
 
 def _anterior_na_escala(ctx: Contexto, esc, mid: str) -> str | None:
-    """Quem vem imediatamente antes de `mid` na ordem de antiguidade da escala (mantém a fila)."""
-    ref = ctx.antig(esc, mid)
-    antes = [i for i in ctx.ordem_na_escala(esc) if i != mid and ctx.antig(esc, i) < ref]
-    return antes[-1] if antes else None
+    """Quem vem imediatamente antes de `mid` na ordem em que a fila gira (mantém a fila)."""
+    ordem = ctx.ordem_da_fila(esc)
+    if mid not in ordem or ordem.index(mid) == 0:
+        return None
+    return ordem[ordem.index(mid) - 1]
 
 
 def _desvincular(ctx: Contexto, mid: str) -> None:

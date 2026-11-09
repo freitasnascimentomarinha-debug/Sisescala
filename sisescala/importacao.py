@@ -328,12 +328,14 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         for (eid, fila), dias in por_fila.items():
             esc = ctx.escala(eid)
             grupo = dias[max(dias)]
-            ordem = ctx.ordem_na_escala(esc)
+            ordem = ctx.ordem_da_fila(esc)
             ultimo = None
             for i, mid in enumerate(ordem):          # último da sequência circular do dia
                 if mid in grupo and ordem[(i + 1) % len(ordem)] not in grupo:
                     ultimo = mid
-            ultimo = ultimo or max(grupo, key=lambda i: ctx.antig(esc, i))
+            if ultimo is None:
+                pos_ = [ordem.index(i) for i in grupo if i in ordem]
+                ultimo = ordem[max(pos_)] if pos_ else next(iter(grupo))
             esc.ultimo_servico[fila] = ultimo
             rel.continuidade[f"{esc.nome} / {fila}"] = ctx.militar(ultimo).nome
             if (ultima - max(dias)).days > 45:

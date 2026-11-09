@@ -22,6 +22,29 @@ def _exigir_detalhista(ctx: Contexto, usuario_id: str, esc: Escala) -> None:
         raise PermissaoNegada(NEGADO)
 
 
+def definir_ponto_de_partida(ctx: Contexto, usuario_id: str, escala_id: str, a_partir_de, quem_entra: dict[str, str]) -> None:
+    """Diz ao sistema ONDE A ESCALA ESTÁ: a partir de `a_partir_de` a escala é calculada de novo, e em cada fila
+    `quem_entra[fila]` é o militar que está de serviço (ou entra primeiro) nessa data; vazio = início da fila.
+    Os serviços anteriores à data deixam de ser calculados; trocas, dispensas e lançamentos continuam registrados."""
+    from .motor import filas_da_escala
+    esc = ctx.escala(escala_id)
+    _exigir_detalhista(ctx, usuario_id, esc)
+    ordem = [m for m in ctx.ordem_da_fila(esc) if m in ctx.escalaveis(esc)]
+    filas = filas_da_escala(esc)
+    for fila, mid in quem_entra.items():
+        if fila not in filas:
+            raise ValueError(f"fila inválida para esta escala: {fila}")
+        if mid and mid not in ordem:
+            raise ValueError("o militar escolhido não pode ser escalado nesta escala")
+    for fila, mid in quem_entra.items():
+        i = ordem.index(mid) if mid else 0
+        if i == 0:
+            esc.ultimo_servico.pop(fila, None)               # primeiro da fila: ela começa por ele
+        else:
+            esc.ultimo_servico[fila] = ordem[i - 1]          # o anterior "acabou de servir": ele é o próximo
+    esc.data_base = a_partir_de
+
+
 def militar_do_detalhista(ctx: Contexto, u) -> str:
     """Militar do cadastro que é essa pessoa: o vinculado à conta ou, na falta, o de mesmo NIP."""
     if u.militar_id:

@@ -70,7 +70,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
-                ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s")],
+                ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s"), ("sentido_fila", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
     "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],
@@ -230,6 +230,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     escalas = {}
     for d in _linhas_de(T, "Escalas"):
         quartos = [Quarto(a, b) for a, b in json.loads(d.pop("quartos") or "[]")]
+        d["sentido_fila"] = d.get("sentido_fila") or "moderno_antigo"          # planilha antiga: padrão atual
         e = Escala(**d, quartos=quartos)
         escalas[e.id] = e
         ctx.escalas.append(e)

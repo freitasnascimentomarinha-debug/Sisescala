@@ -144,6 +144,8 @@ class Escala:
     participa_roxa: bool = True
     # ponto de partida de cada fila na data-base: {"corrida"|"preta"|"vermelha": militar_id}
     ultimo_servico: dict[str, str] = field(default_factory=dict)
+    # sentido da fila: "moderno_antigo" (padrão: começa pelo mais moderno e vai subindo até o mais antigo) ou "antigo_moderno"
+    sentido_fila: str = "moderno_antigo"
 
     def membros_ativos(self, d: date) -> list[str]:
         return [p.militar_id for p in self.membros if p.ativo(d)]
@@ -433,6 +435,12 @@ class Contexto:
         todos = dict.fromkeys(p.militar_id for p in esc.membros)
         alvo = [i for i in todos if ids is None or i in set(ids)]
         return sorted(alvo, key=lambda i: (self.antig(esc, i), i))
+
+    def ordem_da_fila(self, esc: "Escala") -> list[str]:
+        """Ids na ORDEM EM QUE A FILA GIRA. Padrão: do mais moderno para o mais antigo (e volta ao mais moderno);
+        a antiguidade em si continua 1 = mais antigo."""
+        base = self.ordem_na_escala(esc)
+        return base if esc.sentido_fila == "antigo_moderno" else base[::-1]
 
     def numerar_escala(self, esc: "Escala") -> None:
         """Deixa a numeração da escala sequencial (1..n). Quem ainda não tinha número entra depois, pela
