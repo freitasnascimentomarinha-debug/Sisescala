@@ -115,6 +115,17 @@ def _config_admin() -> tuple[str, str | None]:
             seg.get("senha") or os.environ.get("SISESCALA_ADMIN_SENHA") or None)
 
 
+_nip_cfg, _senha_cfg = _config_admin()
+if _senha_cfg:
+    # NIP e senha dos segredos são a fonte da verdade: se mudaram (ou nunca foram aplicados), valem para o administrador
+    # (serve também para recuperar o acesso: troque a senha nos segredos e reinicie o app).
+    try:
+        if auth.sincronizar_admin(ctx, _nip_cfg, _senha_cfg):
+            _gravar()
+    except ValueError as _ex:
+        st.error(f"Senha do administrador nos segredos inválida: {_ex}")
+        st.stop()
+
 if not any(u.admin for u in ctx.usuarios):
     # O sistema cria o administrador sozinho. Sem senha configurada, gera uma provisória forte e a escreve no log do
     # servidor (Manage app → Logs, no Community Cloud); o primeiro acesso exige a troca.

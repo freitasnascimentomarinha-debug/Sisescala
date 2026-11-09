@@ -377,6 +377,7 @@ class Contexto:
     pedidos_acesso: list[PedidoAcesso] = field(default_factory=list)
     convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
+    admin_cfg_sig: str = ""               # assinatura (NIP+senha) dos segredos já aplicada ao administrador
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada
 

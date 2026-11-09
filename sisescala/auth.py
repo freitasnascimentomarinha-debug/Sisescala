@@ -157,6 +157,27 @@ def garantir_admin(ctx: Contexto, nip: str = "admin", senha: str | None = None) 
     return u, gerada
 
 
+def sincronizar_admin(ctx: Contexto, nip: str, senha: str) -> bool:
+    """Aplica ao administrador o NIP e a senha dos segredos/ambiente do deploy, quando eles MUDAM (ou ainda não foram
+    aplicados): cria ou promove a conta, define a senha, ativa e zera bloqueio e tentativas. Se os segredos não mudaram,
+    não mexe (a senha que o administrador trocou depois continua valendo). Retorna True se aplicou."""
+    import hashlib
+    login = normalizar_nip(nip) or "admin"
+    sig = hashlib.sha256(f"{login}\n{senha}".encode()).hexdigest()
+    if ctx.admin_cfg_sig == sig:
+        return False
+    _validar_senha(senha)
+    u = next((x for x in ctx.usuarios if x.login == login), None)
+    if u is None:
+        _registrar(ctx, login, "Administrador", senha, "usuario", "", True, "", "", "", nip=nip.strip() or login)
+    else:
+        u.admin, u.ativo, u.situacao = True, True, "ativo"
+        u.senha_hash, u.trocar_senha = hash_senha(senha), False
+        u.tentativas, u.bloqueado_ate = 0, None
+    ctx.admin_cfg_sig = sig
+    return True
+
+
 def atualizar_contato(ctx: Contexto, usuario_id: str, email: str, ramal: str, celular: str) -> None:
     u = ctx.usuario(usuario_id)
     if u is None:

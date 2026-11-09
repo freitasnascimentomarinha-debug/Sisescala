@@ -245,3 +245,38 @@ def test_desvincular_libera_o_militar_para_o_admin_excluir_do_cadastro_solto():
         cd.excluir_militares(c, ["m5"], adm.id)
     auth.desvincular_usuario(c, adm.id, ana.id)
     assert cd.excluir_militares(c, ["m5"], adm.id) == 1
+
+
+def test_senha_dos_segredos_vale_para_o_admin_mesmo_que_ele_ja_exista_e_esteja_bloqueado():
+    from sisescala.persistencia import de_tabelas, para_tabelas
+    c = Contexto([], [], D)
+    adm, gerada = auth.garantir_admin(c)                               # primeira execução, ainda sem segredos
+    for _ in range(5):                                                 # quem não sabe a senha provisória erra e bloqueia
+        with pytest.raises(auth.AutenticacaoErro):
+            auth.entrar(c, "admin", "11071989")
+    with pytest.raises(auth.AutenticacaoErro, match="bloqueada"):
+        auth.entrar(c, "admin", "11071989")
+    # o dono configura [admin] nos segredos: a senha deles passa a valer e o bloqueio some
+    assert auth.sincronizar_admin(c, "admin", "11071989-ok") is True
+    assert auth.entrar(c, "admin", "11071989-ok").id == adm.id and not adm.trocar_senha
+    assert auth.sincronizar_admin(c, "admin", "11071989-ok") is False        # mesma configuração: não mexe mais
+    # a senha que o admin trocou depois não é desfeita enquanto os segredos não mudarem
+    auth.trocar_senha(c, adm.id, "11071989-ok", "senha-nova-do-admin")
+    assert auth.sincronizar_admin(c, "admin", "11071989-ok") is False
+    assert auth.entrar(c, "admin", "senha-nova-do-admin")
+    # recuperar acesso: mudou a senha nos segredos -> vale a nova
+    assert auth.sincronizar_admin(c, "admin", "outra-senha-secreta") is True
+    assert auth.entrar(c, "admin", "outra-senha-secreta") and c.admin_cfg_sig
+    c2 = de_tabelas(para_tabelas(c))                                          # a assinatura persiste entre execuções
+    assert c2.admin_cfg_sig == c.admin_cfg_sig and auth.sincronizar_admin(c2, "admin", "outra-senha-secreta") is False
+
+
+def test_segredos_com_outro_nip_criam_ou_promovem_conta_admin():
+    c, adm = mundo()
+    comum = aprovado(c, adm, "12345678")
+    assert auth.sincronizar_admin(c, "12.3456.78", "senha-segredos-1") is True      # NIP de uma conta comum: é promovida
+    assert comum.admin and auth.entrar(c, "12345678", "senha-segredos-1").id == comum.id
+    assert auth.sincronizar_admin(c, "99999999", "outra-senha-123") is True          # NIP novo: cria
+    assert next(u for u in c.usuarios if u.login == "99999999").admin
+    with pytest.raises(ValueError):
+        auth.sincronizar_admin(c, "admin", "curta")                                  # senha fraca nos segredos
