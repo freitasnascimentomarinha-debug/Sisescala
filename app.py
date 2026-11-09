@@ -136,15 +136,25 @@ if not any(u.admin for u in ctx.usuarios):
               f"(troque no primeiro acesso)", flush=True)
     _gravar()
 
+def _tela_unica(funcao, titulo: str, caminho: str) -> None:
+    """Mostra uma tela sem menu. Registra uma navegação oculta de uma só página: se o script só parasse (st.stop), o
+    menu lateral da execução anterior (usuário que acabou de sair) continuaria na tela."""
+    def pagina():
+        st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl'],"
+                    "[data-testid='stExpandSidebarButton']{display:none !important}</style>", unsafe_allow_html=True)
+        funcao()
+    st.navigation([st.Page(pagina, title=titulo, url_path=caminho, default=True)], position="hidden").run()
+
+
 user = ctx.usuario(st.session_state.get("uid", ""))
 if user is None or not user.ativo:
     st.session_state.pop("uid", None)
-    tela_login(ctx, ARMAZENAMENTO)
+    _tela_unica(lambda: tela_login(ctx, ARMAZENAMENTO), "Entrar", "entrar")
     _gravar()
     st.stop()
 
 if user.trocar_senha:                       # senha provisória (administrador gerado ou redefinida): troca obrigatória
-    tela_troca_senha(ctx, user)
+    _tela_unica(lambda: tela_troca_senha(ctx, user), "Nova senha", "nova-senha")
     _gravar()
     st.stop()
 
