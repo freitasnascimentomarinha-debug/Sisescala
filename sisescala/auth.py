@@ -183,6 +183,30 @@ def sincronizar_admin(ctx: Contexto, nip: str, senha: str) -> bool:
     return True
 
 
+def atualizar_dados(ctx: Contexto, usuario_id: str, nome: str, nome_guerra: str, posto: str, especialidade: str,
+                    om: str) -> None:
+    """A própria pessoa mantém nome, nome de guerra, posto/graduação, especialidade e OM (promoção, mudança de OM...).
+    Se a conta está vinculada a um militar, o cadastro dele acompanha (como acontece com o contato)."""
+    u = ctx.usuario(usuario_id)
+    if u is None:
+        raise ValueError("usuário não encontrado")
+    if not nome.strip():
+        raise ValueError("informe o nome")
+    if not nome_guerra.strip():
+        raise ValueError("informe o nome de guerra")
+    if not posto.strip():
+        raise ValueError("informe o posto ou a graduação")
+    if not om.strip() and not u.admin:
+        raise ValueError("informe a sua OM")
+    u.nome, u.nome_guerra, u.posto, u.especialidade, u.om = (nome.strip(), nome_guerra.strip(), posto.strip(),
+                                                              especialidade.strip(), om.strip())
+    m = next((x for x in ctx.militares if x.id == u.militar_id), None)
+    if m:
+        m.nome, m.posto, m.especialidade = u.nome_guerra, u.posto, u.especialidade
+        if u.om:
+            m.om = u.om
+
+
 def atualizar_contato(ctx: Contexto, usuario_id: str, email: str, ramal: str, celular: str) -> None:
     u = ctx.usuario(usuario_id)
     if u is None:

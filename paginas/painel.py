@@ -71,6 +71,8 @@ with esq:
             itens.append(("paginas/devolucoes.py", f"{len(devs)} serviço(s) a devolver", ":material/undo:"))
         if conflitos and P.gerir:
             itens.append(("paginas/escala.py", f"{len(conflitos)} conflito(s) de escala sem troca possível", ":material/warning:"))
+        if not (user.nome_guerra and user.posto):
+            itens.append(("paginas/conta.py", "Complete o seu cadastro: nome de guerra e posto/graduação", ":material/badge:"))
         if not user.pin_hash:
             itens.append(("paginas/conta.py", "Cadastre o seu PIN (necessário para pedir trocas e assinar)", ":material/key:"))
         if not user.militar_id and not P.gerir:

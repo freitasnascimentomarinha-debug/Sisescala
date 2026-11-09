@@ -12,6 +12,25 @@ ui.cabecalho("Minha conta", f"NIP {user.login}" + (f" · {user.om}" if user.om e
 esq, dir_ = st.columns(2, gap="large")
 with esq:
     with st.container(border=True):
+        ui.secao("Meus dados")
+        if not (user.nome_guerra and user.posto):
+            st.warning("Complete o seu cadastro: informe o nome de guerra e o posto ou a graduação.")
+        with st.form("meus_dados", border=False):
+            nm = st.text_input("Nome completo", user.nome)
+            a, b, c = st.columns([1.2, 1, 1])
+            ng = a.text_input("Nome de guerra", user.nome_guerra)
+            ps = b.text_input("Posto ou graduação", user.posto, placeholder="Ex.: 2ºSG")
+            es = c.text_input("Especialidade", user.especialidade, placeholder="Ex.: PL")
+            om = st.text_input("OM", user.om)
+            if user.militar_id:
+                st.caption("Sua conta está vinculada a um militar: o cadastro dele acompanha estas informações.")
+            if ng.strip() or ps.strip():
+                st.caption("Vai aparecer assim: **" + ctx.rotulo_do_usuario(type(user)(
+                    user.id, nm, user.login, "", "", "", False, True, nip=user.nip, nome_guerra=ng, posto=ps,
+                    especialidade=es)) + "**")
+            if st.form_submit_button("Salvar meus dados", type="primary"):
+                agir(lambda: auth.atualizar_dados(ctx, uid, nm, ng, ps, es, om), "Dados atualizados.")
+    with st.container(border=True):
         ui.secao("Contato")
         with st.form("meu_contato", border=False):
             em = st.text_input("E-mail", user.email)

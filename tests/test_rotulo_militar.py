@@ -121,3 +121,24 @@ def test_rotulo_da_conta_responsavel_e_opcoes_de_detalhista_sem_vazar_outros_cad
     u.militar_id = "m2"                                               # vinculada: vale o cadastro do militar
     assert c.rotulo_do_usuario(u) == c.militar("m2").rotulo
     assert c.rotulo_do_usuario(adm) == "Administrador (admin)"        # conta sem dados de militar: nome e NIP/login
+
+
+def test_a_pessoa_atualiza_os_proprios_dados_e_o_militar_vinculado_acompanha():
+    c, adm = mundo()
+    u = auth.criar_usuario(c, adm.id, "88000088", "Beltrano", SENHA, nome_guerra="", posto="", militar_id="m4")  # conta antiga, sem dados
+    with pytest.raises(ValueError, match="nome de guerra"):
+        auth.atualizar_dados(c, u.id, "Beltrano da Silva", "", "CT", "", "CAAML")
+    with pytest.raises(ValueError, match="posto"):
+        auth.atualizar_dados(c, u.id, "Beltrano da Silva", "Beltrano", "", "", "CAAML")
+    with pytest.raises(ValueError, match="OM"):
+        auth.atualizar_dados(c, u.id, "Beltrano da Silva", "Beltrano", "CT", "", "")
+    auth.atualizar_dados(c, u.id, "Beltrano da Silva", "Beltrano", "1ºTEN", "ET", "COPAB")
+    assert (u.nome, u.nome_guerra, u.posto, u.especialidade, u.om) == ("Beltrano da Silva", "Beltrano", "1ºTEN", "ET", "COPAB")
+    m = c.militar("m4")                                     # vinculado: o cadastro do militar acompanha (promoção etc.)
+    assert (m.nome, m.posto, m.especialidade, m.om) == ("Beltrano", "1ºTEN", "ET", "COPAB")
+    assert m.rotulo == "1ºTEN-ET Beltrano"
+    auth.atualizar_dados(c, u.id, "Beltrano da Silva", "Beltrano", "CC", "", "COPAB")        # promoção: atualiza de novo
+    assert c.militar("m4").posto == "CC" and c.militar("m4").especialidade == ""
+    adm.nome_guerra = ""                                    # o administrador não precisa de OM
+    auth.atualizar_dados(c, adm.id, "Administrador", "Admin", "CMG", "", "")
+    assert adm.posto == "CMG"

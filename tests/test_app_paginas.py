@@ -240,3 +240,16 @@ def test_tela_usuarios_mostra_desvincular_para_conta_vinculada(app):
     sel.select(ana.id).run()
     assert not app.exception
     assert any("vinculada ao militar" in c.value for c in app.caption)
+
+
+def test_minha_conta_salva_nome_de_guerra_posto_e_especialidade(app):
+    _criar_admin(app)
+    app.switch_page("paginas/conta.py").run()
+    assert not app.exception and any("Complete o seu cadastro" in w.value for w in app.warning)
+    _texto(app, "Nome de guerra").input("Almirante")
+    _texto(app, "Posto ou graduação").input("CMG")
+    _texto(app, "Especialidade").input("MO")
+    next(b for b in app.button if b.label == "Salvar meus dados").click().run()
+    assert not app.exception
+    u = app.session_state["ctx"].usuario("u1")
+    assert (u.nome_guerra, u.posto, u.especialidade) == ("Almirante", "CMG", "MO")
