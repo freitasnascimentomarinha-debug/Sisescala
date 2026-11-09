@@ -49,7 +49,7 @@ class Pagina:
 
     @property
     def nomes_u(self) -> dict[str, str]:
-        return {u.id: u.nome for u in self.ctx.usuarios}
+        return {u.id: self.ctx.rotulo_do_usuario(u) for u in self.ctx.usuarios}
 
     def editaveis(self) -> list[Escala]:
         return [e for e in self.visiveis if pm.eh_detalhista(self.ctx, self.uid, e)]

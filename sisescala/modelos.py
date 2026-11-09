@@ -449,6 +449,13 @@ class Contexto:
         """Data a partir da qual a escala é calculada (cada escala tem a sua, para uma importação não mexer nas outras)."""
         return esc.data_base or self.data_base
 
+    def rotulo_do_usuario(self, u: "Usuario") -> str:
+        """Como a conta aparece nas telas: como o militar dela (se vinculada) ou GRAD-ESP Nome de guerra (NIP)."""
+        m = next((x for x in self.militares if x.id == u.militar_id), None) if u.militar_id else None
+        if m is not None:
+            return m.rotulo
+        return rotulo_militar(Militar(u.id, u.nome_guerra or u.nome, u.posto, 0, u.nip, especialidade=u.especialidade))
+
     def militar(self, mid: str) -> Militar:
         return next(m for m in self.militares if m.id == mid)
 

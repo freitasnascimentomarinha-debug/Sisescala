@@ -21,6 +21,19 @@ def _horas(e):
     return (int(e.quartos[0].fim[:2]) - int(e.quartos[0].inicio[:2])) % 24 or 24 if e.quartos else 0
 
 
+def _militares_da_escolha(e: Escala | None) -> list[str]:
+    """Militares que o detalhista pode indicar como detalhista/auxiliares: os das escalas dele e o militar da conta dele
+    (o administrador vê todos). Nunca os cadastros de outros detalhistas."""
+    if user.admin:
+        return [m.id for m in ctx.militares]
+    ids = {p.militar_id for esc in P.editaveis() for p in esc.membros}
+    ids |= {p.militar_id for p in (e.membros if e else [])}
+    meu = gestao.militar_do_detalhista(ctx, user)
+    if meu:
+        ids.add(meu)
+    return [m.id for m in sorted((x for x in ctx.militares if x.id in ids), key=lambda m: m.nome.lower())]
+
+
 def _campos(e: Escala | None, k: str):
     """Formulário compartilhado entre criar e editar. Retorna os valores digitados."""
     d = e or Escala("", "", data_base=date.today())   # quem cria vira o detalhista
@@ -46,12 +59,21 @@ def _campos(e: Escala | None, k: str):
                       format_func=lambda x: "sem quartos" if x == 0 else f"de {x}h")
     ant = st.number_input("Antecedência mínima da papeleta de troca (horas)", 0, 720, d.antecedencia_horas, key=f"{k}_ant")
     st.html('<div class="secao">Detalhista e auxiliar</div>')
+    dono = ctx.usuario(e.dono_id) if e and e.dono_id else user
+    st.html(f'<div class="f"><small>Detalhista (responsável pela escala)</small><b>{ui.esc(nomes_u.get(dono.id, dono.nome)) if dono else "—"}</b></div>')
+    st.caption("O responsável é quem criou a escala. Para passar a função a outra pessoa, use **Entregar o detalhe** no cartão da escala.")
+    opc = _militares_da_escolha(e)
+    if not opc:
+        st.info("Ainda não há militares cadastrados: tudo bem, você continua sendo o detalhista. Depois de cadastrar os "
+                "militares (Militares ou Importar planilha), volte aqui para indicar qual deles é o militar do detalhista.")
     a, b = st.columns(2)
-    ids = [""] + list(nomes_m)
-    det = a.selectbox("Detalhista da escala (um só)", ids, ids.index(d.detalhista_id) if d.detalhista_id in ids else 0,
+    ids = [""] + opc
+    atual = d.detalhista_id if d.detalhista_id in ids else (gestao.militar_do_detalhista(ctx, dono) if dono else "")
+    det = a.selectbox("Militar do detalhista (fica fora da escala)", ids, ids.index(atual) if atual in ids else 0,
                       format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_det",
-                      help="Pode ser o mesmo detalhista de várias escalas. Por padrão ele fica fora da escala.")
-    aux = b.multiselect("Auxiliares do detalhista (vários)", [m for m in ids if m], [m for m in d.auxiliares if m in nomes_m],
+                      help="Se o detalhista também é um militar da lista, escolha-o: ele fica dispensado de serviço nesta escala "
+                           "(a menos que marque que concorre). Se não for da lista, deixe “nenhum”.")
+    aux = b.multiselect("Auxiliares do detalhista (vários)", opc, [m for m in d.auxiliares if m in opc],
                         format_func=nomes_m.get, key=f"{k}_aux",
                         help="Os auxiliares aprovam papeletas e vínculos e fazem lançamentos desta escala (menos os próprios), "
                              "concorrendo ou não à escala. Precisam ter conta ligada ao militar.")
@@ -109,7 +131,7 @@ for e in minhas:
     dono = e.dono_id == uid
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.1rem;'
-                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else "não definido")}{ui.chip("Auxiliares", ", ".join(nomes_m.get(a, "—") for a in e.auxiliares)) if e.auxiliares else ""}{ui.chip("Modo", MODOS[e.modo])}'
+                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else nomes_u.get(e.dono_id, "—"))}{ui.chip("Auxiliares", ", ".join(nomes_m.get(a, "—") for a in e.auxiliares)) if e.auxiliares else ""}{ui.chip("Modo", MODOS[e.modo])}'
                 f'{ui.chip("Prioridade", e.prioridade)}{ui.chip(str(e.militares_dia) + " por dia")}'
                 f'{ui.chip(str(len(e.membros)) + " militares")}{ui.chip("Descanso", str(e.folgas_minimas) + "x1")}'
                 f'<div style="margin-left:auto">{ui.pill("Responsável: " + nomes_u.get(e.dono_id, e.dono_id or "—"), "azul" if dono else "cinza", False)}</div></div>')

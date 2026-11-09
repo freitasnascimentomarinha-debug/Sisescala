@@ -110,3 +110,14 @@ def test_papeleta_pdf_usa_o_rotulo_completo():
     p = Papeleta("pp1", 1, "e1", "m1", D, "m2", D + timedelta(days=1), datetime(2027, 2, 20, 9, 0), adm.id, "teste")
     texto = " ".join(pg.extract_text() for pg in PdfReader(BytesIO(pdf_papeleta(c, p))).pages).replace("\n", " ")
     assert "2ºSG-PL Freitas" in texto and "(11.0316.11)" in texto and "CB-MO Souza" in texto
+
+
+def test_rotulo_da_conta_responsavel_e_opcoes_de_detalhista_sem_vazar_outros_cadastros():
+    c, adm = mundo()
+    # conta com posto/guerra/especialidade: aparece como o militar
+    u = auth.criar_usuario(c, adm.id, "88000088", "Beltrano da Silva", SENHA, nome_guerra="Beltrano", posto="1ºSG",
+                           especialidade="CL")
+    assert c.rotulo_do_usuario(u) == "1ºSG-CL Beltrano (88.0000.88)"
+    u.militar_id = "m2"                                               # vinculada: vale o cadastro do militar
+    assert c.rotulo_do_usuario(u) == c.militar("m2").rotulo
+    assert c.rotulo_do_usuario(adm) == "Administrador (admin)"        # conta sem dados de militar: nome e NIP/login
