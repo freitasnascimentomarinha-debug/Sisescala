@@ -33,7 +33,7 @@ st.html("".join([ui.chip("Funciona", "todos os dias" if esc.funciona_em == "todo
                  ui.chip("UF dos feriados", uf or "—"), ui.chip("Modo", {"corrida": "Corrida", "preta_vermelha": "Preta e vermelha", "eventos": "Por evento"}.get(esc.modo, esc.modo))]))
 st.caption("Como contam: **preta** = dia útil · **vermelha** = sábado, domingo, feriado e dia sem expediente · "
            "**roxa** = período com fila própria (recesso etc.). Para mudar quando a escala funciona ou se participa da roxa, "
-           "use Escalas → Editar.")
+           "use Gerenciar escalas → Editar.")
 
 CONTA = {"": "Automático (feriado e sem expediente contam como vermelha)", "preta": "Preta (conta como dia útil)",
          "vermelha": "Vermelha (conta como sábado, domingo ou feriado)"}
@@ -64,7 +64,7 @@ def dialogo_incluir():
     if tipo == "roxa":
         st.info("O período roxo tem fila própria e a escala funciona todos os dias dele.")
         if not esc.participa_roxa:
-            st.warning("Esta escala não participa da roxa. Ative em Escalas → Editar para o período valer.")
+            st.warning("Esta escala não participa da roxa. Ative em Gerenciar escalas → Editar para o período valer.")
     else:
         conta = st.radio("4 · Como o dia conta", list(CONTA), format_func=CONTA.get, key=f"cal_conta_{k}")
     todas = P.user.admin and st.checkbox("Vale para todas as escalas do sistema (administrador)", key=f"cal_todas_{k}")

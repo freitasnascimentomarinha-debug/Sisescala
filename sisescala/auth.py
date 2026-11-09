@@ -73,10 +73,11 @@ def _novo_id(ctx: Contexto) -> str:
 
 
 def _registrar(ctx, login, nome, senha, perfil, militar_id, admin, email, ramal, celular, nip="", om="",
-               situacao="ativo", trocar_senha=False) -> Usuario:
+               situacao="ativo", trocar_senha=False, nome_guerra="", posto="", especialidade="") -> Usuario:
     u = Usuario(_novo_id(ctx), nome.strip() or login, login, hash_senha(senha), militar_id, perfil, admin,
                 ativo=situacao == "ativo", email=email, ramal=ramal, celular=celular, nip=nip or login,
-                om=om.strip(), situacao=situacao, trocar_senha=trocar_senha)
+                om=om.strip(), situacao=situacao, trocar_senha=trocar_senha, nome_guerra=nome_guerra.strip(),
+                posto=posto.strip(), especialidade=especialidade.strip())
     ctx.usuarios.append(u)
     return u
 
@@ -84,7 +85,7 @@ def _registrar(ctx, login, nome, senha, perfil, militar_id, admin, email, ramal,
 def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, senha: str, *,
                   perfil: str = "usuario", militar_id: str = "", admin: bool = False,
                   email: str = "", ramal: str = "", celular: str = "", exigir_contato: bool = False,
-                  om: str = "") -> Usuario:
+                  om: str = "", nome_guerra: str = "", posto: str = "", especialidade: str = "") -> Usuario:
     """Cria uma conta já ATIVA. Só o administrador cria assim; a primeira conta do sistema nasce administradora.
 
     O cadastro normal é `cadastrar_se` (pendente de aprovação). `militar_id` existe só para migração e testes: o
@@ -110,11 +111,11 @@ def criar_usuario(ctx: Contexto, quem_id: str | None, login: str, nome: str, sen
         email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=exigir_contato)
     _validar_senha(senha)
     return _registrar(ctx, login_n, nome, senha, perfil, militar_id, admin or primeiro, email, ramal, celular,
-                      nip=login.strip(), om=om)
+                      nip=login.strip(), om=om, nome_guerra=nome_guerra, posto=posto, especialidade=especialidade)
 
 
 def cadastrar_se(ctx: Contexto, nip: str, nome: str, senha: str, email: str, ramal: str, celular: str,
-                 om: str = "") -> Usuario:
+                 om: str = "", nome_guerra: str = "", posto: str = "", especialidade: str = "") -> Usuario:
     """O próprio militar pede o cadastro com NIP, OM e contato. A conta fica PENDENTE: só entra depois que o
     administrador aprovar. Os administradores são avisados."""
     if not ctx.cadastro_aberto:
@@ -126,10 +127,14 @@ def cadastrar_se(ctx: Contexto, nip: str, nome: str, senha: str, email: str, ram
         raise ValueError("informe o nome")
     if not om.strip():
         raise ValueError("informe a sua OM")
+    if not nome_guerra.strip():
+        raise ValueError("informe o nome de guerra")
+    if not posto.strip():
+        raise ValueError("informe o posto ou a graduação")
     email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=True)
     _validar_senha(senha)
     u = _registrar(ctx, login, nome, senha, "usuario", "", False, email, ramal, celular, nip=nip.strip(), om=om,
-                   situacao="pendente")
+                   situacao="pendente", nome_guerra=nome_guerra, posto=posto, especialidade=especialidade)
     from . import notificacoes as nt
     nt.notificar(ctx, [a.id for a in _admins_ativos(ctx)], "cadastro",
                  f"Novo cadastro aguardando aprovação: {u.nome} (NIP {u.nip}, OM {u.om}).")
@@ -362,7 +367,8 @@ def redefinir_senha(ctx: Contexto, admin_id: str, alvo_id: str, nova: str) -> No
 
 def editar_usuario(ctx: Contexto, admin_id: str, alvo_id: str, *, nome: str | None = None, nip: str | None = None,
                    om: str | None = None, email: str | None = None, ramal: str | None = None,
-                   celular: str | None = None, admin: bool | None = None) -> Usuario:
+                   celular: str | None = None, admin: bool | None = None, nome_guerra: str | None = None,
+                   posto: str | None = None, especialidade: str | None = None) -> Usuario:
     """O administrador corrige nome, NIP, OM, contato e o papel de administrador de uma conta."""
     _exigir_admin(ctx, admin_id)
     alvo = _alvo(ctx, alvo_id)
@@ -377,6 +383,12 @@ def editar_usuario(ctx: Contexto, admin_id: str, alvo_id: str, *, nome: str | No
         alvo.nome = nome.strip()
     if om is not None:
         alvo.om = om.strip()
+    if nome_guerra is not None:
+        alvo.nome_guerra = nome_guerra.strip()
+    if posto is not None:
+        alvo.posto = posto.strip()
+    if especialidade is not None:
+        alvo.especialidade = especialidade.strip()
     if any(v is not None for v in (email, ramal, celular)):
         alvo.email, alvo.ramal, alvo.celular = normalizar_contato(
             alvo.email if email is None else email, alvo.ramal if ramal is None else ramal,

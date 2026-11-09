@@ -15,7 +15,7 @@ if P.decide:
     with st.container(border=True):
         ui.secao("Pedidos aguardando decisão")
         st.caption("O militar criou a conta e pede para ser reconhecido como um militar de uma das suas escalas. Confira nome, "
-                   "NIP e contato antes de aprovar. Para ele poder pedir, o detalhista compartilha a escala com o login dele (Gestão → Escalas).")
+                   "NIP e contato antes de aprovar. Para ele poder pedir, o detalhista compartilha a escala com o login dele (Gerenciar escalas).")
         fila = vc.pendentes_para(ctx, uid)
         if not fila:
             ui.vazio("Nenhum pedido pendente", "", "check")
@@ -51,7 +51,7 @@ if P.decide:
             cu = st.selectbox("Usuário", [u.id for u in achados], key="conv_user",
                               format_func=lambda i: f"{ctx.usuario(i).nome} · OM {ctx.usuario(i).om or '—'}")
             cm = st.selectbox("Quem ele é nesta escala", livres_c, key="conv_mil",
-                              format_func=lambda i: f"{ctx.militar(i).posto} {ctx.militar(i).nome}") if livres_c else None
+                              format_func=lambda i: ctx.militar(i).rotulo) if livres_c else None
             if not livres_c:
                 st.warning("Todos os militares desta escala já estão vinculados ou com pedido pendente.")
             if cm and st.button("Enviar convite", type="primary", icon=":material/send:"):
@@ -80,7 +80,7 @@ if not user.militar_id and vc.convites_do_usuario(ctx, uid):
         for c in vc.convites_do_usuario(ctx, uid):
             mx, de = ctx.militar(c.militar_id), ctx.usuario(c.convidado_por)
             with st.container(border=True):
-                st.html(ui.pessoa(f"{mx.posto} {mx.nome}".strip(), f"Escala {ctx.escala(c.escala_id).nome}",
+                st.html(ui.pessoa(mx.rotulo, f"Escala {ctx.escala(c.escala_id).nome}",
                                   f"Convite de {de.nome if de else '—'} em {c.criado_em:%d/%m/%Y %H:%M}", ui.pill("convite", "azul")))
                 k1, k2, k3 = st.columns(3)
                 cnip = k1.text_input("Seu NIP", key=f"cn_{c.id}")
@@ -114,7 +114,7 @@ if not user.militar_id:
             ve = st.selectbox("Escala", [e.id for e in P.visiveis], format_func=lambda i: ctx.escala(i).nome)
             livres = vc.militares_livres(ctx, ve)
             vm = st.selectbox("Quem é você nesta escala?", livres,
-                              format_func=lambda i: f"{ctx.militar(i).posto} {ctx.militar(i).nome}") if livres else None
+                              format_func=lambda i: ctx.militar(i).rotulo) if livres else None
             c1, c2, c3 = st.columns(3)
             vnip = c1.text_input("Seu NIP")
             vpin = c2.text_input("Crie um PIN (4 a 6 dígitos)", type="password")

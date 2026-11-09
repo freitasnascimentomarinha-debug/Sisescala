@@ -39,7 +39,7 @@ with dir_:
         ui.secao("Vínculo")
         if user.militar_id:
             m = ctx.militar(user.militar_id)
-            st.html(ui.pessoa(m.nome, f"{m.posto} · NIP {m.nip or '—'}", f"OM {m.om or '—'}", ui.pill("vinculado", "verde")))
+            st.html(ui.pessoa(m.rotulo, f"OM {m.om or '—'}", "", ui.pill("vinculado", "verde")))
         elif P.gerir:
             st.caption("Conta de gestão, sem vínculo com um militar.")
         else:

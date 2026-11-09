@@ -32,6 +32,13 @@ def militares_livres(ctx: Contexto, escala_id: str) -> list[str]:
     return sorted((m for m in ids if m not in ocupados), key=lambda i: ctx.antig(esc, i))
 
 
+def _completar_cadastro(m, u) -> None:
+    """Contato, posto e especialidade informados na conta completam os campos VAZIOS do militar (nunca sobrescrevem)."""
+    for campo in ("email", "ramal", "celular", "posto", "especialidade"):
+        if not getattr(m, campo) and getattr(u, campo):
+            setattr(m, campo, getattr(u, campo))
+
+
 def pendente_do_usuario(ctx: Contexto, usuario_id: str) -> Vinculo | None:
     return next((v for v in ctx.vinculos if v.usuario_id == usuario_id and v.status == "pendente"), None)
 
@@ -82,9 +89,7 @@ def aprovar(ctx: Contexto, usuario_id: str, vid: str, agora: datetime | None = N
         raise ValueError("esse militar já foi vinculado a outra conta")
     m = ctx.militar(v.militar_id)
     u.militar_id, u.pin_hash = m.id, v.pin_hash
-    for campo in ("email", "ramal", "celular"):          # contato da conta completa o cadastro do militar
-        if not getattr(m, campo) and getattr(u, campo):
-            setattr(m, campo, getattr(u, campo))
+    _completar_cadastro(m, u)
     v.status, v.decidido_por, v.decidido_em = "aprovado", usuario_id, agora
     nt.notificar(ctx, [u.id], "vinculo", f"Seu vínculo com {m.nome} foi APROVADO. Você já pode pedir trocas e assinar com o PIN.",
                  v.escala_id, agora)
@@ -206,9 +211,7 @@ def aceitar_convite(ctx: Contexto, usuario_id: str, cid: str, nip: str, pin: str
                 hash_pin(pin), "aprovado", c.convidado_por, agora)
     ctx.vinculos.append(v)
     u.militar_id, u.pin_hash = m.id, v.pin_hash
-    for campo in ("email", "ramal", "celular"):
-        if not getattr(m, campo) and getattr(u, campo):
-            setattr(m, campo, getattr(u, campo))
+    _completar_cadastro(m, u)
     for x in ctx.vinculos:                                   # um pedido que ele tivesse feito deixa de valer
         if x is not v and x.usuario_id == usuario_id and x.status == "pendente":
             x.status = "cancelado"

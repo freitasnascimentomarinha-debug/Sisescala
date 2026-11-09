@@ -24,7 +24,7 @@ def mundo():
 
 
 def aprovado(c, adm, nip, nome="Fulano", om="CAAML"):
-    u = auth.cadastrar_se(c, nip, nome, SENHA, "a@b.com", "2345", "21987654321", om=om)
+    u = auth.cadastrar_se(c, nip, nome, SENHA, "a@b.com", "2345", "21987654321", om=om, nome_guerra=nome, posto="CB")
     auth.aprovar_usuario(c, adm.id, u.id)
     return u
 
@@ -53,7 +53,7 @@ def test_admin_automatico_com_senha_configurada_ou_provisoria():
 # ---------------------------------------------------------------- cadastro, NIP e login
 def test_login_por_nip_com_pontuacao_e_mensagens():
     c, adm = mundo()
-    u = auth.cadastrar_se(c, "12.3456.78", "Fulano", SENHA, "a@b.com", "2345", "21987654321", om="CAAML")
+    u = auth.cadastrar_se(c, "12.3456.78", "Fulano", SENHA, "a@b.com", "2345", "21987654321", om="CAAML", nome_guerra="Guerra", posto="CB")
     with pytest.raises(auth.AutenticacaoErro, match="aprova"):
         auth.entrar(c, "12345678", SENHA)
     with pytest.raises(auth.AutenticacaoErro, match="NIP ou senha incorretos"):

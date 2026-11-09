@@ -10,7 +10,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .modelos import CATEGORIAS, Contexto, horarios_curtos
+from .modelos import CATEGORIAS, Contexto, horarios_curtos, rotulo_militar
 from .motor import Resultado
 
 ASSINATURAS = ("Detalhista", "Encarregado do Detalhe", "Vice-Diretor")
@@ -69,21 +69,21 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
         partes = []
         for a in dia.efetivos:
             h = f" ({horarios_curtos(a.horarios)})" if a.horarios else ""
-            partes.append(f"{ctx.militar(a.militar_id).nome} [{a.sigla}]{h}")
+            partes.append(f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]{h}")
             if a.obs and a.origem != "normal":
                 obs.append(f"{d:%d/%m}: {a.obs}")
         for a in dia.alocacoes:                 # dispensado do serviço escalado: Disp + justificativa do detalhista
             if a.origem == "falta":
-                partes.append(f"<i>{ctx.militar(a.militar_id).nome} [Disp]</i>")
+                partes.append(f"<i>{rotulo_militar(ctx.militar(a.militar_id))} [Disp]</i>")
                 obs.append(f"{d:%d/%m}: {ctx.militar(a.militar_id).nome} – {a.obs}")
-        rets = [f"{ctx.militar(a.militar_id).nome} [{a.sigla}]" for a in dia.retens]
+        rets = [f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]" for a in dia.retens]
         obs += [f"{d:%d/%m}: {a.obs}" for a in dia.retens if a.obs]
         lin = [data_cel, Paragraph("<br/>".join(partes) or "-", cel), Paragraph("<br/>".join(rets) or "-", cel)]
         if eventos:
             lin.append(Paragraph(dia.descricao or "-", cel))
         linhas.append(lin)
     # tabela mais estreita que as linhas de texto e centralizada no documento
-    larguras = [18 * mm, 62 * mm, 38 * mm] + ([40 * mm] if eventos else [])
+    larguras = [17 * mm, 80 * mm, 52 * mm] + ([34 * mm] if eventos else [])
     t = Table(linhas, colWidths=larguras, repeatRows=1, hAlign="CENTER")
     estilo = [("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
               ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -122,7 +122,7 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
                             bottomMargin=16 * mm)
     st = getSampleStyleSheet()
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
-    dado = lambda m: f"{m.posto} {m.nome}".strip() + (f" – NIP {m.nip}" if m.nip else "")  # noqa: E731
+    dado = rotulo_militar
     titulo = "PAPELETA DE DEVOLUÇÃO DE SERVIÇO" if devolucao else "PAPELETA DE TROCA DE SERVIÇO"
     el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}")
     dados = [

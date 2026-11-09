@@ -24,7 +24,7 @@ with esq:
         ui.secao("Cabeçalho e instruções")
         om = st.text_input("OM que gerencia a escala (cabeçalho do documento)", esc.om, key=CHAVE_OM)
         if not esc.om:
-            st.caption("Dica: cadastre a OM em Gestão → Escalas para ela sair sempre no cabeçalho.")
+            st.caption("Dica: cadastre a OM em Gerenciar escalas para ela sair sempre no cabeçalho.")
         ins = st.text_area("Instruções do serviço", key="det_ins", height=120)
         rec = st.text_area("Recomendações", key="det_rec", height=100)
         reg = st.text_area("Regras (horário de parada, acumulação de trabalho etc.)", key="det_reg", height=100)

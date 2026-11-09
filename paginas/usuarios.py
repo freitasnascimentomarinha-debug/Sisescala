@@ -21,7 +21,7 @@ with st.container(border=True):
         ui.vazio("Nenhum cadastro pendente", "")
     for u in pend:
         c1, c2 = st.columns([3, 1.6])
-        c1.html(ui.pessoa(u.nome, f"NIP {u.nip or u.login} · OM {u.om}", f"✉ {u.email} · ramal {u.ramal} · 📱 {u.celular}"))
+        c1.html(ui.pessoa(u.nome, f"{u.posto}{'-' + u.especialidade if u.posto and u.especialidade else u.especialidade} {u.nome_guerra} · NIP {u.nip or u.login} · OM {u.om}".strip(), f"✉ {u.email} · ramal {u.ramal} · 📱 {u.celular}"))
         with c2:
             a, b = st.columns(2)
             if a.button("Aprovar", key=f"ap_{u.id}", type="primary", use_container_width=True):
@@ -31,7 +31,8 @@ with st.container(border=True):
 
 with st.container(border=True):
     ui.secao("Contas")
-    tab = [{"NIP": u.nip or u.login, "Nome": u.nome, "OM": u.om, "Situação": u.situacao,
+    tab = [{"NIP": u.nip or u.login, "Nome": u.nome, "OM": u.om, "Nome de guerra": u.nome_guerra, "Posto/Grad.": u.posto, "Espec.": u.especialidade,
+            "Situação": u.situacao,
             "Admin": "sim" if u.admin else "", "E-mail": u.email, "Ramal": u.ramal, "Celular": u.celular,
             "PIN": "sim" if u.pin_hash else "não",
             "Bloqueada até": f"{u.bloqueado_ate:%d/%m %H:%M}" if u.bloqueado_ate else ""} for u in ctx.usuarios]
@@ -48,13 +49,18 @@ with st.container(border=True):
             a, b = st.columns(2)
             nip = a.text_input("NIP", al.nip or al.login)
             om = b.text_input("OM", al.om)
-            nome = st.text_input("Nome", al.nome)
+            nome = st.text_input("Nome completo", al.nome)
+            a, b, c = st.columns([1.2, 1, 1])
+            guerra = a.text_input("Nome de guerra", al.nome_guerra)
+            posto = b.text_input("Posto ou graduação", al.posto)
+            esp = c.text_input("Especialidade", al.especialidade)
             a, b, c = st.columns(3)
             em, ra, ce = a.text_input("E-mail", al.email), b.text_input("Ramal", al.ramal), c.text_input("Celular", al.celular)
             adm = st.checkbox("Administrador", al.admin)
             if st.form_submit_button("Salvar alterações", type="primary", use_container_width=True):
                 agir(lambda: auth.editar_usuario(ctx, uid, alvo_id, nome=nome, nip=nip, om=om, email=em, ramal=ra,
-                                                 celular=ce, admin=adm), "Conta atualizada.")
+                                                 celular=ce, admin=adm, nome_guerra=guerra, posto=posto,
+                                                 especialidade=esp), "Conta atualizada.")
     with dir_:
         if al.situacao == "bloqueado":
             if st.button("Desbloquear conta", type="primary", use_container_width=True):

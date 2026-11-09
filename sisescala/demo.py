@@ -10,7 +10,9 @@ POSTOS = ["CMG", "CF", "CC", "CT", "1T", "2T", "SO", "1SG", "2SG", "3SG", "CB", 
 
 def contexto_demo(base: date | None = None) -> Contexto:
     base = base or date.today()
-    mil = [Militar(f"m{i}", f"Militar {i:02d}", POSTOS[i - 1], i) for i in range(1, 16)]
+    esp = ["", "", "", "", "", "", "", "PL", "MO", "CL", "ET", "MO", "", "", ""]
+    mil = [Militar(f"m{i}", f"Militar {i:02d}", POSTOS[i - 1], i, f"11.{300 + i:04d}.{10 + i}", especialidade=esp[i - 1])
+           for i in range(1, 16)]
     ids = [m.id for m in mil]
     escalas = [
         Escala("per", "Serviço de Pernoite", "PER", dono_id="u1", om="Organização Militar de Demonstração", tipo="Pernoite", prioridade=5,

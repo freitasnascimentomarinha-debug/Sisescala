@@ -49,13 +49,18 @@ def tela_login(ctx: Contexto, armazenamento: str) -> None:
                     cn_nip = c1.text_input("NIP (somente números)", key="cad_nip")
                     c_om = c2.text_input("OM", key="cad_om")
                     cn = st.text_input("Nome completo")
+                    c1, c2, c3 = st.columns([1.2, 1, 1])
+                    cg = c1.text_input("Nome de guerra", key="cad_guerra")
+                    cp = c2.text_input("Posto ou graduação", key="cad_posto", placeholder="Ex.: 2ºSG")
+                    ce_ = c3.text_input("Especialidade", key="cad_esp", placeholder="Ex.: PL (opcional)")
                     cs = st.text_input("Senha (8+)", type="password", key="cad_senha")
                     c1, c2 = st.columns(2)
                     ce, cr = c1.text_input("E-mail para contato"), c2.text_input("Ramal")
                     cc = st.text_input("Celular (com DDD)", key="cad_cel")
                     if st.form_submit_button("Solicitar cadastro", type="primary", use_container_width=True):
                         try:
-                            auth.cadastrar_se(ctx, cn_nip, cn, cs, ce, cr, cc, om=c_om)
+                            auth.cadastrar_se(ctx, cn_nip, cn, cs, ce, cr, cc, om=c_om, nome_guerra=cg, posto=cp,
+                                             especialidade=ce_)
                             st.success("Cadastro enviado. Aguarde a aprovação do administrador para entrar.")
                         except (ValueError, PermissionError) as ex:
                             st.error(str(ex))

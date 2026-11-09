@@ -14,7 +14,7 @@ ui.linha_do_tempo(["Enviar planilha", "Revisar", "Aplicar"], 1 if prev else 0)
 esq, dir_ = st.columns([1, 1.2], gap="large")
 with esq, st.container(border=True):
     ui.secao("1 · Enviar")
-    st.caption("**Só o nome de guerra é obrigatório.** As demais colunas (Posto/Graduação, NIP, OM, Escala, Ordem, "
+    st.caption("**Só o nome de guerra é obrigatório.** As demais colunas (Posto/Graduação, Especialidade, NIP, OM, Escala, Ordem, "
                "Último serviço e/ou Data, E-mail, Ramal e Celular) são opcionais. E-mail, ramal e celular em branco "
                "são completados depois: quando o militar pede o vínculo e o detalhista aprova, o contato da conta "
                "dele entra no cadastro; o detalhista também pode digitar em Militares. A escala continua do dia "

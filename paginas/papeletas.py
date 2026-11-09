@@ -71,7 +71,7 @@ for p in lista:
             else:
                 selo = ""
             conta = ("sem conta no sistema" if not s_["tem_conta"] else ("conta sem PIN" if not s_["tem_pin"] else "conta e PIN ok"))
-            col.html(ui.pessoa(m.nome, f"{papel} · {m.posto} · NIP {m.nip or '—'}",
+            col.html(ui.pessoa(m.rotulo, papel,
                                contato(ctx, m) + f" · {conta}", selo))
         ui.campos([("Serviço de " + x.nome, f"{p.data_solicitante:%d/%m/%Y}"), ("Serviço de " + y.nome, f"{p.data_outro:%d/%m/%Y}"),
                    ("Pedido em", f"{p.criado_em:%d/%m/%Y às %H:%M:%S}"),

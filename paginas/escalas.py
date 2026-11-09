@@ -98,7 +98,7 @@ def dialogo_editar(eid: str):
         agir(lambda: avisos_escala(ctx, gestao.editar_escala(ctx, uid, eid, **v)), "Escala atualizada.")
 
 
-ui.cabecalho("Escalas", "Só o detalhista cria, ajusta as regras e compartilha o acesso das escalas. O auxiliar não edita regras.", "sliders")
+ui.cabecalho("Gerenciar escalas", "Só o detalhista cria, ajusta as regras e compartilha o acesso das escalas. O auxiliar não edita regras.", "sliders")
 if st.button("Nova escala", type="primary", icon=":material/add:"):
     dialogo_nova()
 

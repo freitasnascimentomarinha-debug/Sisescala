@@ -30,7 +30,8 @@ def renumerar(ctx: Contexto) -> None:
 
 
 def adicionar_militar(ctx: Contexto, nome: str, posto: str = "", nip: str = "", om: str = "",
-                      antiguidade: int | None = None, email: str = "", ramal: str = "", celular: str = "") -> Militar:
+                      antiguidade: int | None = None, email: str = "", ramal: str = "", celular: str = "",
+                      especialidade: str = "") -> Militar:
     if not nome.strip():
         raise ValueError("informe o nome de guerra")
     if nip and any(m.nip == nip for m in ctx.militares):
@@ -43,7 +44,7 @@ def adicionar_militar(ctx: Contexto, nome: str, posto: str = "", nip: str = "", 
     if email or ramal or celular:
         email, ramal, celular = normalizar_contato(email, ramal, celular, obrigatorio=False)
     novo = Militar(novo_id(ctx, nip or nome), nome.strip(), posto.strip(), pos, nip.strip(), om.strip(),
-                   email, ramal, celular)
+                   email, ramal, celular, especialidade.strip())
     ctx.militares.append(novo)
     renumerar(ctx)
     return novo
@@ -53,7 +54,7 @@ def editar_militar(ctx: Contexto, mid: str, **campos) -> Militar:
     m = ctx.militar(mid)
     if "nip" in campos and campos["nip"] and any(o.nip == campos["nip"] and o.id != mid for o in ctx.militares):
         raise ValueError(f"NIP {campos['nip']} já cadastrado")
-    for k in ("nome", "posto", "nip", "om"):
+    for k in ("nome", "posto", "nip", "om", "especialidade"):
         if k in campos:
             setattr(m, k, str(campos[k]).strip())
     if any(k in campos for k in ("email", "ramal", "celular")):

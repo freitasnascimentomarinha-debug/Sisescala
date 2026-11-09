@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from html import escape
 
 from .calendario import dia_util, nome_dia_nao_util, roxa_do_dia
-from .modelos import (CATEGORIAS, CURSO, DBQ, DISP, DTQ, FERIAS, SVC, TIPOS_IMPEDIMENTO, Contexto, Escala,
+from .modelos import (CATEGORIAS, CURSO, formatar_nip, rotulo_militar, DBQ, DISP, DTQ, FERIAS, SVC, TIPOS_IMPEDIMENTO, Contexto, Escala,
                       horarios_curtos)
 from .motor import Resultado, _folgas, sigla_base
 
@@ -42,6 +42,12 @@ def _tag(sigla: str, extra: str = "", cls: str = "") -> str:
     bg, fg = cor_da_sigla(sigla)
     txt = escape(sigla) + (f" <small>{escape(extra)}</small>" if extra else "")
     return f'<span class="t {cls}" style="background:{bg};color:{fg}">{txt}</span>'
+
+
+def _nome_html(m) -> str:
+    """Coluna de nomes: `2ºSG-PL Freitas` e, embaixo, o NIP (11.0316.11)."""
+    nip = f"<small>({escape(formatar_nip(m.nip))})</small>" if (m.nip or "").strip() else ""
+    return f"{escape(rotulo_militar(m, com_nip=False))}{nip}"
 
 
 def _sigla_imp(ctx: Contexto, mid: str, d: date) -> str | None:
@@ -124,7 +130,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
             if not tags and (s := _sigla_imp(ctx, m.id, d)):
                 tags.append(_tag(s))
             cel += f"<td data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
-        linhas += f"<tr><th class='nome'>{escape(m.posto)} {escape(m.nome)}</th>{cel}</tr>"
+        linhas += f"<tr><th class='nome'>{_nome_html(m)}</th>{cel}</tr>"
     for i in ctx.impedimentos:
         if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.militar_id in ids and i.motivo \
                 and any(i.cobre(d) for d in dias):
@@ -172,7 +178,8 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .prev th,.prev td{{border-bottom:1px solid #2A3420;border-right:1px solid #2A3420;padding:5px 6px;text-align:center;white-space:nowrap}}
 .prev th{{font-weight:700;color:#D3D0BC;background:#1F2817}} .prev th.util{{background:#1F2817}}
 .prev th.folga{{background:rgba(239,68,68,.20);color:#F0B09A}} .prev th.roxa{{background:rgba(160,130,70,.28);color:#E3D3A8}}
-.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis}}
+.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.25}}
+.prev th.nome small{{white-space:nowrap}}
 .prev td.para{{color:#9AA183;font-style:italic}}
 .prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(127,162,74,.14)}}
 .prev td.sel{{outline:2px solid #A3C265;outline-offset:-2px;background:rgba(127,162,74,.26)}}

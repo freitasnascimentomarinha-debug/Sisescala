@@ -42,7 +42,7 @@ def test_contato_valida_e_normaliza():
 def test_autocadastro_fica_pendente_exige_nip_om_contato_e_pode_ser_fechado():
     c = mk()
     adm = auth.criar_usuario(c, "u1", "999999", "Adm", SENHA, admin=True)
-    u = auth.cadastrar_se(c, "12.3456.78", "João Silva", SENHA, "a@b.com", "2345", "21987654321", om="CAAML")
+    u = auth.cadastrar_se(c, "12.3456.78", "João Silva", SENHA, "a@b.com", "2345", "21987654321", om="CAAML", nome_guerra="Guerra", posto="CB")
     assert (u.situacao, u.login, u.om, u.militar_id, u.admin) == ("pendente", "12345678", "CAAML", "", False)
     assert u.celular == "(21) 98765-4321"
     assert not u.ativo and not pode_ver(c, u.id, c.escala("A"))
@@ -52,16 +52,16 @@ def test_autocadastro_fica_pendente_exige_nip_om_contato_e_pode_ser_fechado():
     auth.aprovar_usuario(c, adm.id, u.id)
     assert auth.entrar(c, "12.3456.78", SENHA).id == u.id
     with pytest.raises(ValueError, match="ramal"):
-        auth.cadastrar_se(c, "55555555", "Outro", SENHA, "a@b.com", "", "21987654321", om="CAAML")
+        auth.cadastrar_se(c, "55555555", "Outro", SENHA, "a@b.com", "", "21987654321", om="CAAML", nome_guerra="Guerra", posto="CB")
     with pytest.raises(ValueError, match="OM"):
-        auth.cadastrar_se(c, "55555555", "Outro", SENHA, "a@b.com", "2345", "21987654321", om="")
+        auth.cadastrar_se(c, "55555555", "Outro", SENHA, "a@b.com", "2345", "21987654321", om="", nome_guerra="Guerra", posto="CB")
     with pytest.raises(ValueError, match="NIP"):
-        auth.cadastrar_se(c, "abc", "Outro", SENHA, "a@b.com", "2345", "21987654321", om="X")
+        auth.cadastrar_se(c, "abc", "Outro", SENHA, "a@b.com", "2345", "21987654321", om="X", nome_guerra="Guerra", posto="CB")
     with pytest.raises(ValueError, match="já existe"):
-        auth.cadastrar_se(c, "12345678", "X", SENHA, "a@b.com", "2345", "21987654321", om="X")
+        auth.cadastrar_se(c, "12345678", "X", SENHA, "a@b.com", "2345", "21987654321", om="X", nome_guerra="Guerra", posto="CB")
     c.cadastro_aberto = False
     with pytest.raises(PermissionError, match="fechado"):
-        auth.cadastrar_se(c, "77777777", "Novo", SENHA, "a@b.com", "2345", "21987654321", om="X")
+        auth.cadastrar_se(c, "77777777", "Novo", SENHA, "a@b.com", "2345", "21987654321", om="X", nome_guerra="Guerra", posto="CB")
 
 
 # ---------------------------------------------------------------- vínculo

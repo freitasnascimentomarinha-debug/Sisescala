@@ -1,7 +1,7 @@
 """Importação de planilha existente (CSV/XLSX) para migrar e dar continuidade à escala.
 
 Colunas reconhecidas (nomes flexíveis, sem acento e sem diferenciar maiúsculas):
-  Nome de guerra (obrigatória) | Posto/Graduação | NIP | OM (sigla ou código) |
+  Nome de guerra (obrigatória) | Posto/Graduação | Especialidade | NIP | OM (sigla ou código) |
   Escala (uma ou várias, separadas por ; ou ,) | Ordem/Antiguidade |
   Último serviço (data) | Data + Escala (linhas de histórico: quem deu serviço em cada dia)
 
@@ -27,6 +27,7 @@ from .permissoes import eh_detalhista
 SINONIMOS = {
     "nome": {"nome de guerra", "nome guerra", "guerra", "nome", "militar"},
     "posto": {"posto", "graduacao", "posto graduacao", "posto ou graduacao", "posto/graduacao", "p/g", "pg"},
+    "especialidade": {"especialidade", "espec", "espec.", "esp", "qualificacao"},
     "nip": {"nip", "n.i.p", "numero de identificacao"},
     "om": {"om", "sigla om", "sigla da om", "codigo om", "cod om", "codigo da om", "sigla", "organizacao militar"},
     "escala": {"escala", "escalas", "servico", "servicos"},
@@ -39,9 +40,9 @@ SINONIMOS = {
     "celular": {"celular", "cel", "whatsapp", "telefone celular", "movel"},
 }
 MODELO_CSV = (
-    "Nome de guerra;Posto/Graduação;NIP;OM;Escala;Ordem;Último serviço;Data\n"
-    "SILVA;1SG;12.3456.78;COPAB;Serviço de Pernoite;1;28/02/2027;\n"
-    "SOUZA;CB;98.7654.32;COPAB;\"Serviço de Pernoite, Serviço Diário\";2;27/02/2027;\n")
+    "Nome de guerra;Posto/Graduação;Especialidade;NIP;OM;Escala;Ordem;Último serviço;Data\n"
+    "SILVA;1ºSG;PL;12.3456.78;COPAB;Serviço de Pernoite;1;28/02/2027;\n"
+    "SOUZA;CB;MO;98.7654.32;COPAB;\"Serviço de Pernoite, Serviço Diário\";2;27/02/2027;\n")
 
 
 def _norm(s) -> str:
@@ -186,6 +187,7 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
     vistos_nip: set[str] = set()
     for n_lin, row in enumerate(linhas, 2):
         nome, posto, nip, om = g(row, "nome"), g(row, "posto"), g(row, "nip"), g(row, "om")
+        espec = g(row, "especialidade")
         try:
             email_, ramal_, cel_ = normalizar_contato(g(row, "email"), g(row, "ramal"), g(row, "celular"), False)
         except ValueError as ex:
@@ -198,11 +200,11 @@ def importar(ctx: Contexto, linhas: list[dict], *, sentido: str = "topo_mais_ant
         vistos_nip.add(nip)
         m = _achar_militar(ctx, nome, posto, nip)
         if m is None:
-            m = Militar(novo_id(ctx, nip or nome), nome, posto, 10 ** 6, nip, om, email_, ramal_, cel_)
+            m = Militar(novo_id(ctx, nip or nome), nome, posto, 10 ** 6, nip, om, email_, ramal_, cel_, espec)
             ctx.militares.append(m)
             rel.novos.append(nome)
         else:
-            campos = (("nome", nome), ("posto", posto), ("nip", nip), ("om", om),
+            campos = (("nome", nome), ("posto", posto), ("especialidade", espec), ("nip", nip), ("om", om),
                       ("email", email_), ("ramal", ramal_), ("celular", cel_))
             if not pode_trocar_dados(m):        # completa só o que está vazio, sem alterar dados já existentes
                 if sobrescrever and any(v and getattr(m, k) and getattr(m, k) != v for k, v in campos):

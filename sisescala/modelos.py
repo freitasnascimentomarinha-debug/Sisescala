@@ -52,6 +52,30 @@ class Militar:
     email: str = ""
     ramal: str = ""
     celular: str = ""
+    especialidade: str = ""   # ex.: PL, MO, CL (aparece depois do posto: 2ºSG-PL)
+
+    @property
+    def rotulo(self) -> str:
+        """Como o militar aparece na escalação e na prévia: GRADUAÇÃO-ESPECIALIDADE NOME DE GUERRA (NIP)."""
+        return rotulo_militar(self)
+
+
+def formatar_nip(nip: str) -> str:
+    """NIP de 8 dígitos no formato do cartão: 11.0316.11 (outros tamanhos ficam como foram digitados)."""
+    import re
+    d = re.sub(r"\D", "", nip or "")
+    return f"{d[:2]}.{d[2:6]}.{d[6:]}" if len(d) == 8 else (nip or "").strip()
+
+
+def rotulo_militar(m: "Militar", com_nip: bool = True) -> str:
+    """`2ºSG-PL Freitas (11.0316.11)`: posto/graduação, especialidade, nome de guerra e NIP (o que existir)."""
+    posto = (m.posto or "").strip()
+    esp = (m.especialidade or "").strip()
+    cargo = f"{posto}-{esp}" if posto and esp else (posto or esp)
+    txt = f"{cargo} {m.nome}".strip()
+    if com_nip and (m.nip or "").strip():
+        txt += f" ({formatar_nip(m.nip)})"
+    return txt
 
 
 @dataclass
@@ -187,6 +211,9 @@ class Usuario:
     om: str = ""                  # OM informada no cadastro
     situacao: str = "ativo"       # pendente (aguarda o administrador) | ativo | bloqueado | rejeitado
     trocar_senha: bool = False    # senha provisória: precisa ser trocada no primeiro acesso
+    nome_guerra: str = ""         # informados no cadastro; completam o cadastro do militar ao vincular
+    posto: str = ""               # posto ou graduação
+    especialidade: str = ""
 
 
 @dataclass

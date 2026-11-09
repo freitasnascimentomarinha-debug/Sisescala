@@ -89,7 +89,7 @@ def test_detalhe_tem_cabecalho_marinha_e_om_e_lista_dispensados():
     r = gerar(c, D + timedelta(days=4))
     t = texto_pdf(gerar_pdf(c, r, periodo(D, 5), "A"))
     assert t.index("MARINHA DO BRASIL") < t.index(OM.upper()) < t.index("DETALHE DE SERVIÇO")
-    assert "M1 [Disp]" in t and "Baixa médica" in t                                    # dispensado + justificativa
+    assert "M1" in t and "[Disp]" in t and "Baixa médica" in t                                    # dispensado + justificativa
     assert "Falta" not in t.replace("faltam", "")
 
 

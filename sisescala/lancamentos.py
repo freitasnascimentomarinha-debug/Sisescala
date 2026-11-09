@@ -175,7 +175,7 @@ def lancar_periodo_roxo(ctx: Contexto, usuario_id: str, r: PeriodoRoxa, agora: d
     if r.fim < r.inicio:
         raise ValueError("a data final não pode ser anterior à inicial")
     if r.escala_id and not ctx.escala(r.escala_id).participa_roxa:
-        raise ValueError("esta escala não participa da roxa: ative em Escalas → Editar (\"Participa da escala roxa\")")
+        raise ValueError("esta escala não participa da roxa: ative em Gerenciar escalas → Editar (\"Participa da escala roxa\")")
     if any(o.inicio <= r.fim and r.inicio <= o.fim and (not o.escala_id or not r.escala_id or o.escala_id == r.escala_id)
            for o in ctx.roxas):
         raise ValueError("já existe um período roxo que coincide com essas datas nesta escala")

@@ -45,7 +45,7 @@ class Pagina:
 
     @property
     def nomes_m(self) -> dict[str, str]:
-        return {m.id: m.nome for m in self.ctx.militares}
+        return {m.id: m.rotulo for m in self.ctx.militares}   # GRAD-ESP Nome (NIP)
 
     @property
     def nomes_u(self) -> dict[str, str]:

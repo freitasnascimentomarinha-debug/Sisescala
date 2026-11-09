@@ -8,7 +8,7 @@ from sisescala import cadastro as cd
 from sisescala import gestao
 from sisescala import ui
 from sisescala.componente import ordem_interativa
-from sisescala.modelos import ROTULO_IMPEDIMENTO
+from sisescala.modelos import ROTULO_IMPEDIMENTO, Militar, formatar_nip, rotulo_militar
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -18,7 +18,7 @@ admin = P.user.admin
 ed_ids = [e.id for e in P.editaveis()]
 ui.cabecalho("Militares", "Quem faz parte de cada escala, a ordem de antiguidade nela e os dados de cadastro.", "users")
 if not ed_ids:
-    ui.vazio("Você ainda não tem escala", "Crie uma escala em Escalas (ou importe uma planilha) para cadastrar militares nela.", "users")
+    ui.vazio("Você ainda não tem escala", "Crie uma escala em Gerenciar escalas (ou importe uma planilha) para cadastrar militares nela.", "users")
     st.stop()
 
 esc_id = st.selectbox("Escala", ed_ids, format_func=lambda i: ctx.escala(i).nome, key="mil_escala")
@@ -41,18 +41,23 @@ def _de_outras_escalas() -> list[str]:
 def dialogo_novo():
     st.caption(f"O militar é cadastrado e já entra na escala {esc.nome}.")
     a, b, c = st.columns(3)
-    nm, pt, nip = a.text_input("Nome de guerra"), b.text_input("Posto/Graduação"), c.text_input("NIP")
+    nm, pt, esp = a.text_input("Nome de guerra"), b.text_input("Posto/Graduação", placeholder="Ex.: 2ºSG"), c.text_input("Especialidade", placeholder="Ex.: PL")
     a, b, c = st.columns(3)
-    om = a.text_input("OM (sigla/código)")
-    pos = b.number_input("Posição na antiguidade", 0, len(membros) + 1, 0,
+    nip = a.text_input("NIP", placeholder="Ex.: 11.0316.11")
+    om = b.text_input("OM (sigla/código)")
+    a, b, c = st.columns(3)
+    pos = a.number_input("Posição na antiguidade", 0, len(membros) + 1, 0,
                          help="1 = o mais antigo da escala. Deixe 0 para entrar no fim da fila (o mais moderno).")
-    em = c.text_input("E-mail")
+    em = b.text_input("E-mail")
     a, b = st.columns(2)
     ra, ce = a.text_input("Ramal"), b.text_input("Celular")
+    if nm.strip():
+        st.caption("Vai aparecer assim na escala: **" + rotulo_militar(Militar("x", nm.strip(), pt.strip(), 0, nip.strip(),
+                   especialidade=esp.strip())) + "**")
     st.caption("Só o nome é obrigatório. Posição: 1 = mais antigo · 0 = no fim (mais moderno).")
     if st.button("Cadastrar e incluir na escala", type="primary", use_container_width=True):
         def _novo():
-            m = cd.adicionar_militar(ctx, nm, pt, nip, om, None, em, ra, ce)
+            m = cd.adicionar_militar(ctx, nm, pt, nip, om, None, em, ra, ce, esp)
             gestao.adicionar_militares(ctx, uid, esc_id, [m.id], date.today(), pos or None)
         agir(_novo, "Militar cadastrado e incluído na escala.")
 
@@ -64,7 +69,7 @@ def dialogo_incluir():
         st.info("Não há outros militares cadastrados para incluir. Use **Cadastrar novo militar** ou importe uma planilha.")
         return
     st.caption(f"Escolha quem já está cadastrado (em outra escala sua) e quer entrar também em {esc.nome}.")
-    nomes = {m.id: f"{m.posto} {m.nome}".strip() for m in ctx.militares}
+    nomes = {m.id: m.rotulo for m in ctx.militares}
     sel = st.multiselect("Militares", livres, format_func=nomes.get)
     hoje = date.today()
     obices = [f"**{ctx.militar(i.militar_id).nome}**: {ROTULO_IMPEDIMENTO.get(i.tipo, i.tipo)} de {i.inicio:%d/%m/%Y}"
@@ -93,14 +98,15 @@ if not membros:
 
 if len(membros) > 1:
     with st.expander("Mudar a antiguidade (arraste os nomes)", expanded=True, icon=":material/swap_vert:"):
-        nova = ordem_interativa([{"id": m.id, "nome": m.nome, "posto": m.posto} for m in membros], key=f"ord_{esc_id}")
+        nova = ordem_interativa([{"id": m.id, "nome": rotulo_militar(m, com_nip=False),
+                                  "posto": f"({formatar_nip(m.nip)})" if m.nip else ""} for m in membros], key=f"ord_{esc_id}")
         if nova:
             agir(lambda: gestao.definir_ordem_da_escala(ctx, uid, esc_id, nova), "Antiguidade atualizada.")
 
 busca = st.text_input("Buscar", placeholder="Nome, posto, NIP ou OM", label_visibility="collapsed", key="mil_busca")
-linhas = [{"Marcar": False, "id": m.id, "Nº": ctx.antig(esc, m.id), "Nome de guerra": m.nome, "Posto/Grad.": m.posto,
+linhas = [{"Marcar": False, "id": m.id, "Nº": ctx.antig(esc, m.id), "Nome de guerra": m.nome, "Posto/Grad.": m.posto, "Espec.": m.especialidade,
            "NIP": m.nip, "OM": m.om, "E-mail": m.email, "Ramal": m.ramal, "Celular": m.celular}
-          for m in membros if not busca or busca.lower() in f"{m.nome} {m.posto} {m.nip} {m.om}".lower()]
+          for m in membros if not busca or busca.lower() in f"{m.nome} {m.posto} {m.especialidade} {m.nip} {m.om}".lower()]
 with st.container(border=True):
     ed = st.data_editor(pd.DataFrame(linhas), hide_index=True, width="stretch", disabled=["id", "Nº"], key="mil_editor",
                         column_config={"id": None, "Marcar": st.column_config.CheckboxColumn(width="small"),
@@ -110,7 +116,7 @@ with st.container(border=True):
     if c1.button("Salvar dados", type="primary", icon=":material/save:"):
         def _salvar():
             for _, r in ed.iterrows():
-                cd.editar_militar(ctx, r["id"], nome=r["Nome de guerra"], posto=r["Posto/Grad."] or "", nip=r["NIP"] or "",
+                cd.editar_militar(ctx, r["id"], nome=r["Nome de guerra"], posto=r["Posto/Grad."] or "", especialidade=r["Espec."] or "", nip=r["NIP"] or "",
                                   om=r["OM"] or "", email=r["E-mail"] or "", ramal=r["Ramal"] or "", celular=r["Celular"] or "")
         agir(_salvar, "Cadastro atualizado.")
     with c2.popover("Retirar da escala", icon=":material/person_remove:"):
@@ -131,7 +137,7 @@ if admin:
         if not sem_escala:
             st.write("Nenhum.")
         else:
-            nomes_solto = {m.id: f"{m.posto} {m.nome} (NIP {m.nip or '—'})".strip() for m in sem_escala}
+            nomes_solto = {m.id: m.rotulo for m in sem_escala}
             sel = st.multiselect("Militares para excluir do cadastro", list(nomes_solto), format_func=nomes_solto.get)
             if sel:
                 st.warning(f"{len(sel)} militar(es) serão apagados do cadastro do sistema, com impedimentos e lançamentos deles. "

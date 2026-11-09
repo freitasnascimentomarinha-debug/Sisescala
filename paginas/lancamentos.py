@@ -43,7 +43,7 @@ def _militares_da(eid: str) -> list[str]:
 
 def _rotulo_mil(i: str) -> str:
     m = ctx.militar(i)
-    return f"{m.posto} {m.nome}".strip()
+    return m.rotulo
 
 
 @st.dialog("Incluir lançamento", width="large")

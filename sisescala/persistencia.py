@@ -61,11 +61,11 @@ def _r(txt: str, t: str):
 SCHEMA: dict[str, list[tuple[str, str]]] = {
     "Config": [("chave", "s"), ("valor", "s")],
     "Militares": [("id", "s"), ("nome", "s"), ("posto", "s"), ("antiguidade", "i"), ("nip", "s"), ("om", "s"),
-                  ("email", "s"), ("ramal", "s"), ("celular", "s")],
+                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("especialidade", "s")],
     "Usuarios": [("id", "s"), ("nome", "s"), ("login", "s"), ("senha_hash", "s"), ("militar_id", "s"),
                  ("perfil", "s"), ("admin", "b"), ("ativo", "b"), ("tentativas", "i"), ("bloqueado_ate", "dt"),
                  ("email", "s"), ("ramal", "s"), ("celular", "s"), ("pin_hash", "s"), ("nip", "s"), ("om", "s"),
-                 ("situacao", "s"), ("trocar_senha", "b")],
+                 ("situacao", "s"), ("trocar_senha", "b"), ("nome_guerra", "s"), ("posto", "s"), ("especialidade", "s")],
     "Escalas": [("id", "s"), ("nome", "s"), ("sigla", "s"), ("dono_id", "s"), ("om", "s"), ("uf", "s"), ("data_base", "d"), ("detalhista_id", "s"), ("detalhista_escalavel", "b"),
                 ("categoria", "s"),
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),

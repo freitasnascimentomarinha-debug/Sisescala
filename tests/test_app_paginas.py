@@ -131,6 +131,9 @@ def test_cadastro_pelo_login_fica_pendente_e_admin_aprova(app):
     _texto(app, "NIP (somente números)").input("12345678")
     _texto(app, "OM").input("CAAML")
     _texto(app, "Nome completo").input("Fulano de Tal")
+    _texto(app, "Nome de guerra").input("Fulano")
+    _texto(app, "Posto ou graduação").input("2ºSG")
+    _texto(app, "Especialidade").input("PL")
     next(t for t in app.text_input if t.key == "cad_senha").input("senha-fulano-1")
     _texto(app, "E-mail para contato").input("f@x.com")
     _texto(app, "Ramal").input("2345")
@@ -140,6 +143,7 @@ def test_cadastro_pelo_login_fica_pendente_e_admin_aprova(app):
     ctx = app.session_state["ctx"]
     novo = next(u for u in ctx.usuarios if u.login == "12345678")
     assert novo.situacao == "pendente" and novo.om == "CAAML"
+    assert (novo.nome_guerra, novo.posto, novo.especialidade) == ("Fulano", "2ºSG", "PL")
     _entrar(app, "12345678", "senha-fulano-1")
     assert "uid" not in app.session_state                                # pendente não entra
 
@@ -148,7 +152,7 @@ def test_usuario_novo_sem_escala_abre_as_paginas_e_vira_detalhista_ao_criar(app)
     _criar_admin(app)
     ctx = app.session_state["ctx"]
     adm = ctx.usuario("u1")
-    novo = auth.cadastrar_se(ctx, "12345678", "Novo Usuário", "senha-nova-123", "n@x.com", "2345", "21988887777", om="CAAML")
+    novo = auth.cadastrar_se(ctx, "12345678", "Novo Usuário", "senha-nova-123", "n@x.com", "2345", "21988887777", om="CAAML", nome_guerra="Guerra", posto="CB")
     auth.aprovar_usuario(ctx, adm.id, novo.id)
     app.run()
     del app.session_state["uid"]

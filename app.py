@@ -181,14 +181,14 @@ def _c(n):
 
 menu = {
     "Início": [_pg("painel", "Painel", "dashboard", "painel", True)],
-    "Operação": [_pg("escala", "Escala", "calendar_month", "escala"),
+    "Operação": [_pg("escala", "Prévia da escala", "calendar_month", "escala"),
                  _pg("papeletas", "Papeletas" + _c(n_pend), "swap_horiz", "papeletas"),
                  _pg("devolucoes", "Devoluções", "undo", "devolucoes"),
                  _pg("vinculos", "Vínculos" + _c(n_vinc + n_convites), "link", "vinculos")],
     "Documentos": [_pg("detalhe", "Detalhe de serviço", "description", "detalhe"),
                    _pg("regras", "Regras da escala", "menu_book", "regras")],
     # todo usuário aprovado cria ou importa escalas (e vira o detalhista delas) e busca as de outros
-    "Minhas escalas": [_pg("escalas", "Escalas", "tune", "escalas"),
+    "Minhas escalas": [_pg("escalas", "Gerenciar escalas", "tune", "escalas"),
                        _pg("importar", "Importar planilha", "upload_file", "importar"),
                        _pg("buscar", "Buscar escalas", "search", "buscar")],
 }
