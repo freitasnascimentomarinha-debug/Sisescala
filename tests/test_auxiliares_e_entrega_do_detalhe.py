@@ -211,3 +211,15 @@ def test_auxiliares_persistem_e_planilha_antiga_com_auxiliar_unico_migra():
     for r in T["Escalas"][1:]:
         r.append("m4")
     assert de_tabelas(T).escala("e1").auxiliares == ["m4"]
+
+
+def test_dados_do_detalhe_de_servico_sao_salvos_e_so_o_detalhista_salva():
+    c = mk()
+    escala(c)
+    gestao.editar_escala(c, DET1, "e1", om="COpAb", det_instrucoes="I", det_recomendacoes="R", det_regras="G",
+                         ass_detalhista="A", ass_encarregado="B", ass_vice_diretor="C")
+    e = de_tabelas(para_tabelas(c)).escala("e1")
+    assert (e.om, e.det_instrucoes, e.det_recomendacoes, e.det_regras) == ("COpAb", "I", "R", "G")
+    assert (e.ass_detalhista, e.ass_encarregado, e.ass_vice_diretor) == ("A", "B", "C")
+    with pytest.raises(PermissaoNegada):
+        gestao.editar_escala(c, M2, "e1", det_regras="x")

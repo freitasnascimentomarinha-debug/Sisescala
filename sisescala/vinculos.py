@@ -12,7 +12,7 @@ from datetime import datetime
 from . import notificacoes as nt
 from .auth import hash_pin
 from .modelos import ConviteVinculo, Contexto, Usuario, Vinculo
-from .permissoes import PermissaoNegada, pode_decidir, pode_ver
+from .permissoes import PermissaoNegada, eh_detalhista, pode_decidir, pode_ver
 
 
 def _obter(ctx: Contexto, vid: str) -> Vinculo:
@@ -22,13 +22,17 @@ def _obter(ctx: Contexto, vid: str) -> Vinculo:
     return v
 
 
-def militares_livres(ctx: Contexto, escala_id: str) -> list[str]:
-    """Militares da escala que ainda não têm conta nem pedido de vínculo pendente."""
+def militares_livres(ctx: Contexto, escala_id: str, para_usuario_id: str = "") -> list[str]:
+    """Militares da escala que ainda não têm conta nem pedido de vínculo pendente.
+
+    O militar do detalhista (fora da escala) só é oferecido ao próprio detalhista, para ele ligar a sua conta."""
     esc = ctx.escala(escala_id)
     ocupados = {u.militar_id for u in ctx.usuarios if u.militar_id}
     ocupados |= {v.militar_id for v in ctx.vinculos if v.status == "pendente"}
     ocupados |= {c.militar_id for c in ctx.convites_vinculo if c.status == "pendente"}
-    ids = set(ctx.escalaveis(esc))           # detalhista não é escalado: não há persona de serviço para vincular
+    ids = set(ctx.escalaveis(esc))
+    if esc.detalhista_id and para_usuario_id and eh_detalhista(ctx, para_usuario_id, esc):
+        ids.add(esc.detalhista_id)
     return sorted((m for m in ids if m not in ocupados), key=lambda i: ctx.antig(esc, i))
 
 
@@ -43,8 +47,10 @@ def pendente_do_usuario(ctx: Contexto, usuario_id: str) -> Vinculo | None:
     return next((v for v in ctx.vinculos if v.usuario_id == usuario_id and v.status == "pendente"), None)
 
 
-def solicitar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, nip: str, pin: str,
+def solicitar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, nip: str, pin: str = "",
               agora: datetime | None = None) -> Vinculo:
+    """`pin` em branco reaproveita o PIN que a conta já tem (só é exigido de quem ainda não cadastrou um).
+    Se quem pede é o próprio detalhista da escala, não há quem aprove: o vínculo já nasce aprovado."""
     agora = agora or datetime.now()
     u = ctx.usuario(usuario_id)
     esc = ctx.escala(escala_id)
@@ -56,14 +62,19 @@ def solicitar(ctx: Contexto, usuario_id: str, escala_id: str, militar_id: str, n
         raise ValueError("você já tem um pedido de vínculo aguardando decisão")
     if not pode_ver(ctx, usuario_id, esc):
         raise PermissaoNegada("você ainda não recebeu acesso a esta escala; peça ao detalhista")
-    if militar_id not in militares_livres(ctx, escala_id):
+    if militar_id not in militares_livres(ctx, escala_id, usuario_id):
         raise ValueError("esse militar não está disponível para vínculo (já vinculado ou com pedido pendente)")
     m = ctx.militar(militar_id)
     if m.nip and nip.strip() != m.nip:
         raise ValueError("NIP não confere com o cadastro do militar")
+    if not pin and not u.pin_hash:
+        raise ValueError("crie um PIN (4 a 6 dígitos) para assinar e pedir trocas")
     v = Vinculo(f"v{max([int(x.id[1:]) for x in ctx.vinculos] + [0]) + 1}", usuario_id, militar_id, escala_id,
-                agora, hash_pin(pin))
+                agora, hash_pin(pin) if pin else u.pin_hash)
     ctx.vinculos.append(v)
+    if eh_detalhista(ctx, usuario_id, esc):
+        _efetivar(ctx, u, m, v, usuario_id, agora)
+        return v
     nt.notificar(ctx, nt.editores_da_escala(ctx, escala_id), "vinculo",
                  f"{u.nome} pediu para ser vinculado(a) a {m.nome} na escala {esc.nome}.", escala_id, agora)
     return v
@@ -74,6 +85,12 @@ def _exigir_editor(ctx: Contexto, usuario_id: str, v: Vinculo) -> None:
         raise PermissaoNegada("somente o detalhista e o auxiliar da escala decidem o vínculo")
     if v.usuario_id == usuario_id:
         raise PermissaoNegada("ninguém decide o próprio vínculo")
+
+
+def _efetivar(ctx: Contexto, u: Usuario, m, v: Vinculo, decidido_por: str, agora: datetime) -> None:
+    u.militar_id, u.pin_hash = m.id, (v.pin_hash or u.pin_hash)
+    _completar_cadastro(m, u)
+    v.status, v.decidido_por, v.decidido_em = "aprovado", decidido_por, agora
 
 
 def aprovar(ctx: Contexto, usuario_id: str, vid: str, agora: datetime | None = None) -> None:
@@ -88,9 +105,7 @@ def aprovar(ctx: Contexto, usuario_id: str, vid: str, agora: datetime | None = N
     if any(x.militar_id == v.militar_id for x in ctx.usuarios):
         raise ValueError("esse militar já foi vinculado a outra conta")
     m = ctx.militar(v.militar_id)
-    u.militar_id, u.pin_hash = m.id, v.pin_hash
-    _completar_cadastro(m, u)
-    v.status, v.decidido_por, v.decidido_em = "aprovado", usuario_id, agora
+    _efetivar(ctx, u, m, v, usuario_id, agora)
     nt.notificar(ctx, [u.id], "vinculo", f"Seu vínculo com {m.nome} foi APROVADO. Você já pode pedir trocas e assinar com o PIN.",
                  v.escala_id, agora)
 
@@ -190,7 +205,7 @@ def _convite(ctx: Contexto, cid: str) -> ConviteVinculo:
     return c
 
 
-def aceitar_convite(ctx: Contexto, usuario_id: str, cid: str, nip: str, pin: str,
+def aceitar_convite(ctx: Contexto, usuario_id: str, cid: str, nip: str, pin: str = "",
                     agora: datetime | None = None) -> None:
     """O convidado confirma o NIP e cria o PIN. A aprovação do detalhista já está no convite: o vínculo vale na hora."""
     agora = agora or datetime.now()
@@ -207,8 +222,10 @@ def aceitar_convite(ctx: Contexto, usuario_id: str, cid: str, nip: str, pin: str
     m = ctx.militar(c.militar_id)
     if m.nip and nip.strip() != m.nip:
         raise ValueError("NIP não confere com o cadastro do militar")
+    if not pin and not u.pin_hash:
+        raise ValueError("crie um PIN (4 a 6 dígitos) para assinar e pedir trocas")
     v = Vinculo(f"v{max([int(x.id[1:]) for x in ctx.vinculos] + [0]) + 1}", usuario_id, m.id, c.escala_id, agora,
-                hash_pin(pin), "aprovado", c.convidado_por, agora)
+                hash_pin(pin) if pin else u.pin_hash, "aprovado", c.convidado_por, agora)
     ctx.vinculos.append(v)
     u.militar_id, u.pin_hash = m.id, v.pin_hash
     _completar_cadastro(m, u)

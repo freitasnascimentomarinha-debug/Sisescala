@@ -208,3 +208,13 @@ def test_novos_dados_persistem_e_voltam_iguais():
     assert c2.usuarios[1].pin_hash and c2.usuarios[1].celular == "(21) 98765-4321"
     b = MemoriaBackend(); r = Repositorio(b); r.carregar(); r.salvar(c)
     assert Repositorio(b).carregar().vinculos == c.vinculos
+
+
+def test_detalhista_se_vincula_na_hora_sem_novo_pin_e_usuario_comum_reaproveita_o_pin():
+    c = mk()
+    c.escala("A").detalhista_id = "m1"                                   # m1 é o militar do detalhista (fora da escala)
+    assert "m1" not in vc.militares_livres(c, "A")                       # terceiros não o veem
+    assert "m1" in vc.militares_livres(c, "A", "u1")                     # o detalhista vê e se vincula
+    v = vc.solicitar(c, "u1", "A", "m1", "1.000", "", AGORA)             # sem PIN: usa o da conta
+    assert v.status == "aprovado" and c.usuario("u1").militar_id == "m1"
+    assert auth.confirmar_assinatura(c, "u1", "1234")                    # PIN original preservado

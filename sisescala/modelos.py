@@ -121,6 +121,13 @@ class Escala:
     sigla: str = ""
     dono_id: str = ""              # usuário que criou a escala
     om: str = ""                   # Organização Militar que gerencia a escala (cabeçalho dos documentos)
+    # Detalhe de serviço (salvos para saírem sempre no documento)
+    det_instrucoes: str = ""
+    det_recomendacoes: str = ""
+    det_regras: str = ""
+    ass_detalhista: str = ""
+    ass_encarregado: str = ""
+    ass_vice_diretor: str = ""
     uf: str = ""                   # UF da OM (feriados estaduais); vazio = padrão do sistema
     data_base: date | None = None  # a partir daqui `ultimo_servico` vale; vazio = data-base do sistema
     detalhista_id: str = ""        # militar que é o detalhista desta escala (um só por escala)
