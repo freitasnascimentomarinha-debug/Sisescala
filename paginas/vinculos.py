@@ -82,16 +82,20 @@ if not user.militar_id and vc.convites_do_usuario(ctx, uid):
             with st.container(border=True):
                 st.html(ui.pessoa(mx.rotulo, f"Escala {ctx.escala(c.escala_id).nome}",
                                   f"Convite de {de.nome if de else '—'} em {c.criado_em:%d/%m/%Y %H:%M}", ui.pill("convite", "azul")))
-                k1, k2, k3 = st.columns(3)
-                cnip = k1.text_input("Seu NIP", key=f"cn_{c.id}")
-                cpin = k2.text_input("Crie um PIN (4 a 6 dígitos)", type="password", key=f"cp_{c.id}")
-                cpin2 = k3.text_input("Repita o PIN", type="password", key=f"cq_{c.id}")
+                cnip = st.text_input("Seu NIP", key=f"cn_{c.id}")
+                cpin = cpin2 = ""
+                if user.pin_hash:
+                    st.caption("Será usado o PIN que você já cadastrou em Minha conta.")
+                else:
+                    k2, k3 = st.columns(2)
+                    cpin = k2.text_input("Crie um PIN (4 a 6 dígitos)", type="password", key=f"cp_{c.id}")
+                    cpin2 = k3.text_input("Repita o PIN", type="password", key=f"cq_{c.id}")
                 b1, b2, _ = st.columns([1, 1, 2])
                 if b1.button("Aceitar convite", key=f"ca_{c.id}", type="primary", icon=":material/check:"):
                     if cpin != cpin2:
                         st.error("Os PINs não são iguais.")
                     else:
-                        agir(lambda c=c: (auth.validar_pin(cpin), vc.aceitar_convite(ctx, uid, c.id, cnip, cpin)),
+                        agir(lambda c=c: (auth.validar_pin(cpin) if cpin else None, vc.aceitar_convite(ctx, uid, c.id, cnip, cpin)),
                              "Convite aceito: sua conta agora está vinculada.")
                 if b2.button("Recusar", key=f"cr_{c.id}", icon=":material/close:"):
                     agir(lambda c=c: vc.recusar_convite(ctx, uid, c.id), "Convite recusado.")
@@ -112,18 +116,23 @@ if not user.militar_id:
             ui.vazio("Sem acesso a escalas", f"Peça ao detalhista para compartilhar a escala com o seu login (NIP {user.login}).", "shield")
         else:
             ve = st.selectbox("Escala", [e.id for e in P.visiveis], format_func=lambda i: ctx.escala(i).nome)
-            livres = vc.militares_livres(ctx, ve)
+            livres = vc.militares_livres(ctx, ve, uid)
             vm = st.selectbox("Quem é você nesta escala?", livres,
                               format_func=lambda i: ctx.militar(i).rotulo) if livres else None
-            c1, c2, c3 = st.columns(3)
-            vnip = c1.text_input("Seu NIP")
-            vpin = c2.text_input("Crie um PIN (4 a 6 dígitos)", type="password")
-            vpin2 = c3.text_input("Repita o PIN", type="password")
-            st.caption("O PIN será usado para pedir trocas e assinar papeletas. O vínculo só vale depois que o detalhista aprovar.")
+            vnip = st.text_input("Seu NIP")
+            vpin = vpin2 = ""
+            if user.pin_hash:
+                st.caption("Será usado o PIN que você já cadastrou em Minha conta.")
+            else:
+                c2, c3 = st.columns(2)
+                vpin = c2.text_input("Crie um PIN (4 a 6 dígitos)", type="password")
+                vpin2 = c3.text_input("Repita o PIN", type="password")
+            st.caption("O PIN é usado para pedir trocas e assinar papeletas. O vínculo só vale depois que o detalhista aprovar"
+                       + (" (se você é o detalhista da escala, ele vale na hora)." if any(pm.eh_detalhista(ctx, uid, e) for e in P.visiveis) else "."))
             if vm and st.button("Pedir vínculo", type="primary"):
                 if vpin != vpin2:
                     st.error("Os PINs não são iguais.")
                 else:
-                    agir(lambda: vc.solicitar(ctx, uid, ve, vm, vnip, vpin), "Pedido de vínculo enviado.")
+                    agir(lambda: vc.solicitar(ctx, uid, ve, vm, vnip, vpin), "Pedido de vínculo enviado (detalhista: já vinculado)." if pm.eh_detalhista(ctx, uid, ctx.escala(ve)) else "Pedido de vínculo enviado.")
 elif not P.decide:
     ui.vazio("Conta vinculada", f"Sua conta está vinculada a {ctx.militar(user.militar_id).nome}.", "check")
