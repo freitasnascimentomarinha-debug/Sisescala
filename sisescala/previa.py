@@ -58,6 +58,25 @@ def _sigla_imp(ctx: Contexto, mid: str, d: date) -> str | None:
     return None
 
 
+def resumo_escala(ctx: Contexto, esc: Escala, dias: list[date], hoje: date | None = None) -> dict:
+    """Números do mini painel da prévia: descanso (?x1), militares na escala e impedidos por qualquer motivo
+    (férias, curso, dispensa, desembarque, destaque...), hoje e em algum dia do período."""
+    hoje = hoje or date.today()
+    ids = set(ctx.escalaveis(esc))
+    hoje_ids, periodo_ids, por_tipo = set(), set(), {}
+    for i in ctx.impedimentos:
+        if i.militar_id not in ids:
+            continue
+        if i.cobre(hoje):
+            hoje_ids.add(i.militar_id)
+        if any(i.cobre(d) for d in dias):
+            periodo_ids.add(i.militar_id)
+            por_tipo.setdefault(TIPOS_IMPEDIMENTO[i.tipo], set()).add(i.militar_id)
+    return {"folgas": _folgas(esc), "militares": len(ids), "impedidos_hoje": len(hoje_ids),
+            "impedidos_periodo": len(periodo_ids), "disponiveis_hoje": len(ids - hoje_ids),
+            "por_tipo": {k: len(v) for k, v in sorted(por_tipo.items())}}
+
+
 def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
     """Informações de destaque do card."""
     cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]

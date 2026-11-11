@@ -10,7 +10,7 @@ from sisescala import ui
 from sisescala.componente import previa_interativa
 from sisescala.modelos import CATEGORIAS
 from sisescala.pdf import pdf_papeleta
-from sisescala.previa import html_previa
+from sisescala.previa import html_previa, resumo_escala
 from sisescala.sessao import barra_contexto, exigir_escala, fmt_dia, pagina
 
 P = pagina()
@@ -34,6 +34,17 @@ for av in res.avisos:
     if av.startswith("CONFLITO"):
         st.error(av)
 
+rs = resumo_escala(ctx, esc, dias)
+with st.container(border=True):
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Descanso", f"{rs['folgas']}x1", help="Folgas mínimas entre dois serviços do mesmo militar.")
+    m2.metric("Pessoas na escala", rs["militares"], help="Militares que podem ser escalados (o detalhista fora da escala não conta).")
+    m3.metric("Impedidos hoje", rs["impedidos_hoje"], f"{rs['disponiveis_hoje']} disponíveis", delta_color="off",
+              help="Férias, curso, dispensa, desembarque, destaque ou baixa em vigor hoje.")
+    m4.metric("Impedidos no período", rs["impedidos_periodo"], delta_color="off",
+              help="Quem tem algum impedimento em pelo menos um dia do período mostrado.")
+    if rs["por_tipo"]:
+        st.caption("No período: " + " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
 with st.container(border=True):
     clique = previa_interativa(html_previa(ctx, res, dias, esc.id, abertas_, com_card=False),
                                st.session_state.get("sel"), key="previa")
