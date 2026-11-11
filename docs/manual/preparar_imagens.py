@@ -56,6 +56,8 @@ for f in sorted(os.listdir(pdfs)):
         w, h = g.size
         px = g.load()
         ultimo = max((y for y in range(h - 70) if any(px[x, y] < 235 for x in range(0, w, 4))), default=h)      # tira o branco do pé
-        salvar("pdf-" + f.replace("-1.png", ""), im.crop((0, 0, w, min(h, ultimo + 40))))
+        ampl = f.startswith("ampl_")                                    # ampliações: pula a faixa azul do topo e as margens laterais
+        esq, dir_ = (int(w * 0.085), int(w * 0.915)) if ampl else (0, w)
+        salvar("pdf-" + f.replace("-1.png", "").replace("-2.png", ""), im.crop((esq, 40 if ampl else 0, dir_, min(h, ultimo + 40))))
 json.dump(INFO, open(os.path.join(saida, "info.json"), "w"), indent=1)
 print(len(INFO), "imagens")

@@ -96,9 +96,9 @@ let nFig = 0;
 function FIG(nome, legenda, marcas = []) {
   const meta = INFO[nome];
   if (!meta) { console.log('SEM IMAGEM', nome); return [P('[imagem ausente: ' + nome + ']')]; }
-  const lim = nome.startsWith('pdf-') ? 470 : 600;
+  const lim = nome.startsWith('pdf-ampl') ? 620 : nome.startsWith('pdf-') ? 470 : 600;
   let w = Math.min(lim, meta.w * 0.6), h = meta.h * (w / meta.w);
-  const hmax = nome.startsWith('pdf-') ? 600 : 600;
+  const hmax = nome.startsWith('pdf-ampl') ? 380 : 600;
   if (h > hmax) { w = w * (hmax / h); h = hmax; }
   const out = [new Paragraph({
     alignment: AlignmentType.CENTER, spacing: { before: 120, after: 60 }, keepNext: true,
@@ -328,7 +328,14 @@ add(UL(['O envio é encerrado e o **detalhista recebe uma notificação com o se
 add(...FIG('15b-assinar-encerrados', 'Filtro “Cancelados / rejeitados”: o histórico mostra quem rejeitou e por quê.'));
 
 add(H2('6.4 O PDF assinado'));
-add(...FIG('pdf-detalhe_assinado', 'PDF do detalhe de serviço com as assinaturas eletrônicas, o QR code e o código de verificação.'));
+add(...FIG('pdf-detalhe_assinado', 'Detalhe de serviço em PDF, página 1: cabeçalho oficial, tabela dos dias e textos do documento.'));
+add(P('A área de **assinaturas** vem logo depois dos textos (na página seguinte, quando as instruções ocupam a primeira). Veja abaixo o mesmo documento com **as quatro autoridades** já assinadas:'));
+add(...FIG('pdf-ampl_detalhe_assinado', 'Área de assinaturas com as quatro autoridades: carimbos eletrônicos, QR code e código de verificação.'));
+add(UL(['**Carimbo eletrônico** acima de cada nome: “Assinado eletronicamente com PIN”, **nome completo**, NIP, data e hora (horário de Brasília).',
+  '**Nome impresso e papel** abaixo da linha: Detalhista, Auxiliar do Detalhista e Encarregado do Detalhe lado a lado; o **Vice-Diretor** centralizado embaixo.',
+  '**QR code e código de verificação (SHA-256)**: leia o QR com o celular ou digite o código em Verificar documento.']));
+add(P('Quando o documento tem **uma só assinatura**, o QR code passa para o **lado do carimbo**, e o código de verificação fica centralizado logo abaixo:'));
+add(...FIG('pdf-ampl_detalhe_uma_assinatura', 'Documento com apenas uma assinatura (a do detalhista): o QR code fica ao lado do carimbo.'));
 add(UL(['**Cabeçalho oficial** centralizado: brasão, MARINHA DO BRASIL, a OM e o título (“DETALHE DE SERVIÇO DE …”).',
   '**Carimbo** de cada autoridade que assinou: nome completo, NIP, data e hora (horário de Brasília). Quem ainda não assinou fica com a linha em branco.',
   'Os três primeiros papéis ficam lado a lado e o **Vice-Diretor** fica centralizado abaixo.',
