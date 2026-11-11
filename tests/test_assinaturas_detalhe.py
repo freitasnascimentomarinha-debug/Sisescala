@@ -169,8 +169,8 @@ def test_brasao_e_por_escala_so_o_detalhista_troca_e_cai_no_padrao():
         proprio, sem = gerar_pdf(c, r, dias, "e1", "OM"), gerar_pdf(c, r, dias, "e2", "OM")
     finally:
         pdfmod.BRASAO = original
-    assert len(proprio) > len(sem) + 500                                              # e1 leva o brasão próprio; e2 nenhum
-    assert len(gerar_pdf(c, r, dias, "e2", "OM")) > len(sem) + 500                    # e2 usa o padrão (Armas Nacionais)
+    assert proprio.count(b"/Subtype /Image") > sem.count(b"/Subtype /Image")                                              # e1 leva o brasão próprio; e2 nenhum
+    assert gerar_pdf(c, r, dias, "e2", "OM").count(b"/Subtype /Image") > sem.count(b"/Subtype /Image")                    # e2 usa o padrão (Armas Nacionais)
 
 
 def test_cancelar_e_enviar_de_novo_comeca_sem_assinaturas_e_o_cancelado_some_das_pendencias():

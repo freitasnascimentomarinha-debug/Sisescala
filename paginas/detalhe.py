@@ -74,7 +74,7 @@ with esq:
             cb1.image(_prev, width=78)
         cb2.markdown("**Brasão do documento:** " + ("o brasão da OM (enviado por você)" if _proprio else "Armas Nacionais (padrão)"))
         if pode:
-            arq = cb2.file_uploader("Trocar pelo brasão da sua OM (PNG ou JPG)", type=["png", "jpg", "jpeg"], key=K + "brasao",
+            arq = cb2.file_uploader("Trocar pelo brasão da sua OM (PNG, JPG, WEBP, BMP, GIF, TIFF)", type=bs.FORMATOS, key=K + "brasao",
                                     help="Sai centralizado acima de MARINHA DO BRASIL nos PDFs deste detalhe. Prefira PNG com fundo "
                                          "transparente.")
             outras = [e.id for e in ctx.escalas if e.id != esc.id and eh_detalhista(ctx, P.uid, e)]

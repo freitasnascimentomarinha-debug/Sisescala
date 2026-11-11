@@ -70,7 +70,7 @@ def test_titulo_nao_repete_detalhe_de_servico_e_brasao_enviado_sai_no_pdf():
     Image.new("RGBA", (800, 900), (10, 35, 66, 255)).save(buf, "PNG")
     c.escala('A').brasao_b64 = bs.preparar(buf.getvalue())
     b64 = c.escala('A').brasao_b64
-    assert 0 < len(b64) <= bs.LIMITE and base64.b64decode(b64)[:4] == b"\x89PNG"
+    assert 0 < len(b64) <= bs.LIMITE and base64.b64decode(b64)[:2] in (b"\xff\xd8", b"\x89P")
     c2 = de_tabelas(para_tabelas(c))
     assert c2.escala('A').brasao_b64 == b64                                  # sobrevive à gravação (Config)
     from pathlib import Path
@@ -80,8 +80,8 @@ def test_titulo_nao_repete_detalhe_de_servico_e_brasao_enviado_sai_no_pdf():
         com, sem = gerar_pdf(c2, r, dias, "A", "OM"), gerar_pdf(mk()[0], r, dias, "A", "OM")
     finally:
         pdfmod.BRASAO = original
-    assert len(com) > len(sem) + 1000                                    # a imagem entrou no PDF
-    assert len(gerar_pdf(mk()[0], r, dias, "A", "OM")) > len(sem) + 1000  # e o brasão padrão (assets/brasao.png) também
+    assert com.count(b"/Subtype /Image") > sem.count(b"/Subtype /Image")                                    # a imagem entrou no PDF
+    assert gerar_pdf(mk()[0], r, dias, "A", "OM").count(b"/Subtype /Image") > sem.count(b"/Subtype /Image")  # e o brasão padrão (assets/brasao.png) também
     try:
         bs.preparar(b"nao e imagem")
         raise AssertionError("deveria recusar")
@@ -102,3 +102,31 @@ def test_auxiliar_tambem_assina_o_mesmo_conteudo_e_as_duas_assinaturas_se_confer
     assert [(x.papel, x.nome) for x in vf.do_codigo(c2, cod)] == [("detalhista", "CT Det"), ("auxiliar", "1T Aux")]
     # mudar um nome de assinante muda o código: as assinaturas antigas não valem para o conteúdo novo
     assert codigo_do_corpo(corpo_detalhe(c, r, dias, "A", "OM", "", "", "", ("", "Outro", "", ""))) != cod
+
+
+def test_brasao_aceita_formatos_comuns_e_sempre_cabe_na_celula():
+    import random
+    from PIL import Image
+    from sisescala import brasao as bs
+    random.seed(3)
+    ruido = lambda w, h: Image.frombytes("RGB", (w, h), bytes(random.getrandbits(8) for _ in range(w * h * 3)))  # noqa: E731
+    casos = [("PNG", ruido(900, 900).convert("RGBA")), ("PNG", ruido(600, 600).quantize(256)), ("WEBP", ruido(600, 600)),
+             ("JPEG", ruido(2500, 2500)), ("JPEG", ruido(700, 700).convert("CMYK")), ("BMP", ruido(400, 400)),
+             ("TIFF", ruido(400, 400)), ("GIF", ruido(300, 300).convert("P")), ("PNG", Image.new("I;16", (300, 300), 20000))]
+    for fmt, im in casos:
+        b = io.BytesIO()
+        im.save(b, fmt)
+        r = bs.preparar(b.getvalue())
+        assert 0 < len(r) <= bs.LIMITE, fmt
+        assert Image.open(io.BytesIO(bs.bytes_de(r))).size[0] <= 320
+    transp = ruido(300, 300).convert("RGBA")
+    transp.putalpha(Image.new("L", (300, 300), 100))
+    b = io.BytesIO()
+    transp.save(b, "PNG")
+    assert Image.open(io.BytesIO(bs.bytes_de(bs.preparar(b.getvalue())))).format == "PNG"       # transparência preservada
+    for lixo in (b"", b"isto nao e imagem"):
+        try:
+            bs.preparar(lixo)
+            raise AssertionError("deveria recusar")
+        except ValueError as ex:
+            assert "imagem" in str(ex) or "vazio" in str(ex)
