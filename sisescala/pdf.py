@@ -26,19 +26,26 @@ def _cor(h: str):
     return colors.HexColor(h)
 
 
-def brasao_flowable(altura_mm: float = 19):
-    """Brasão de Armas centralizado, se o arquivo assets/brasao.png existir; senão, nada (o cabeçalho segue igual)."""
+def brasao_flowable(ctx: Contexto | None = None, altura_mm: float = 19):
+    """Brasão de Armas centralizado: o enviado pelo administrador (guardado no sistema) ou o arquivo assets/brasao.png;
+    sem nenhum dos dois, nada (o cabeçalho segue igual)."""
+    from .brasao import bytes_de
     from reportlab.lib.utils import ImageReader
     from reportlab.platypus import Image
-    if not BRASAO.exists():
+    dados = bytes_de(getattr(ctx, "brasao_b64", "")) if ctx is not None else None
+    if dados:
+        fonte = BytesIO(dados)
+    elif BRASAO.exists():
+        fonte = str(BRASAO)
+    else:
         return None
-    w, h = ImageReader(str(BRASAO)).getSize()
-    img = Image(str(BRASAO), width=altura_mm * mm * w / h, height=altura_mm * mm)
+    w, h = ImageReader(fonte if isinstance(fonte, str) else BytesIO(dados)).getSize()
+    img = Image(fonte if isinstance(fonte, str) else BytesIO(dados), width=altura_mm * mm * w / h, height=altura_mm * mm)
     img.hAlign = "CENTER"
     return img
 
 
-def cabecalho_documento(st, om: str, titulo: str = "") -> list:
+def cabecalho_documento(st, om: str, titulo: str = "", ctx: Contexto | None = None) -> list:
     """Cabeçalho oficial, centralizado e em negrito: Brasão de Armas, MARINHA DO BRASIL, a OM, uma linha em branco e o título."""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import HRFlowable
@@ -49,7 +56,7 @@ def cabecalho_documento(st, om: str, titulo: str = "") -> list:
     tit = ParagraphStyle("tit", parent=st["Normal"], alignment=1, fontSize=13, leading=16, fontName="Helvetica-Bold",
                          textColor=_cor(NAVY))
     el = []
-    if (b := brasao_flowable()) is not None:
+    if (b := brasao_flowable(ctx)) is not None:
         el += [b, Spacer(1, 3 * mm)]
     el.append(Paragraph("MARINHA DO BRASIL", marinha))
     if om.strip():
@@ -59,6 +66,14 @@ def cabecalho_documento(st, om: str, titulo: str = "") -> list:
         el.append(Paragraph(titulo, tit))
     el.append(HRFlowable(width="100%", thickness=1.2, color=_cor(OURO), spaceBefore=5, spaceAfter=5))
     return el
+
+
+def titulo_detalhe(nome_escala: str) -> str:
+    """"DETALHE DE SERVIÇO DE <escala>", sem repetir quando o nome da escala já traz "Detalhe de serviço"."""
+    import unicodedata
+    plano = unicodedata.normalize("NFKD", nome_escala).encode("ascii", "ignore").decode().lower()
+    n = xml_escape(nome_escala.strip().upper())
+    return n if "detalhe de servic" in plano else f"DETALHE DE SERVIÇO DE {n}"
 
 
 def corpo_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
@@ -121,7 +136,7 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
     corpo_n = ParagraphStyle("corpo", parent=st["BodyText"], fontSize=9, leading=12)
     corpo_p = ParagraphStyle("corpop", parent=st["BodyText"], fontSize=7.5, leading=9.6, textColor=_cor("#2B3440"))   # letras pequenas
     eventos = esc.modo == "eventos"
-    el = cabecalho_documento(st, om or esc.om, f"DETALHE DE SERVIÇO DE {xml_escape(esc.nome.upper())}") + [
+    el = cabecalho_documento(st, om or esc.om, titulo_detalhe(esc.nome), ctx) + [
           Paragraph(f"{cat}{' · ' + esc.tipo if esc.tipo else ''} · "
                     f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y} · "
                     f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}", info),
@@ -172,7 +187,7 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
             obs.append(f"{max(i.inicio, dias[0]):%d/%m}: {xml_escape(ctx.militar(i.militar_id).nome)} – Dispensado "
                        f"({i.inicio:%d/%m}{fim}): {xml_escape(i.motivo)}")
     from reportlab.platypus import HRFlowable
-    blocos = ((("Instruções do serviço", instrucoes, corpo_n)), ("Recomendações", recomendacoes, corpo_p),
+    blocos = (("Instruções do serviço", instrucoes, corpo_p), ("Recomendações", recomendacoes, corpo_p),
               ("Regras (horário de parada, acumulação de trabalho etc.)", regras, corpo_p))
     for titulo, texto, estilo_txt in blocos:
         if not vazio(texto):
@@ -221,7 +236,7 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
         canvas.line(18 * mm, 11 * mm, W - 18 * mm, 11 * mm)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(_cor(CINZA))
-        canvas.drawString(18 * mm, 7 * mm, f"MARINHA DO BRASIL · Detalhe de serviço – {esc.nome}")
+        canvas.drawString(18 * mm, 7 * mm, f"MARINHA DO BRASIL · {esc.nome}")
         canvas.drawRightString(W - 18 * mm, 7 * mm, f"Página {doc_.page}")
         canvas.restoreState()
     doc.build(el, onFirstPage=rodape, onLaterPages=rodape)
@@ -241,7 +256,7 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
     dado = rotulo_militar
     titulo = "PAPELETA DE DEVOLUÇÃO DE SERVIÇO" if devolucao else "PAPELETA DE TROCA DE SERVIÇO"
-    el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}")
+    el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}", ctx)
     dados = [
         ["Escala", esc.nome + (f" ({esc.tipo})" if esc.tipo else "")],
         ["Pedido em", f"{p.criado_em:%d/%m/%Y} às {p.criado_em:%H:%M:%S}"],

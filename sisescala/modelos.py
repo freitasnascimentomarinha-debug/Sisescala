@@ -442,6 +442,7 @@ class Contexto:
     convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
     assinaturas_detalhe: list[AssinaturaDetalhe] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
+    brasao_b64: str = ""                  # Brasão de Armas (PNG reduzido, base64) do cabeçalho dos documentos
     admin_cfg_sig: str = ""               # assinatura (NIP+senha) dos segredos já aplicada ao administrador
     janela_devolucao_dias: int = 30       # configurável
     janela_troca_dias: int = 15           # busca de parceiro na troca forçada

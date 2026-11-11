@@ -246,7 +246,7 @@ def pdf_regras(ctx: Contexto, esc: Escala, om: str = "") -> bytes:
                             bottomMargin=14 * mm)
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
     from .pdf import cabecalho_documento
-    el = cabecalho_documento(st, om or esc.om, f"REGRAS DO SERVIÇO – {escape(esc.nome.upper())}") + [
+    el = cabecalho_documento(st, om or esc.om, f"REGRAS DO SERVIÇO – {escape(esc.nome.upper())}", ctx) + [
           P("Como esta escala funciona", "Heading3")]
     el += [P("• " + escape(t)) for t in texto_funcionamento(ctx, esc)]
     for titulo, itens in itens_configuracao(ctx, esc):

@@ -51,3 +51,27 @@ def test_pdf_assinado_tem_qr_codigo_e_cabecalho_na_ordem_pedida():
     txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
     assert cod in txt and "Verificar documento" in txt
     assert txt.index("MARINHA DO BRASIL") < txt.index("CENTRO DE OPERAÇÕES") < txt.index("DETALHE DE SERVIÇO DE PORTARIA")
+
+
+def test_titulo_nao_repete_detalhe_de_servico_e_brasao_enviado_sai_no_pdf():
+    import base64
+    from PIL import Image
+    from sisescala import brasao as bs
+    from sisescala.pdf import titulo_detalhe
+    assert titulo_detalhe("Pernoite") == "DETALHE DE SERVIÇO DE PERNOITE"
+    assert titulo_detalhe("Detalhe de Serviço do COpAb") == "DETALHE DE SERVIÇO DO COPAB"
+    assert titulo_detalhe("DETALHE DE SERVICO – Diária") == "DETALHE DE SERVICO – DIÁRIA"
+    c, r, dias = mk()
+    buf = io.BytesIO()
+    Image.new("RGBA", (800, 900), (10, 35, 66, 255)).save(buf, "PNG")
+    c.brasao_b64 = bs.preparar(buf.getvalue())
+    assert 0 < len(c.brasao_b64) <= bs.LIMITE and base64.b64decode(c.brasao_b64)[:4] == b"\x89PNG"
+    c2 = de_tabelas(para_tabelas(c))
+    assert c2.brasao_b64 == c.brasao_b64                                  # sobrevive à gravação (Config)
+    com, sem = gerar_pdf(c2, r, dias, "A", "OM"), gerar_pdf(mk()[0], r, dias, "A", "OM")
+    assert len(com) > len(sem)                                           # a imagem entrou no PDF
+    try:
+        bs.preparar(b"nao e imagem")
+        raise AssertionError("deveria recusar")
+    except ValueError:
+        pass
