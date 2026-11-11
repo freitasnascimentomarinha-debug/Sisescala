@@ -134,7 +134,7 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
                          ("janela_devolucao_dias", str(ctx.janela_devolucao_dias)),
                          ("janela_troca_dias", str(ctx.janela_troca_dias)),
                          ("cadastro_aberto", "1" if ctx.cadastro_aberto else "0"),
-                         ("admin_cfg_sig", ctx.admin_cfg_sig)):
+                         ("admin_cfg_sig", ctx.admin_cfg_sig), ("brasao_b64", ctx.brasao_b64)):
         T["Config"].append([chave, valor])
     for m in ctx.militares:
         add("Militares", m)
@@ -228,7 +228,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         uf=cfg.get("uf") or "RJ",
         janela_devolucao_dias=int(cfg.get("janela_devolucao_dias") or 30),
         janela_troca_dias=int(cfg.get("janela_troca_dias") or 15),
-        cadastro_aberto=cfg.get("cadastro_aberto", "1") != "0", admin_cfg_sig=cfg.get("admin_cfg_sig", ""))
+        cadastro_aberto=cfg.get("cadastro_aberto", "1") != "0", admin_cfg_sig=cfg.get("admin_cfg_sig", ""), brasao_b64=cfg.get("brasao_b64", ""))
     ctx.usuarios = [Usuario(**d) for d in _linhas_de(T, "Usuarios")]
     for u in ctx.usuarios:            # contas anteriores ao cadastro por NIP/aprovação: continuam entrando como antes
         u.situacao = u.situacao or ("ativo" if u.ativo else "bloqueado")

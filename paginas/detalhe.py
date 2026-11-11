@@ -5,7 +5,7 @@ import streamlit as st
 
 import os
 
-from sisescala import auth, gestao, textorico as tr, ui, verificacao as vf
+from sisescala import auth, brasao as bs, gestao, textorico as tr, ui, verificacao as vf
 from sisescala.componente import editor_texto
 from sisescala.modelos import rotulo_militar
 from sisescala.permissoes import eh_detalhista
@@ -65,6 +65,30 @@ with esq:
         om = st.text_input("OM que gerencia a escala (cabeçalho do documento)", key=K + "om")
         if not esc.om:
             st.caption("Dica: cadastre a OM em Gerenciar escalas para ela sair sempre no cabeçalho.")
+        if user.admin:
+            _bytes = bs.bytes_de(ctx.brasao_b64)
+            cb1, cb2 = st.columns([1, 3], vertical_alignment="center")
+            if _bytes:
+                cb1.image(_bytes, width=70)
+            else:
+                cb1.caption("Sem brasão")
+            arq = cb2.file_uploader("Brasão de Armas do cabeçalho (PNG ou JPG)", type=["png", "jpg", "jpeg"], key="det_brasao",
+                                    help="Sai centralizado acima de MARINHA DO BRASIL em todos os documentos em PDF. Use o arquivo "
+                                         "oficial, de preferência PNG com fundo transparente.")
+            if arq is not None and st.session_state.get("_brasao_id") != arq.file_id:
+                st.session_state["_brasao_id"] = arq.file_id
+                try:
+                    ctx.brasao_b64 = bs.preparar(arq.getvalue())
+                    st.session_state["toast"] = "Brasão de Armas atualizado."
+                    st.rerun()
+                except ValueError as ex:
+                    st.error(str(ex))
+            if _bytes and cb2.button("Remover brasão", key="det_brasao_rm"):
+                ctx.brasao_b64 = ""
+                st.session_state["_brasao_id"] = None
+                st.rerun()
+        elif not ctx.brasao_b64:
+            st.caption("O Brasão de Armas do cabeçalho é cadastrado pelo administrador.")
     with st.container(border=True):
         ui.secao("Textos do documento")
         st.caption("Clique para escrever com negrito, itálico, sublinhado e listas; o botão Salvar fica dentro da janela.")
