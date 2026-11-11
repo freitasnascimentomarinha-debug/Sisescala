@@ -208,6 +208,7 @@ menu = {
                        _pg("buscar", "Buscar escalas", "search", "buscar")],
 }
 if e_detalhista or e_auxiliar:
+    menu["Documentos"].insert(1, _pg("unificado", "Detalhe unificado", "library_books", "unificado"))
     gestao_pgs = [_pg("lancamentos", "Lançamentos", "edit_calendar", "lancamentos"),
                       _pg("calendario", "Calendário da escala", "event", "calendario")]
     if e_detalhista:

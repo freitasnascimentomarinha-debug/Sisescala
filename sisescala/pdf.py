@@ -85,14 +85,9 @@ def titulo_detalhe(nome_escala: str) -> str:
     return n if "detalhe de servic" in plano else f"DETALHE DE SERVIÇO DE {n}"
 
 
-def montar_snapshot(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
-                    instrucoes: str = "", recomendacoes: str = "", regras: str = "",
-                    nomes_assinantes: tuple = ("", "", "", "")) -> dict:
-    """Tudo o que o PDF do detalhe mostra, já resolvido em texto (nomes, siglas, horários, observações). É esse conteúdo
-    — e não os dados vivos da escala — que as autoridades assinam, e dele o PDF pode ser refeito a qualquer momento."""
+def _secao(ctx: Contexto, res: Resultado, dias: list[date], esc) -> tuple[list[dict], list[str]]:
+    """Linhas (um dia por linha) e observações de UMA escala, já em texto: é o miolo do documento."""
     from .calendario import dia_util
-    esc = ctx.escala(escala_id)
-    cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]
     obs: list[str] = []
     linhas = []
     for d in dias:
@@ -120,12 +115,53 @@ def montar_snapshot(ctx: Contexto, res: Resultado, dias: list[date], escala_id: 
             fim = f"–{i.fim:%d/%m}" if i.fim else ""
             obs.append(f"{max(i.inicio, dias[0]):%d/%m}: {ctx.militar(i.militar_id).nome} – Dispensado "
                        f"({i.inicio:%d/%m}{fim}): {i.motivo}")
+    return linhas, obs
+
+
+def montar_snapshot(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
+                    instrucoes: str = "", recomendacoes: str = "", regras: str = "",
+                    nomes_assinantes: tuple = ("", "", "", "")) -> dict:
+    """Tudo o que o PDF do detalhe mostra, já resolvido em texto (nomes, siglas, horários, observações). É esse conteúdo
+    — e não os dados vivos da escala — que as autoridades assinam, e dele o PDF pode ser refeito a qualquer momento."""
+    esc = ctx.escala(escala_id)
+    cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]
+    linhas, obs = _secao(ctx, res, dias, esc)
     return {"versao": 2, "escala_id": esc.id, "escala_nome": esc.nome, "om": om or esc.om,
             "titulo": titulo_detalhe(esc.nome),
             "subtitulo": f"{cat}{' · ' + esc.tipo if esc.tipo else ''} · Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y} · "
                          f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}",
             "periodo": [dias[0].isoformat(), dias[-1].isoformat()], "eventos": esc.modo == "eventos", "linhas": linhas,
             "textos": [instrucoes, recomendacoes, regras], "obs": list(dict.fromkeys(obs)), "nomes": nomes4(nomes_assinantes)}
+
+
+def montar_snapshot_conjunto(ctx: Contexto, res: Resultado, dias: list[date], cj, nomes_assinantes: tuple | None = None) -> dict:
+    """Snapshot do documento unificado: uma seção por escala (fiscal, sentinela, contramestre...), com as instruções,
+    recomendações e regras gerais do documento. `nomes_assinantes` None = os nomes digitados no próprio documento."""
+    secoes, obs = [], []
+    for eid in cj.escala_ids:
+        esc = ctx.escala_ou_none(eid)
+        if esc is None:
+            continue
+        linhas, o = _secao(ctx, res, dias, esc)
+        secoes.append({"escala_id": esc.id, "nome": esc.nome, "eventos": esc.modo == "eventos", "linhas": linhas})
+        obs += [f"{esc.nome} – {x}" for x in o]
+    nomes = nomes_assinantes if nomes_assinantes is not None else (cj.ass_detalhista, cj.ass_auxiliar, cj.ass_encarregado,
+                                                                  cj.ass_vice_diretor)
+    return {"versao": 3, "conjunto_id": cj.id, "escala_id": "", "escala_nome": cj.nome, "om": cj.om, "titulo": cj.nome.upper(),
+            "subtitulo": (f"Dia {dias[0]:%d/%m/%Y}" if len(dias) == 1 else f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y}")
+                         + f" · {len(secoes)} escala(s)",
+            "periodo": [dias[0].isoformat(), dias[-1].isoformat()], "secoes": secoes,
+            "textos": [cj.det_instrucoes, cj.det_recomendacoes, cj.det_regras], "obs": list(dict.fromkeys(obs)),
+            "nomes": nomes4(nomes)}
+
+
+def corpo_conjunto(ctx: Contexto, res: Resultado, dias: list[date], cj) -> str:
+    import json
+    return json.dumps(montar_snapshot_conjunto(ctx, res, dias, cj), sort_keys=True, ensure_ascii=False)
+
+
+def gerar_pdf_conjunto(ctx: Contexto, res: Resultado, dias: list[date], cj, assinaturas: dict | None = None) -> bytes:
+    return renderizar_pdf(montar_snapshot_conjunto(ctx, res, dias, cj), assinaturas, ctx)
 
 
 def corpo_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
@@ -179,7 +215,7 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=12 * mm, bottomMargin=16 * mm, title=f"Detalhe de serviço – {snap['escala_nome']}",
+                            topMargin=12 * mm, bottomMargin=16 * mm, title=f"{snap['titulo'].title()} – {snap['escala_nome']}",
                             author="SisEscala")
     st = getSampleStyleSheet()
     info = ParagraphStyle("info", parent=st["Normal"], alignment=1, fontSize=9, leading=12, textColor=_cor(CINZA))
@@ -188,36 +224,63 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
     sec = ParagraphStyle("sec", parent=st["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=_cor(NAVY),
                          spaceBefore=9, spaceAfter=2)
     corpo_p = ParagraphStyle("corpop", parent=st["BodyText"], fontSize=7.5, leading=9.6, textColor=_cor("#2B3440"))   # letras pequenas
-    eventos = snap["eventos"]
-    el = cabecalho_documento(st, snap["om"], xml_escape(snap["titulo"]), ctx.escala(snap["escala_id"]) if ctx else None) + [Paragraph(xml_escape(snap["subtitulo"]), info),
-                                                                                  Spacer(1, 8)]
-    tabela = [[Paragraph(t, cab) for t in ("Data", "Escalados", "Retém") + (("Evento",) if eventos else ())]]
-    nao_uteis: list[int] = []
-    for ln in snap["linhas"]:
-        d = _date.fromisoformat(ln["data"])
-        data_cel = Paragraph(f"<b>{d:%d/%m}</b><br/>{ln['dow']}", cel)
-        if not ln["util"]:
-            nao_uteis.append(len(tabela))                     # sáb, dom, feriado: fundo suave dourado
-        if not ln["funciona"]:
-            tabela.append([data_cel, Paragraph("<i>não guarnece</i>", cel), Paragraph("-", cel)]
-                          + ([Paragraph("-", cel)] if eventos else []))
-            continue
-        efet = [f"<i>{xml_escape(x[1:])}</i>" if x.startswith("~") else xml_escape(x) for x in ln["efetivos"]]
-        lin = [data_cel, Paragraph("<br/>".join(efet) or "-", cel),
-               Paragraph("<br/>".join(xml_escape(x) for x in ln["retens"]) or "-", cel)]
-        if eventos:
-            lin.append(Paragraph(xml_escape(ln["descricao"] or "-"), cel))
-        tabela.append(lin)
-    larguras = [17 * mm, 80 * mm, 52 * mm] + ([34 * mm] if eventos else [])
-    t = Table(tabela, colWidths=larguras, repeatRows=1, hAlign="CENTER")
-    estilo = [("BOX", (0, 0), (-1, -1), 0.8, _cor(NAVY)), ("INNERGRID", (0, 0), (-1, -1), 0.3, _cor("#B7C3D3")),
-              ("BACKGROUND", (0, 0), (-1, 0), _cor(NAVY)), ("LINEBELOW", (0, 0), (-1, 0), 1.6, _cor(OURO)),
-              ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-              ("TOPPADDING", (0, 0), (-1, -1), 2.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2)]
-    estilo += [("BACKGROUND", (0, i), (-1, i), _cor(GELO)) for i in range(2, len(tabela), 2)]            # zebra
-    estilo += [("BACKGROUND", (0, i), (-1, i), _cor("#F6EBC8")) for i in nao_uteis]
-    t.setStyle(TableStyle(estilo))
-    el.append(t)
+    fonte = None
+    if ctx is not None:
+        fonte = ctx.conjunto(snap["conjunto_id"]) if snap.get("conjunto_id") else ctx.escala_ou_none(snap.get("escala_id", ""))
+    el = cabecalho_documento(st, snap["om"], xml_escape(snap["titulo"]), fonte) + [Paragraph(xml_escape(snap["subtitulo"]), info),
+                                                                                    Spacer(1, 8)]
+    base_estilo = [("BOX", (0, 0), (-1, -1), 0.8, _cor(NAVY)), ("INNERGRID", (0, 0), (-1, -1), 0.3, _cor("#B7C3D3")),
+                   ("BACKGROUND", (0, 0), (-1, 0), _cor(NAVY)), ("LINEBELOW", (0, 0), (-1, 0), 1.6, _cor(OURO)),
+                   ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                   ("TOPPADDING", (0, 0), (-1, -1), 2.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2)]
+
+    def _efet(ln):
+        return "<br/>".join(f"<i>{xml_escape(x[1:])}</i>" if x.startswith("~") else xml_escape(x) for x in ln["efetivos"]) or "-"
+
+    def _rets(ln):
+        return "<br/>".join(xml_escape(x) for x in ln["retens"]) or "-"
+
+    def tabela_dias(linhas, eventos):
+        """Um dia por linha: Data | Escalados | Retém (| Evento)."""
+        tabela = [[Paragraph(t, cab) for t in ("Data", "Escalados", "Retém") + (("Evento",) if eventos else ())]]
+        nao_uteis: list[int] = []
+        for ln in linhas:
+            d = _date.fromisoformat(ln["data"])
+            data_cel = Paragraph(f"<b>{d:%d/%m}</b><br/>{ln['dow']}", cel)
+            if not ln["util"]:
+                nao_uteis.append(len(tabela))                 # sáb, dom, feriado: fundo suave dourado
+            if not ln["funciona"]:
+                tabela.append([data_cel, Paragraph("<i>não guarnece</i>", cel), Paragraph("-", cel)]
+                              + ([Paragraph("-", cel)] if eventos else []))
+                continue
+            lin = [data_cel, Paragraph(_efet(ln), cel), Paragraph(_rets(ln), cel)]
+            if eventos:
+                lin.append(Paragraph(xml_escape(ln["descricao"] or "-"), cel))
+            tabela.append(lin)
+        larguras = [17 * mm, 80 * mm, 52 * mm] + ([34 * mm] if eventos else [])
+        t_ = Table(tabela, colWidths=larguras, repeatRows=1, hAlign="CENTER")
+        est = list(base_estilo) + [("BACKGROUND", (0, i), (-1, i), _cor(GELO)) for i in range(2, len(tabela), 2)]
+        est += [("BACKGROUND", (0, i), (-1, i), _cor("#F6EBC8")) for i in nao_uteis]
+        t_.setStyle(TableStyle(est))
+        return t_
+
+    secoes = snap.get("secoes")
+    if secoes is None:                                       # documento de uma escala só
+        el.append(tabela_dias(snap["linhas"], snap["eventos"]))
+    elif secoes and all(len(sc["linhas"]) == 1 for sc in secoes):
+        # um dia só: uma tabela com uma linha por escala (fiscal, sentinela, contramestre...)
+        tabela = [[Paragraph(t, cab) for t in ("Serviço", "Escalados", "Retém")]]
+        for sc in secoes:
+            ln = sc["linhas"][0]
+            tabela.append([Paragraph(f"<b>{xml_escape(sc['nome'])}</b>", cel),
+                           Paragraph(_efet(ln) if ln["funciona"] else "<i>não guarnece</i>", cel),
+                           Paragraph(_rets(ln) if ln["funciona"] else "-", cel)])
+        t_ = Table(tabela, colWidths=[46 * mm, 76 * mm, 52 * mm], repeatRows=1, hAlign="CENTER")
+        t_.setStyle(TableStyle(list(base_estilo) + [("BACKGROUND", (0, i), (-1, i), _cor(GELO)) for i in range(2, len(tabela), 2)]))
+        el.append(t_)
+    else:                                                    # vários dias: uma tabela por escala, com o nome em destaque
+        for sc in secoes or []:
+            el += [Paragraph(xml_escape(sc["nome"].upper()), sec), tabela_dias(sc["linhas"], sc["eventos"]), Spacer(1, 4)]
     blocos = (("Instruções do serviço", snap["textos"][0]), ("Recomendações", snap["textos"][1]),
               ("Regras (horário de parada, acumulação de trabalho etc.)", snap["textos"][2]))
     for titulo, texto in blocos:

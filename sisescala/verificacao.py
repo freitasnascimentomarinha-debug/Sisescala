@@ -53,16 +53,20 @@ def integra(a: AssinaturaDetalhe) -> bool:
 
 
 def descrever(ctx: Contexto, a: AssinaturaDetalhe) -> dict:
-    """O que foi assinado, em forma legível: escala, período, textos e, por dia, quem estava escalado."""
+    """O que foi assinado, em forma legível: documento, período, textos e, por escala e por dia, quem estava escalado.
+    `secoes`: [(nome da escala ou "", [(data, efetivos, reténs, funciona)])] — uma seção no detalhe de uma escala só."""
     from .assinaturas import desempacotar
     try:
         c = json.loads(desempacotar(a.conteudo))
     except ValueError:
         c = {}
-    dias = [(ln["data"], [x.lstrip("~") for x in ln.get("efetivos", [])], list(ln.get("retens", [])), ln.get("funciona", True))
-            for ln in c.get("linhas", [])]
+
+    def dias(linhas):
+        return [(ln["data"], [x.lstrip("~") for x in ln.get("efetivos", [])], list(ln.get("retens", [])), ln.get("funciona", True))
+                for ln in linhas]
+    secoes = [(sc["nome"], dias(sc["linhas"])) for sc in c["secoes"]] if c.get("secoes") is not None else [("", dias(c.get("linhas", [])))]
     return {"escala": c.get("escala_nome", ""), "om": c.get("om", ""), "textos": c.get("textos", ["", "", ""]),
-            "obs": c.get("obs", []), "assinantes": c.get("nomes", []), "dias": dias}
+            "obs": c.get("obs", []), "assinantes": c.get("nomes", []), "secoes": secoes}
 
 
 def url_de_verificacao(base: str, codigo: str) -> str:

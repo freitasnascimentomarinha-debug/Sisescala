@@ -36,26 +36,29 @@ if not user.pin_hash and docs:
 
 pendentes_ids = {d.id: p for d, p in pend}
 for d in docs:
-    esc = ctx.escala(d.escala_id)
+    esc = asn.fonte_do_doc(ctx, d)
     conteudo = asn.conteudo(d)
     feitos = {a.papel: a for a in asn.assinaturas_do(ctx, d)}
     meus = asn.papeis_do_usuario(ctx, uid, esc)
     a_assinar = pendentes_ids.get(d.id, [])
     with st.container(border=True):
-        ui.secao(f"{esc.nome} · {d.inicio:%d/%m} a {d.fim:%d/%m/%Y}")
+        ui.secao(f"{esc.nome} · {d.inicio:%d/%m} a {d.fim:%d/%m/%Y}" + (" · documento unificado" if d.conjunto_id else ""))
         enviador = ctx.usuario(d.enviado_por)
         st.caption(f"Enviado por {enviador.nome if enviador else '—'} em {d.enviado_em:%d/%m/%Y às %H:%M}.")
         st.html('<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem">' + "".join(
             ui.pill(f"{asn.ROTULO[p]} ✓ {feitos[p].nome}" if p in feitos else f"{asn.ROTULO[p]} · pendente",
                     "verde" if p in feitos else "ambar") for p in asn.PAPEIS) + "</div>")
         with st.expander("Conferir o conteúdo do documento"):
-            linhas = "".join(
-                f"<tr><td class='l'>{ln['data'][8:10]}/{ln['data'][5:7]}</td><td>"
-                + ("<br>".join(ui.esc(x.lstrip('~')) for x in ln["efetivos"]) or "—") + "</td><td>"
-                + ("<br>".join(ui.esc(x) for x in ln["retens"]) or "—") + "</td></tr>" if ln["funciona"] else
-                f"<tr><td class='l'>{ln['data'][8:10]}/{ln['data'][5:7]}</td><td colspan=2><i>não guarnece</i></td></tr>"
-                for ln in conteudo.get("linhas", []))
-            st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados</th><th>Retém</th></tr>{linhas}</table></div>')
+            for sc in (conteudo.get("secoes") if conteudo.get("secoes") is not None else [{"nome": "", "linhas": conteudo.get("linhas", [])}]):
+                if sc["nome"]:
+                    st.markdown(f"**{sc['nome']}**")
+                linhas = "".join(
+                    f"<tr><td class='l'>{ln['data'][8:10]}/{ln['data'][5:7]}</td><td>"
+                    + ("<br>".join(ui.esc(x.lstrip('~')) for x in ln["efetivos"]) or "—") + "</td><td>"
+                    + ("<br>".join(ui.esc(x) for x in ln["retens"]) or "—") + "</td></tr>" if ln["funciona"] else
+                    f"<tr><td class='l'>{ln['data'][8:10]}/{ln['data'][5:7]}</td><td colspan=2><i>não guarnece</i></td></tr>"
+                    for ln in sc["linhas"])
+                st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados</th><th>Retém</th></tr>{linhas}</table></div>')
             for rot, txt in zip(("Instruções do serviço", "Recomendações", "Regras"), conteudo.get("textos", ["", "", ""])):
                 if not tr.vazio(txt):
                     st.markdown(f"**{rot}**")

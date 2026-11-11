@@ -8,6 +8,14 @@ from sisescala import verificacao as vf
 MIN_PUBLICO = 16          # a consulta sem login exige mais caracteres do código (não dá para adivinhar)
 
 
+def asn_nome_doc(a) -> str:
+    import json
+    try:
+        return json.loads(asn.desempacotar(a.conteudo)).get("escala_nome", "") or a.escala_id
+    except ValueError:
+        return a.escala_id
+
+
 def mostrar(ctx, completo: bool) -> None:
     ui.cabecalho("Verificar documento", "Confere a assinatura eletrônica num detalhe de serviço.", "shield")
     minimo = vf.MIN_PREFIXO if completo else MIN_PUBLICO
@@ -30,13 +38,13 @@ def mostrar(ctx, completo: bool) -> None:
             st.success("**Assinatura autêntica.** O código confere com o registro do sistema e o conteúdo gravado não foi alterado.")
         else:
             st.error("**Registro adulterado.** O conteúdo gravado não gera mais este código. Não confie neste documento.")
-        esc = ctx.escala(a.escala_id)
+        nome_doc = asn_nome_doc(a)
         todas = vf.do_codigo(ctx, a.codigo)
         # sem login não se mostra o NIP (dado pessoal): só nome, papel e quando assinou
         ui.campos([(f"Assinado por ({asn.ROTULO.get(x.papel, x.papel)})",
                     f"{x.nome}" + (f" · NIP {x.nip}" if completo and x.nip else "") + f" · {x.em:%d/%m/%Y às %H:%M:%S}")
                    for x in todas] +
-                  [("Escala", esc.nome if esc else a.escala_id), ("Período", f"{a.inicio:%d/%m/%Y} a {a.fim:%d/%m/%Y}"),
+                  [("Documento", nome_doc), ("Período", f"{a.inicio:%d/%m/%Y} a {a.fim:%d/%m/%Y}"),
                    ("OM", a.om or "—"), ("Código completo", a.codigo)])
         if not completo:
             st.caption("Esta consulta é pública e mostra só o essencial. Quem tem acesso ao SisEscala vê também o conteúdo "
@@ -44,12 +52,15 @@ def mostrar(ctx, completo: bool) -> None:
             return
         d = vf.descrever(ctx, a)
         with st.expander("O que foi assinado (compare com o PDF)", expanded=True):
-            linhas = "".join(
-                f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td>"
-                + ("<br>".join(ui.esc(x) for x in ef) or "—") + "</td><td>" + ("<br>".join(ui.esc(x) for x in rt) or "—") + "</td></tr>"
-                if fun else f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td colspan=2><i>não guarnece</i></td></tr>"
-                for dd, ef, rt, fun in d["dias"])
-            st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados</th><th>Retém</th></tr>{linhas}</table></div>')
+            for nome_sc, dias_sc in d["secoes"]:
+                if nome_sc:
+                    st.markdown(f"**{nome_sc}**")
+                linhas = "".join(
+                    f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td>"
+                    + ("<br>".join(ui.esc(x) for x in ef) or "—") + "</td><td>" + ("<br>".join(ui.esc(x) for x in rt) or "—") + "</td></tr>"
+                    if fun else f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td colspan=2><i>não guarnece</i></td></tr>"
+                    for dd, ef, rt, fun in dias_sc)
+                st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados</th><th>Retém</th></tr>{linhas}</table></div>')
             for rot, txt in zip(("Instruções do serviço", "Recomendações", "Regras"), d["textos"]):
                 if not tr.vazio(txt):
                     st.markdown(f"**{rot}**")

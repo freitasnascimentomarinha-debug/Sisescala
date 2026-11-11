@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      AssinaturaDetalhe, ConviteVinculo, DetalheDoc, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      AssinaturaDetalhe, ConviteVinculo, DetalheConjunto, DetalheDoc, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -110,7 +110,11 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "AssinaturasDetalhe": [("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("usuario_id", "s"),
                            ("nome", "s"), ("nip", "s"), ("om", "s"), ("em", "dt"), ("conteudo", "s"), ("papel", "s")],
     "DetalhesParaAssinar": [("id", "s"), ("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("enviado_por", "s"),
-                            ("enviado_em", "dt"), ("status", "s"), ("conteudo", "s")],
+                            ("enviado_em", "dt"), ("status", "s"), ("conteudo", "s"), ("conjunto_id", "s")],
+    "DetalhesConjuntos": [("id", "s"), ("nome", "s"), ("dono_id", "s"), ("om", "s"), ("escala_ids", "s"), ("det_instrucoes", "s"),
+                          ("det_recomendacoes", "s"), ("det_regras", "s"), ("ass_detalhista", "s"), ("ass_auxiliar", "s"),
+                          ("ass_encarregado", "s"), ("ass_vice_diretor", "s"), ("auxiliar_usuario_id", "s"),
+                          ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("brasao_b64", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
 }
 ABAS = list(SCHEMA)
@@ -178,6 +182,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("AssinaturasDetalhe", a)
     for dd in ctx.detalhes_docs:
         add("DetalhesParaAssinar", dd)
+    for cj in ctx.conjuntos:
+        add("DetalhesConjuntos", {**{c: getattr(cj, c) for c, _ in SCHEMA["DetalhesConjuntos"]}, "escala_ids": ",".join(cj.escala_ids)})
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -274,6 +280,8 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
     ctx.detalhes_docs = [DetalheDoc(**d) for d in _linhas_de(T, "DetalhesParaAssinar")]
+    ctx.conjuntos = [DetalheConjunto(**{**d, "escala_ids": [x for x in d["escala_ids"].split(",") if x]})
+                     for d in _linhas_de(T, "DetalhesConjuntos")]
     ctx.assinaturas_detalhe = [AssinaturaDetalhe(**{**d, "papel": d["papel"] or "detalhista"}) for d in _linhas_de(T, "AssinaturasDetalhe")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
