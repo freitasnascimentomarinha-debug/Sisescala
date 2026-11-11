@@ -1,45 +1,78 @@
 """Detalhe de serviço: monta o documento do período, com instruções e assinaturas."""
+from datetime import datetime
+
 import streamlit as st
 
-from sisescala import gestao, ui
+from sisescala import auth, gestao, textorico as tr, ui
+from sisescala.componente import editor_texto
+from sisescala.modelos import rotulo_militar
 from sisescala.permissoes import eh_detalhista
-from sisescala.pdf import gerar_pdf
+from sisescala.pdf import gerar_pdf, hash_detalhe
 from sisescala.sessao import barra_contexto, agir, exigir_escala, pagina
 
 P = pagina()
-ctx, res, dias = P.ctx, P.res, P.dias
+ctx, user, res, dias = P.ctx, P.user, P.res, P.dias
 esc = exigir_escala(P)
 ui.cabecalho("Detalhe de serviço", f"{esc.nome} · {dias[0]:%d/%m} a {dias[-1]:%d/%m/%Y}", "file",
              [ui.chip("Período", f"{len(dias)} dias")])
 
 barra_contexto(P, periodo=True)
 K = f"det_{esc.id}_"                  # chaves por escala: os campos nascem do que foi salvo na escala
-CAMPOS = {"om": esc.om, "ins": esc.det_instrucoes, "rec": esc.det_recomendacoes, "reg": esc.det_regras,
-          "a1": esc.ass_detalhista, "a2": esc.ass_encarregado, "a3": esc.ass_vice_diretor}
+CAMPOS = {"om": esc.om, "ins": tr.normalizar(esc.det_instrucoes), "rec": tr.normalizar(esc.det_recomendacoes),
+          "reg": tr.normalizar(esc.det_regras), "a1": esc.ass_detalhista, "a2": esc.ass_encarregado, "a3": esc.ass_vice_diretor}
 for k, v in CAMPOS.items():
     st.session_state.setdefault(K + k, v)  # mantém o que foi digitado ao navegar entre páginas
+pode = eh_detalhista(ctx, P.uid, esc)
+TEXTOS = {"ins": ("Instruções do serviço", "det_instrucoes"), "rec": ("Recomendações", "det_recomendacoes"),
+          "reg": ("Regras (horário de parada, acumulação de trabalho etc.)", "det_regras")}
+
+
+def _abrir_editor(campo: str):
+    titulo, atributo = TEXTOS[campo]
+
+    @st.dialog(titulo, width="large")
+    def _dialogo():
+        r = editor_texto(st.session_state[K + campo], key=f"{K}ed_{campo}")
+        st.caption("Salvar grava o texto" + (" na escala (sai sempre no documento)." if pode else
+                                             " só para esta sessão: apenas o detalhista grava na escala."))
+        if r and r.get("ts") != st.session_state.get(f"{K}ts_{campo}"):
+            st.session_state[f"{K}ts_{campo}"] = r["ts"]
+            novo = tr.normalizar(r["html"])
+            st.session_state[K + campo] = novo
+            if pode:
+                agir(lambda: gestao.editar_escala(ctx, P.uid, esc.id, **{atributo: novo}), f"{titulo.split(' (')[0]} salvo.")
+            else:
+                st.rerun()
+    _dialogo()
+
 
 esq, dir_ = st.columns([1.2, 1], gap="large")
 with esq:
     with st.container(border=True):
-        ui.secao("Cabeçalho e instruções")
+        ui.secao("Cabeçalho")
         om = st.text_input("OM que gerencia a escala (cabeçalho do documento)", key=K + "om")
         if not esc.om:
             st.caption("Dica: cadastre a OM em Gerenciar escalas para ela sair sempre no cabeçalho.")
-        ins = st.text_area("Instruções do serviço", key=K + "ins", height=120)
-        rec = st.text_area("Recomendações", key=K + "rec", height=100)
-        reg = st.text_area("Regras (horário de parada, acumulação de trabalho etc.)", key=K + "reg", height=100)
+    with st.container(border=True):
+        ui.secao("Textos do documento")
+        st.caption("Clique para escrever com negrito, itálico, sublinhado e listas; o botão Salvar fica dentro da janela.")
+        for campo, (titulo, _) in TEXTOS.items():
+            txt = st.session_state[K + campo]
+            b, t = st.columns([1.5, 2], vertical_alignment="center")
+            if b.button(titulo.split(" (")[0], key=f"{K}bt_{campo}", icon=":material/edit_note:", use_container_width=True,
+                        help=titulo):
+                _abrir_editor(campo)
+            t.caption(tr.resumo(txt) if not tr.vazio(txt) else "— vazio —")
     with st.container(border=True):
         ui.secao("Assinaturas")
         a1, a2, a3 = st.columns(3)
         ass = (a1.text_input("Detalhista", key=K + "a1"), a2.text_input("Encarregado do Detalhe", key=K + "a2"),
                a3.text_input("Vice-Diretor", key=K + "a3"))
-    pode = eh_detalhista(ctx, P.uid, esc)
-    if st.button("Salvar OM, instruções, regras e assinaturas", type="primary", icon=":material/save:",
+    ins, rec, reg = (st.session_state[K + c] for c in ("ins", "rec", "reg"))
+    if st.button("Salvar OM e assinaturas", type="primary", icon=":material/save:",
                  disabled=not pode, use_container_width=True,
                  help=None if pode else "Só o detalhista da escala salva estes dados."):
-        agir(lambda: gestao.editar_escala(ctx, P.uid, esc.id, om=om.strip(), det_instrucoes=ins, det_recomendacoes=rec,
-                                          det_regras=reg, ass_detalhista=ass[0], ass_encarregado=ass[1],
+        agir(lambda: gestao.editar_escala(ctx, P.uid, esc.id, om=om.strip(), ass_detalhista=ass[0], ass_encarregado=ass[1],
                                           ass_vice_diretor=ass[2]), "Detalhe de serviço salvo.")
     st.caption("O que for salvo sai sempre preenchido no documento desta escala." if pode else
                "Somente o detalhista da escala pode salvar; você pode editar e gerar o PDF normalmente.")
@@ -62,7 +95,40 @@ with dir_:
             st.caption(f"Mostrando 10 de {len(dias)} dias; o PDF traz todos.")
         trocas = sum(1 for d in dias for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else []) if a.origem in ("tf", "t"))
         ui.campos([("Cabeçalho", f"MARINHA DO BRASIL · {om or '—'}"), ("Escala", esc.nome), ("Dias no documento", str(len(dias))), ("Trocas no período", str(trocas))])
-        st.download_button("Gerar PDF do detalhe", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass),
-                           f"detalhe_{esc.id}_{dias[0]:%Y%m%d}.pdf", "application/pdf", type="primary",
-                           icon=":material/download:", use_container_width=True)
-        st.caption("Ajuste a escala e o período acima. O PDF inclui as observações de trocas e dispensas e as três assinaturas.")
+        codigo = hash_detalhe(ctx, res, dias, esc.id, om, ins, rec, reg, ass)
+        chave_ass = f"{K}assinou"
+        assinou = st.session_state.get(chave_ass)
+        if assinou and assinou["hash"] != codigo:                  # o documento mudou depois da assinatura
+            st.session_state.pop(chave_ass)
+            assinou = None
+            st.info("O documento mudou depois da assinatura; assine de novo para baixar com a assinatura.")
+        d1, d2 = st.columns(2)
+        nome_arq = f"detalhe_{esc.id}_{dias[0]:%Y%m%d}"
+        d1.download_button("PDF sem assinatura", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass),
+                           f"{nome_arq}.pdf", "application/pdf", icon=":material/download:", use_container_width=True,
+                           type="secondary" if assinou else "primary", key="dl_det_sem")
+        if assinou:
+            d2.download_button("PDF assinado", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass, assinou),
+                               f"{nome_arq}_assinado.pdf", "application/pdf", icon=":material/verified:", type="primary",
+                               use_container_width=True, key="dl_det_com")
+            st.caption(f"Assinado eletronicamente por {assinou['nome']} em {assinou['em']:%d/%m/%Y %H:%M:%S}.")
+        elif pode:
+            with d2.popover("Assinar com PIN", icon=":material/draw:", use_container_width=True):
+                if not user.pin_hash:
+                    st.warning("Cadastre o seu PIN em Minha conta para assinar.")
+                else:
+                    pin = st.text_input("Seu PIN", type="password", key=f"{K}pin")
+                    if st.button("Confirmar e assinar", key=f"{K}pin_ok", type="primary"):
+                        try:
+                            if auth.confirmar_assinatura(ctx, P.uid, pin):
+                                mil = ctx.militar(user.militar_id) if user.militar_id else None
+                                st.session_state[chave_ass] = {"nome": rotulo_militar(mil) if mil else user.nome,
+                                                               "nip": (mil.nip if mil and mil.nip else user.login),
+                                                               "em": datetime.now(), "hash": codigo}
+                                st.rerun()
+                            else:
+                                st.error("PIN incorreto.")
+                        except auth.AutenticacaoErro as ex:
+                            st.error(str(ex))
+        st.caption("Ajuste a escala e o período acima. O PDF inclui as observações de trocas e dispensas e as três assinaturas."
+                   + (" A assinatura do detalhista vem só se você assinar com o PIN e escolher “PDF assinado”." if pode else ""))

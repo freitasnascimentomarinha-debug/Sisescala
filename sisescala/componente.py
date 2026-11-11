@@ -32,3 +32,12 @@ def ordem_interativa(itens: list[dict], key: str) -> list[str] | None:
     if v and v.get("base") == atual and v.get("ordem") and v["ordem"] != atual:
         return list(v["ordem"])
     return None
+
+
+_DIR_EDITOR = Path(__file__).resolve().parent.parent / "componentes" / "editor"
+_editor = components.declare_component("editor_texto", path=str(_DIR_EDITOR))
+
+
+def editor_texto(html: str, key: str) -> dict | None:
+    """Editor de texto (negrito, itálico, sublinhado, listas) com botão Salvar. Devolve {html, ts} ao salvar."""
+    return _editor(html=html, key=key, default=None)

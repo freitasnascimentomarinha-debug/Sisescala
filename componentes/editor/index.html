@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#10150B;--card:#192012;--card2:#1F2817;--line:#323D24;--ink:#EFEBDD;--muted:#9AA183;--verde:#6B8E3A;--verde2:#A3C265}
+  html,body{margin:0;padding:0;background:transparent;font-family:'Inter','Segoe UI',system-ui,sans-serif;color:var(--ink)}
+  .barra{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;border:1px solid var(--line);border-bottom:0;
+    border-radius:12px 12px 0 0;background:var(--card2)}
+  .barra button{min-width:34px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+    font:600 13px 'Inter',system-ui,sans-serif;cursor:pointer;padding:0 10px}
+  .barra button:hover{border-color:var(--verde2);color:var(--verde2)}
+  .barra .sep{width:1px;height:22px;background:var(--line);margin:0 2px}
+  .barra .salvar{margin-left:auto;background:linear-gradient(135deg,#4F7029,#6B8E3A 55%,#8FB04E);border:0;color:#fff;padding:0 18px;
+    box-shadow:0 6px 16px rgba(107,142,58,.35)}
+  .barra .salvar:hover{filter:brightness(1.08);color:#fff}
+  #ed{min-height:230px;max-height:420px;overflow:auto;padding:14px 16px;border:1px solid var(--line);border-radius:0 0 12px 12px;
+    background:var(--card);color:var(--ink);font-size:14.5px;line-height:1.55;outline:none}
+  #ed:focus{border-color:var(--verde2)}
+  #ed ul,#ed ol{margin:4px 0 4px 22px;padding:0}
+  #ed:empty:before{content:attr(data-ph);color:var(--muted)}
+  .dica{margin:6px 2px 0;font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="barra">
+  <button data-c="bold" title="Negrito (Ctrl+B)"><b>N</b></button>
+  <button data-c="italic" title="Itálico (Ctrl+I)"><i>I</i></button>
+  <button data-c="underline" title="Sublinhado (Ctrl+U)"><u>S</u></button>
+  <span class="sep"></span>
+  <button data-c="insertUnorderedList" title="Marcadores">• Lista</button>
+  <button data-c="insertOrderedList" title="Numeração">1. Lista</button>
+  <span class="sep"></span>
+  <button data-c="undo" title="Desfazer (Ctrl+Z)">↶</button>
+  <button data-c="redo" title="Refazer (Ctrl+Y)">↷</button>
+  <button data-c="removeFormat" title="Limpar formatação">Limpar</button>
+  <button class="salvar" id="salvar">Salvar</button>
+</div>
+<div id="ed" contenteditable="true" spellcheck="true" data-ph="Digite aqui..."></div>
+<div class="dica">Ctrl+B negrito · Ctrl+I itálico · Ctrl+U sublinhado. O texto sai assim no PDF.</div>
+<script>
+(function () {
+  var ed = document.getElementById("ed");
+  function enviar(tipo, dados) { window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, dados), "*"); }
+  function altura() { enviar("streamlit:setFrameHeight", { height: document.body.scrollHeight + 6 }); }
+  document.querySelectorAll(".barra button[data-c]").forEach(function (b) {
+    b.addEventListener("mousedown", function (e) { e.preventDefault(); });       // não perde o foco/seleção do texto
+    b.addEventListener("click", function () { document.execCommand(b.dataset.c, false, null); ed.focus(); });
+  });
+  ed.addEventListener("paste", function (e) {                                    // cola sempre como texto simples
+    e.preventDefault();
+    var t = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, t);
+  });
+  document.getElementById("salvar").addEventListener("click", function () {
+    enviar("streamlit:setComponentValue", { dataType: "json", value: { html: ed.innerHTML, ts: Date.now() } });
+  });
+  var inicial = null;
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "streamlit:render") return;
+    var a = ev.data.args || {};
+    if (a.html !== inicial) { ed.innerHTML = a.html || ""; inicial = a.html; }   // não apaga o que está sendo digitado
+    altura();
+    setTimeout(function () { ed.focus(); }, 50);
+  });
+  window.addEventListener("resize", altura);
+  enviar("streamlit:componentReady", { apiVersion: 1 });
+  altura();
+})();
+</script>
+</body>
+</html>
