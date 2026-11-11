@@ -262,3 +262,18 @@ def test_minha_conta_salva_nome_de_guerra_posto_e_especialidade(app):
     assert not app.exception
     u = app.session_state["ctx"].usuario("u1")
     assert (u.nome_guerra, u.posto, u.especialidade) == ("Almirante", "CMG", "MO")
+
+
+def test_detalhe_assinatura_do_detalhista_com_pin_libera_o_pdf_assinado(app):
+    _criar_admin(app)
+    app.session_state["ctx"].usuario("u1").pin_hash = auth.hash_pin("1234")
+    app.switch_page("paginas/detalhe.py").run()
+    assert not app.exception
+    assert [b.proto.label for b in app.get("download_button")] == ["PDF sem assinatura"]
+    next(t for t in app.text_input if t.label == "Seu PIN").input("0000")
+    next(b for b in app.button if b.label == "Confirmar e assinar").click().run()
+    assert any("PIN incorreto" in e.value for e in app.error)
+    next(t for t in app.text_input if t.label == "Seu PIN").input("1234")
+    next(b for b in app.button if b.label == "Confirmar e assinar").click().run()
+    assert not app.exception
+    assert [b.proto.label for b in app.get("download_button")] == ["PDF sem assinatura", "PDF assinado"]

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape as xml_escape
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -32,9 +33,25 @@ def cabecalho_documento(st, om: str, titulo: str = "") -> list:
     return el
 
 
+def hash_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
+                 instrucoes: str = "", recomendacoes: str = "", regras: str = "",
+                 nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> str:
+    """Código de verificação (SHA-256) do conteúdo do detalhe: muda se a escala, o período ou os textos mudarem."""
+    import hashlib
+    import json
+    esc = ctx.escala(escala_id)
+    corpo = {"escala": esc.id, "periodo": [dias[0].isoformat(), dias[-1].isoformat()], "om": om or esc.om,
+             "textos": [instrucoes, recomendacoes, regras], "assinantes": list(nomes_assinantes),
+             "dias": [[d.isoformat(), [(a.militar_id, a.sigla) for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else [])]]
+                      for d in dias]}
+    return hashlib.sha256(json.dumps(corpo, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
 def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
               instrucoes: str = "", recomendacoes: str = "", regras: str = "",
-              nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> bytes:
+              nomes_assinantes: tuple[str, str, str] = ("", "", ""), assinatura_detalhista: dict | None = None) -> bytes:
+    """`assinatura_detalhista` ({nome, nip, em, hash}): carimba a assinatura eletrônica (PIN) do detalhista no documento."""
+    from .textorico import para_pdf, vazio
     from reportlab.lib.styles import ParagraphStyle
     from .calendario import dia_util
 
@@ -99,14 +116,24 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
     for titulo, texto in (("Instruções do serviço", instrucoes), ("Recomendações", recomendacoes),
                           ("Regras (horário de parada, acumulação de trabalho etc.)", regras),
                           ("Observações (trocas, dispensas e avanços)", "\n".join(dict.fromkeys(obs)))):
-        if texto.strip():
+        if not vazio(texto):
             el += [Spacer(1, 8), Paragraph(f"<b>{titulo}</b>", st["Heading4"]),
-                   Paragraph(texto.replace("\n", "<br/>"), st["BodyText"])]
+                   Paragraph(para_pdf(texto), st["BodyText"])]
     el.append(Spacer(1, 40))
-    ass = Table([["_" * 26] * 3, [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
+    carimbo = "_" * 26
+    if assinatura_detalhista:
+        a = assinatura_detalhista
+        carimbo = Paragraph(
+            f"<font size=7>Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>{' · NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}"
+            f"<br/>em {a['em']:%d/%m/%Y} às {a['em']:%H:%M:%S}</font>", ParagraphStyle("carimbo", alignment=1, leading=9))
+    ass = Table([[carimbo, "_" * 26, "_" * 26], [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
                 colWidths=[57 * mm] * 3, hAlign="CENTER")
-    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9)]))
+    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+                             ("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
     el.append(ass)
+    if assinatura_detalhista:
+        el += [Spacer(1, 10), Paragraph(f"<font size=7>Código de verificação (SHA-256): {assinatura_detalhista['hash']}</font>",
+                                        ParagraphStyle("hash", alignment=1))]
     doc.build(el)
     return buf.getvalue()
 

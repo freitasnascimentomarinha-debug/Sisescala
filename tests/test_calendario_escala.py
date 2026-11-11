@@ -338,3 +338,32 @@ def test_pdf_da_previa_gera_paginas_com_escala_nome_e_periodo():
     pdf = pdf_previa(c, gerar(c, dias[-1]), dias, "A")
     txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
     assert pdf.startswith(b"%PDF") and "Portaria" in txt and "Fulano1" in txt and "01/03/2027" in txt and "30/03/2027" in txt
+
+
+def test_texto_formatado_do_detalhe_vira_pdf_e_html_seguros():
+    from sisescala import textorico as tr
+    h = "<div>Linha <b>negrito</b> <script>x()</script></div><ul><li>um</li><li><i>dois</i></li></ul><ol><li>a</li></ol>"
+    assert tr.para_pdf(h) == "Linha <b>negrito</b> x()<br/>• um<br/>• <i>dois</i><br/>1. a"
+    assert "<script" not in tr.para_html(h) and "onerror" not in tr.para_html('<img src=x onerror=alert(1)>')
+    assert tr.para_pdf("a & b\nsegunda") == "a &amp; b<br/>segunda"             # texto simples antigo continua valendo
+    assert tr.vazio("") and tr.vazio("<div><br></div>") and not tr.vazio("x")
+    assert tr.normalizar("<div><br></div>") == "" and tr.para_pdf(tr.normalizar(h)) == tr.para_pdf(h)
+
+
+def test_pdf_do_detalhe_com_e_sem_assinatura_do_detalhista():
+    import io
+    from datetime import datetime
+    from pypdf import PdfReader
+    from sisescala.pdf import gerar_pdf, hash_detalhe
+    c = Contexto([Militar(f"m{i}", f"Fulano{i}", "CB", i) for i in range(1, 5)],
+                 [Escala("A", "Portaria", membros=[Pertinencia(f"m{i}") for i in range(1, 5)])], date(2027, 3, 1))
+    dias = [date(2027, 3, 1) + timedelta(days=i) for i in range(3)]
+    r = gerar(c, dias[-1])
+    h = hash_detalhe(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", ""))
+    assert h != hash_detalhe(c, r, dias, "A", "OM", "<b>Outra</b>", "", "", ("Det", "", ""))
+    ass = {"nome": "CT Beltrano & Cia", "nip": "11.0316.11", "em": datetime(2027, 3, 1, 8, 5, 9), "hash": h}
+    txt = lambda b: "".join(p.extract_text() for p in PdfReader(io.BytesIO(b)).pages)  # noqa: E731
+    com = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", ""), ass))
+    sem = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", "")))
+    assert "Assinado eletronicamente" in com and "Beltrano & Cia" in com and h in com and "Instr" in com
+    assert "Assinado eletronicamente" not in sem and h not in sem
