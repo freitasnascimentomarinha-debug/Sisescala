@@ -69,8 +69,20 @@ def itens_configuracao(ctx: Contexto, esc: Escala) -> list[tuple[str, list[Item]
                  "Quantos militares dão o serviço (ou compõem a escalação) em cada dia."),
             Item("Retém por dia", str(esc.retem_qtd), str(d("retem_qtd")),
                  "Quantos ficam sobre aviso para avançar se o escalado não puder."),
-            Item("Quartos", q_txt, "sem quartos",
+            Item("Quartos", q_txt if not esc.turnos_livres() else "turnos livres (veja abaixo)", "sem quartos",
                  "Os quartos são distribuídos de forma intercalada entre os escalados do dia, com rendição entre eles."),
+        ]),
+        ("Personalização avançada", [
+            Item("Personalização avançada", _sn(esc.avancada), "não",
+                 "Liga o bloco de opções avançadas; cada item dele é independente e, desligado, vale o comportamento padrão."),
+            Item("Dias da semana escolhidos", _sn(esc.avancada and esc.adv_dias_semana), "não",
+                 "Funciona só nos dias da semana marcados (em vez de “todos” ou “só dias úteis”)."),
+            Item("Quantidade por dia da semana", _sn(esc.avancada and esc.adv_qtd_semana), "não",
+                 "Quantos escalados em cada dia da semana (zero = não guarnece)."),
+            Item("Turnos de horário livre", _sn(esc.turnos_livres()), "não",
+                 "Turnos com início e fim livres, pessoas e reténs por turno, inclusive turnos no dia seguinte."),
+            Item("Rodízio de turnos", _sn(esc.avancada and esc.rodizio_turnos), "não",
+                 "A cada serviço o militar passa para o turno seguinte ao que fez da última vez."),
         ]),
         ("Justiça da escala", [
             Item("Folgas mínimas entre serviços", f"{esc.folgas_minimas} (mínimo {esc.folgas_minimas}x1)",
@@ -144,9 +156,29 @@ def texto_funcionamento(ctx: Contexto, esc: Escala) -> list[str]:
     else:
         filas = ("uma fila única" if esc.modo == "corrida" else
                  "duas filas: preta (dias úteis) e vermelha (sábado, domingo e feriado)")
-        p.append(f"{esc.nome} ({cat}) roda {FUNCIONA[esc.funciona_em]}, com {filas}.")
-        p.append(f"Em cada dia escalam-se {esc.militares_dia} militar(es) e ficam {esc.retem_qtd} de retém.")
-    if esc.quartos:
+        dias_txt = FUNCIONA[esc.funciona_em]
+        if esc.avancada and esc.adv_dias_semana and esc.dias_semana_lista():
+            nomes = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+            dias_txt = "nas " + ", ".join(nomes[i] + ("s" if i < 5 else "s") for i in esc.dias_semana_lista()) + " (dias da semana escolhidos)"
+        p.append(f"{esc.nome} ({cat}) roda {dias_txt}, com {filas}.")
+        if esc.avancada and esc.adv_qtd_semana:
+            nomes = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+            p.append("A quantidade de escalados varia pelo dia da semana: "
+                     + ", ".join(f"{nomes[i]} {n}" for i, n in enumerate(esc.qtd_semana_lista())) + f"; ficam {esc.retem_qtd} de retém.")
+        elif esc.turnos_livres() and esc.distribuicao == "um_por_turno":
+            p.append(f"Em cada dia escalam-se {sum(q.pessoas for q in esc.quartos)} militar(es) (as pessoas de cada turno) e "
+                     f"{sum(q.retem for q in esc.quartos)} de retém (os reténs de cada turno).")
+        else:
+            p.append(f"Em cada dia escalam-se {esc.militares_dia} militar(es) e ficam {esc.retem_qtd} de retém.")
+    if esc.turnos_livres():
+        txt = "; ".join(f"{(q.nome + ' ') if q.nome else ''}{q.inicio}–{q.fim}{' (no dia seguinte)' if q.proximo_dia else ''}"
+                        for q in esc.quartos)
+        como = {"intercalado": "intercalados entre os escalados", "um_por_turno": "cada turno com as suas próprias pessoas",
+                "todos": "todos os turnos feitos pelos mesmos escalados"}[esc.distribuicao]
+        p.append(f"Os turnos de serviço são: {txt} ({como}"
+                 + ("; com rodízio: a cada serviço o militar passa para o turno seguinte" if esc.rodizio_turnos and esc.distribuicao != "todos" else "")
+                 + "). A célula da prévia mostra o horário de cada turno do militar.")
+    elif esc.quartos:
         horas = (int(esc.quartos[0].fim[:2]) - int(esc.quartos[0].inicio[:2])) % 24 or 24
         p.append(f"O dia é dividido em {len(esc.quartos)} quartos de {horas}h, intercalados entre os escalados; "
                  f"a célula da prévia mostra a hora de início de cada quarto (ex.: 4h/16h).")

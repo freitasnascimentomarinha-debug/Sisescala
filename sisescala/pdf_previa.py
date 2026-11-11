@@ -118,7 +118,7 @@ def pdf_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, 
         dia = res.dia(d, esc.id)
         for a in (dia.alocacoes if dia else []):
             if a.militar_id == m.id and a.origem != "falta":
-                tags.append((a.sigla, horarios_curtos(a.horarios), False))
+                tags.append((a.sigla, horarios_curtos(a.horarios, esc.turnos_livres()), False))
                 if a.obs and a.origem != "normal":
                     obs.append((d, f"{m.nome}: {a.obs}"))
             elif a.militar_id == m.id:

@@ -61,7 +61,7 @@ cj = ctx.conjunto(st.session_state["cj_sel"])
 K = f"cj_{cj.id}_"
 TEXTOS = {"ins": ("Instruções do serviço", "det_instrucoes"), "rec": ("Recomendações", "det_recomendacoes"),
           "reg": ("Regras gerais (horário de parada, acumulação de trabalho etc.)", "det_regras")}
-for k, v in {"nome": cj.nome, "om": cj.om, "esc": cj.escala_ids, "a1": cj.ass_detalhista, "a4": cj.ass_auxiliar,
+for k, v in {"nome": cj.nome, "om": cj.om, "esc": cj.escala_ids, "ori": cj.orientacao, "a1": cj.ass_detalhista, "a4": cj.ass_auxiliar,
              "a2": cj.ass_encarregado, "a3": cj.ass_vice_diretor, "aux": cj.auxiliar_usuario_id,
              "enc": cj.encarregado_usuario_id, "vice": cj.vice_usuario_id}.items():
     st.session_state.setdefault(K + k, v)
@@ -89,6 +89,10 @@ with esq:
         om = st.text_input("OM (cabeçalho)", key=K + "om")
         escolhidas = st.multiselect("Escalas que o documento reúne (a ordem escolhida é a do documento)",
                                     [e.id for e in elegiveis], format_func=lambda i: ctx.escala(i).nome, key=K + "esc")
+        ORI = {"auto": "Automática (paisagem se o período tem mais de um dia)", "retrato": "Retrato", "paisagem": "Paisagem (cabe mais)"}
+        ori = st.selectbox("Orientação do PDF", list(ORI), list(ORI).index(cj.orientacao) if cj.orientacao in ORI else 0,
+                           format_func=ORI.get, key=K + "ori",
+                           help="Em paisagem, vários dias saem numa matriz: serviços nas linhas e dias nas colunas.")
         _proprio = bs.bytes_de(cj.brasao_b64)
         cb1, cb2 = st.columns([1, 3])
         _padrao = ui.RAIZ / "assets" / "brasao.png"
@@ -127,13 +131,13 @@ with esq:
         n2, n3 = st.columns(2)
         nomes = (n1.text_input("Nome: Detalhista", key=K + "a1"), n4.text_input("Nome: Auxiliar do Detalhista", key=K + "a4"),
                  n2.text_input("Nome: Encarregado do Detalhe", key=K + "a2"), n3.text_input("Nome: Vice-Diretor", key=K + "a3"))
-    salvo = (cj.nome, cj.om, cj.escala_ids, cj.ass_detalhista, cj.ass_auxiliar, cj.ass_encarregado, cj.ass_vice_diretor,
+    salvo = (cj.nome, cj.om, cj.escala_ids, cj.orientacao, cj.ass_detalhista, cj.ass_auxiliar, cj.ass_encarregado, cj.ass_vice_diretor,
              cj.auxiliar_usuario_id, cj.encarregado_usuario_id, cj.vice_usuario_id)
-    form = (nome.strip(), om.strip(), list(escolhidas), nomes[0], nomes[1], nomes[2], nomes[3], aux_id, enc_id, vice_id)
+    form = (nome.strip(), om.strip(), list(escolhidas), ori, nomes[0], nomes[1], nomes[2], nomes[3], aux_id, enc_id, vice_id)
     pendente = salvo != form
     if st.button("Salvar documento", type="primary", icon=":material/save:", use_container_width=True, disabled=not pendente):
         def _salvar():
-            c = cjs.editar(ctx, uid, cj.id, nome=nome, om=om.strip(), escala_ids=list(escolhidas), ass_detalhista=nomes[0],
+            c = cjs.editar(ctx, uid, cj.id, nome=nome, om=om.strip(), escala_ids=list(escolhidas), orientacao=ori, ass_detalhista=nomes[0],
                            ass_auxiliar=nomes[1], ass_encarregado=nomes[2], ass_vice_diretor=nomes[3])
             asn.designar_conjunto(ctx, uid, c, aux_id, enc_id, vice_id)
         agir(_salvar, "Documento salvo.")

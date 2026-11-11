@@ -94,7 +94,9 @@ def info_escala(ctx: Contexto, esc: Escala) -> list[tuple[str, str]]:
            ("Escalados por dia", str(esc.militares_dia)), ("Retém por dia", str(esc.retem_qtd)),
            ("Descanso mínimo", f"{_folgas(esc)} folga(s) por serviço (mín. {_folgas(esc)}x1)"),
            ("Militares na escala", str(len(ctx.escalaveis(esc))))]
-    if esc.quartos:
+    if esc.turnos_livres():
+        inf.append(("Turnos", " · ".join(f"{q.inicio}–{q.fim}{'(+1)' if q.proximo_dia else ''}" for q in esc.quartos)))
+    elif esc.quartos:
         q = esc.quartos[0]
         inf.append(("Quartos", f"{len(esc.quartos)} de {(int(q.fim[:2]) - int(q.inicio[:2])) % 24 or 24}h"))
     if esc.modo != "eventos":
@@ -156,7 +158,7 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
             dia = res.dia(d, esc.id)
             for a in (dia.alocacoes if dia else []):
                 if a.militar_id == m.id and a.origem != "falta":
-                    tags.append(_tag(a.sigla, horarios_curtos(a.horarios)))
+                    tags.append(_tag(a.sigla, horarios_curtos(a.horarios, esc.turnos_livres())))
                     if (d, m.id) in abertas and a.origem == "normal":
                         tags.append('<span class="pisca" title="Aberto a troca de serviço"></span>')
                     if a.obs and a.origem != "normal":

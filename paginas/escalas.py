@@ -6,8 +6,8 @@ import streamlit as st
 from sisescala import gestao
 from sisescala import permissoes as pm
 from sisescala import ui
-from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, quartos_padrao
-from sisescala.motor import avisos_escala, filas_da_escala, proximo_da_fila
+from sisescala.modelos import CATEGORIAS, Escala, Pertinencia, Quarto, quartos_padrao
+from sisescala.motor import _validar_avancada, avisos_escala, exemplo_do_dia, filas_da_escala, proximo_da_fila
 from sisescala.sessao import agir, pagina
 
 P = pagina()
@@ -19,6 +19,105 @@ QUARTOS = [0, 2, 3, 4, 6]
 
 def _horas(e):
     return (int(e.quartos[0].fim[:2]) - int(e.quartos[0].inicio[:2])) % 24 or 24 if e.quartos else 0
+
+
+DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+DISTRIBUICOES = {"intercalado": "Intercalado: cada militar assume turnos alternados (padrão)",
+                 "um_por_turno": "Um militar por turno: a quantidade vem da coluna Pessoas",
+                 "todos": "Os mesmos militares fazem todos os turnos"}
+
+
+def _hhmm(txt) -> str:
+    """"6", "6h", "6:5", "06h30" -> "06:00", "06:05", "06:30" (o que não der para ler segue como veio e o validador reclama)."""
+    import re
+    t = ("" if txt is None or txt != txt else str(txt)).strip().lower().replace("h", ":")
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{1,2}))?:?", t)
+    return f"{int(m.group(1)):02d}:{int(m.group(2) or 0):02d}" if m else t
+
+
+def _avancado(d: Escala, k: str, por_dia: int):
+    """Personalização avançada: a caixa liga o bloco; dentro dele cada item é independente (desligado = comportamento padrão).
+    Retorna (campos, turnos): `turnos` só vem quando os turnos livres estão ligados."""
+    ligada = st.checkbox("Personalização avançada da escala", d.avancada, key=f"{k}_adv",
+                         help="Para escalas fora do comum: dias da semana, quantidade por dia, turnos com horários livres, "
+                              "rodízio de turnos. Ative só o que precisar; o resto continua padrão.")
+    out = dict(avancada=ligada, adv_dias_semana=False, dias_semana=d.dias_semana, adv_qtd_semana=False, qtd_semana=d.qtd_semana,
+               adv_turnos=False, distribuicao=d.distribuicao or "intercalado", rodizio_turnos=False)
+    if not ligada:
+        return out, None
+    turnos = None
+    with st.container(border=True):
+        st.caption("Cada item abaixo é independente: desligado, vale o comportamento padrão da escala. "
+                   "Descanso/folga: use **Folgas mínimas** acima (0 = sem folga).")
+        # 1 · dias da semana
+        out["adv_dias_semana"] = st.toggle("Dias da semana em que a escala funciona", d.adv_dias_semana, key=f"{k}_a_dias")
+        if out["adv_dias_semana"]:
+            atuais = d.dias_semana_lista() or [0, 1, 2, 3, 4]
+            cols = st.columns(7)
+            sel = [i for i in range(7) if cols[i].checkbox(DIAS[i], i in atuais, key=f"{k}_dia{i}")]
+            out["dias_semana"] = ",".join(str(i) for i in sel)
+        # 2 · turnos livres
+        out["adv_turnos"] = st.toggle("Turnos com horários livres (quartos)", d.adv_turnos, key=f"{k}_a_turnos",
+                                      help="Em vez de blocos iguais de 00h, defina cada turno: início, fim, quantas pessoas e se "
+                                           "acontece no dia seguinte.")
+        if out["adv_turnos"]:
+            import pandas as pd
+            base = d.quartos if d.adv_turnos and d.quartos else [Quarto("06:00", "08:00", "1º turno"), Quarto("12:00", "16:00", "2º turno"),
+                                                                 Quarto("16:00", "18:00", "3º turno")]
+            df = pd.DataFrame([{"Nome": q.nome, "Início": q.inicio, "Fim": q.fim, "Dia seguinte": q.proximo_dia, "Pessoas": q.pessoas,
+                                "Retém": q.retem} for q in base])
+            ed = st.data_editor(df, num_rows="dynamic", hide_index=True, use_container_width=True, key=f"{k}_turnos",
+                                column_config={"Nome": st.column_config.TextColumn(help="Opcional: 1º turno, Manhã..."),
+                                               "Início": st.column_config.TextColumn(help="HH:MM, por exemplo 06:00", required=True),
+                                               "Fim": st.column_config.TextColumn(help="HH:MM", required=True),
+                                               "Dia seguinte": st.column_config.CheckboxColumn(
+                                                   help="O turno acontece no dia seguinte ao do serviço (o serviço continua)"),
+                                               "Pessoas": st.column_config.NumberColumn(min_value=1, max_value=20, step=1, default=1,
+                                                                                         help="Quantos militares fazem este turno (modo um por turno)"),
+                                               "Retém": st.column_config.NumberColumn(min_value=0, max_value=10, step=1, default=0,
+                                                                                       help="Reténs deste turno (modo um por turno)")})
+            turnos = []
+            for r in ed.to_dict("records"):
+                ini, fim = _hhmm(r.get("Início")), _hhmm(r.get("Fim"))
+                if not ini and not fim:
+                    continue
+                nm = r.get("Nome")
+                turnos.append(Quarto(ini, fim, "" if nm is None or nm != nm else str(nm), int(r.get("Pessoas") or 1), int(r.get("Retém") or 0),
+                                     bool(r.get("Dia seguinte"))))
+            dist_k = list(DISTRIBUICOES)
+            out["distribuicao"] = st.selectbox("Como distribuir os turnos entre os escalados", dist_k,
+                                               dist_k.index(d.distribuicao) if d.distribuicao in dist_k else 0,
+                                               format_func=DISTRIBUICOES.get, key=f"{k}_dist")
+            if out["distribuicao"] != "todos":
+                out["rodizio_turnos"] = st.toggle("Rodízio de turnos: a cada serviço o militar passa para o turno seguinte",
+                                                  d.rodizio_turnos, key=f"{k}_rod")
+        # 3 · quantidade por dia da semana
+        um_por_turno = out["adv_turnos"] and out["distribuicao"] == "um_por_turno"
+        out["adv_qtd_semana"] = st.toggle("Quantidade de militares por dia da semana", d.adv_qtd_semana and not um_por_turno,
+                                          key=f"{k}_a_qtd", disabled=um_por_turno,
+                                          help="Ex.: 5 de segunda a sexta e 3 no fim de semana. Zero = não guarnece naquele dia.")
+        if um_por_turno:
+            st.caption("No modo “um militar por turno”, a quantidade de escalados vem da coluna **Pessoas** dos turnos.")
+        if out["adv_qtd_semana"]:
+            atual = d.qtd_semana_lista() if d.qtd_semana else [por_dia] * 7
+            cols = st.columns(7)
+            out["qtd_semana"] = ",".join(str(int(cols[i].number_input(DIAS[i], 0, 30, int(atual[i]), key=f"{k}_q{i}"))) for i in range(7))
+        # conferência e exemplo
+        tmp = Escala("t", "esta escala", avancada=True, adv_dias_semana=out["adv_dias_semana"], dias_semana=out["dias_semana"],
+                     adv_qtd_semana=out["adv_qtd_semana"], qtd_semana=out["qtd_semana"], adv_turnos=out["adv_turnos"],
+                     distribuicao=out["distribuicao"], rodizio_turnos=out["rodizio_turnos"], militares_dia=por_dia,
+                     quartos=turnos or [])
+        for erro in _validar_avancada(tmp):
+            st.warning(erro.replace("esta escala: ", ""))
+        if out["adv_turnos"] and turnos and not _validar_avancada(tmp):
+            horas = ", ".join(f"{q.nome or str(i)}: {q.inicio}–{q.fim}{' (+1)' if q.proximo_dia else ''} ({q.duracao_min() / 60:g}h)"
+                              for i, q in enumerate(turnos, 1))
+            st.caption("Turnos: " + horas)
+            ex = exemplo_do_dia(tmp)
+            linhas = [f"{n}: " + (" · ".join(h) if h else "—") for n, h in ex["efetivos"]] + \
+                     [f"{n} (retém): " + (" · ".join(h) if h else "—") for n, h in ex["retens"]]
+            st.caption("Exemplo de um dia → " + " | ".join(linhas))
+    return out, turnos
 
 
 def _militares_da_escolha(e: Escala | None) -> list[str]:
@@ -56,8 +155,11 @@ def _campos(e: Escala | None, k: str):
     fol = c.number_input("Folgas mínimas (2 = 2x1)", 0, 10, d.folgas_minimas, key=f"{k}_fol")
     h = _horas(d)
     hq = dd.selectbox("Quartos", QUARTOS, QUARTOS.index(h) if h in QUARTOS else 0, key=f"{k}_q",
-                      format_func=lambda x: "sem quartos" if x == 0 else f"de {x}h")
+                      format_func=lambda x: "sem quartos" if x == 0 else f"de {x}h",
+                      help="Blocos iguais de horas a partir de 00h. Se você ligar os turnos livres na personalização avançada, "
+                           "este campo é ignorado.")
     ant = st.number_input("Antecedência mínima da papeleta de troca (horas)", 0, 720, d.antecedencia_horas, key=f"{k}_ant")
+    adv, turnos_adv = _avancado(d, k, por_dia)
     sentidos = ["moderno_antigo", "antigo_moderno"]
     sentido = st.selectbox("Sentido da fila", sentidos, sentidos.index(d.sentido_fila if d.sentido_fila in sentidos else sentidos[0]),
                            key=f"{k}_sent",
@@ -93,7 +195,8 @@ def _campos(e: Escala | None, k: str):
     rox = a.checkbox("Participa da escala roxa", d.participa_roxa if e else True, key=f"{k}_rox")
     resp = b.checkbox("Não-serviço só escala quem não está de serviço", d.respeita_servicos, key=f"{k}_resp")
     return dict(nome=nome, om=om, tipo=tipo, categoria=cat, modo=modo, funciona_em=func, prioridade=prio, militares_dia=por_dia,
-                retem_qtd=ret, folgas_minimas=fol, quartos=quartos_padrao(hq) if hq else [], antecedencia_horas=ant,
+                retem_qtd=ret, folgas_minimas=fol, quartos=turnos_adv if adv["adv_turnos"] else (quartos_padrao(hq) if hq else []),
+                antecedencia_horas=ant, **adv,
                 participa_roxa=rox and modo != "eventos", respeita_servicos=resp, detalhista_id=det, sentido_fila=sentido,
                 detalhista_escalavel=det_esc, auxiliares=aux)
 

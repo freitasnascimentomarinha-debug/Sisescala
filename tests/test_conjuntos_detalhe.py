@@ -65,10 +65,21 @@ def test_pdf_de_um_dia_tem_uma_linha_por_escala_e_as_regras_gerais():
               "CENTRO DE OPERAÇÕES", "Serviço", "Escalados"):
         assert t in txt, t
     assert txt.index("MARINHA DO BRASIL") < txt.index("CENTRO DE OPERAÇÕES") < txt.index("ESCALA DE SERVIÇO DO DIA")
-    # vários dias: uma tabela por escala
+    assert PdfReader(io.BytesIO(gerar_pdf_conjunto(c, r, dias, cj))).pages[0].mediabox.width < 600          # um dia: retrato
+    # vários dias (automático): paisagem, serviços nas linhas e dias nas colunas
     dias3 = [D + timedelta(days=i) for i in range(3)]
-    txt3 = "".join(p.extract_text() for p in PdfReader(io.BytesIO(gerar_pdf_conjunto(c, gerar(c, dias3[-1]), dias3, cj))).pages)
-    assert "FISCAL" in txt3 and "SENTINELA" in txt3 and "01/03" in txt3 and "03/03" in txt3
+    pdf3 = gerar_pdf_conjunto(c, gerar(c, dias3[-1]), dias3, cj)
+    pag = PdfReader(io.BytesIO(pdf3)).pages[0]
+    txt3 = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf3)).pages)
+    assert pag.mediabox.width > pag.mediabox.height
+    assert "Fiscal" in txt3 and "Sentinela" in txt3 and "01/03/2027" in txt3 and "03/03/2027" in txt3
+    assert txt3.index("SEG") < txt3.index("TER") < txt3.index("QUA")                                         # dias em colunas
+    # forçando retrato volta ao formato de uma tabela por escala
+    cjs.editar(c, "u2", cj.id, orientacao="retrato")
+    pdf4 = gerar_pdf_conjunto(c, gerar(c, dias3[-1]), dias3, cj)
+    assert PdfReader(io.BytesIO(pdf4)).pages[0].mediabox.width < 600 and "FISCAL" in "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf4)).pages)
+    cjs.editar(c, "u2", cj.id, orientacao="paisagem")                                                      # paisagem mesmo com um dia
+    assert PdfReader(io.BytesIO(gerar_pdf_conjunto(c, r, dias, cj))).pages[0].mediabox.width > 800
 
 
 def test_fluxo_completo_do_documento_unificado_assinado_pelas_quatro_autoridades():

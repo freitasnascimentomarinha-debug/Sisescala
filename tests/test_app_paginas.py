@@ -399,3 +399,17 @@ def test_autoridade_rejeita_com_motivo_obrigatorio_pela_pagina_e_detalhista_e_av
     ctx = app.session_state["ctx"]
     assert [(d.status, d.motivo) for d in ctx.detalhes_docs] == [("rejeitado", "Falta incluir o sentinela de reforço.")]
     assert any(n.usuario_id == "u1" and "REJEITOU" in n.texto and "sentinela de reforço" in n.texto for n in ctx.notificacoes)
+
+
+def test_paginas_abrem_com_escala_de_personalizacao_avancada(app):
+    from sisescala.modelos import Quarto
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    e = ctx.escalas[0]
+    e.avancada, e.adv_turnos, e.distribuicao, e.rodizio_turnos = True, True, "um_por_turno", True
+    e.quartos = [Quarto("06:00", "08:00", "1º", 1, 1), Quarto("12:00", "16:00", "2º", 1, 0), Quarto("16:00", "18:00", "3º", 1, 0, True)]
+    e.adv_dias_semana, e.dias_semana = True, "0,1,2,3,4,5"
+    app.run()
+    for p in ("escala", "detalhe", "regras", "escalas", "unificado", "papeletas"):
+        app.switch_page(f"paginas/{p}.py").run()
+        assert not app.exception, (p, [x.value for x in app.exception])
