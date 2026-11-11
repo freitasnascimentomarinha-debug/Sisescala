@@ -176,8 +176,7 @@ def assinar(ctx: Contexto, usuario_id: str, doc_id: str, papel: str, pin: str, o
         raise auth.AutenticacaoErro("PIN incorreto")
     u = ctx.usuario(usuario_id)
     mil = ctx.militar(u.militar_id) if u.militar_id else None
-    from .modelos import rotulo_militar
-    nome = rotulo_militar(mil) if mil else u.nome
+    nome = " ".join(u.nome.split())                       # nome completo da conta (sem posto, especialidade nem nome de guerra)
     nip = mil.nip if mil and mil.nip else (u.nip or u.login)
     cont = desempacotar(doc.conteudo)
     a = vf.registrar(ctx, usuario_id, doc.escala_id, [doc.inicio, doc.fim], cont, doc.codigo, nome, nip,
