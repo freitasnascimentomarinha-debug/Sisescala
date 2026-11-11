@@ -15,7 +15,16 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from .modelos import CATEGORIAS, Contexto, horarios_curtos, rotulo_militar
 from .motor import Resultado
 
-ASSINATURAS = ("Detalhista", "Encarregado do Detalhe", "Vice-Diretor")
+ASSINATURAS = ("Detalhista", "Auxiliar do Detalhista", "Encarregado do Detalhe", "Vice-Diretor")
+PAPEIS = ("detalhista", "auxiliar", None, None)      # colunas que aceitam assinatura eletrônica (PIN)
+
+
+def nomes4(nomes) -> list[str]:
+    """Nomes das quatro autoridades, na ordem do documento. Aceita a forma antiga de três (detalhista, encarregado, vice)."""
+    n = list(nomes or [])
+    if len(n) == 3:
+        n = [n[0], "", n[1], n[2]]
+    return (n + [""] * 4)[:4]
 
 # paleta institucional: azul-marinho, ouro e branco
 NAVY, OURO, GELO, CINZA = "#0A2342", "#B8962E", "#EAF0F7", "#5B6573"
@@ -78,12 +87,12 @@ def titulo_detalhe(nome_escala: str) -> str:
 
 def corpo_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
                   instrucoes: str = "", recomendacoes: str = "", regras: str = "",
-                  nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> str:
+                  nomes_assinantes: tuple = ("", "", "", "")) -> str:
     """O conteúdo que a assinatura cobre, em JSON canônico: escala, período, OM, textos, assinantes e quem serve em cada dia."""
     import json
     esc = ctx.escala(escala_id)
     corpo = {"escala": esc.id, "escala_nome": esc.nome, "periodo": [dias[0].isoformat(), dias[-1].isoformat()],
-             "om": om or esc.om, "textos": [instrucoes, recomendacoes, regras], "assinantes": list(nomes_assinantes),
+             "om": om or esc.om, "textos": [instrucoes, recomendacoes, regras], "assinantes": nomes4(nomes_assinantes),
              "dias": [[d.isoformat(), [(a.militar_id, a.sigla) for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else [])]]
                       for d in dias]}
     return json.dumps(corpo, sort_keys=True, ensure_ascii=False)
@@ -96,7 +105,7 @@ def codigo_do_corpo(corpo: str) -> str:
 
 def hash_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
                  instrucoes: str = "", recomendacoes: str = "", regras: str = "",
-                 nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> str:
+                 nomes_assinantes: tuple = ("", "", "", "")) -> str:
     """Código de verificação (SHA-256) do conteúdo do detalhe: muda se a escala, o período ou os textos mudarem."""
     return codigo_do_corpo(corpo_detalhe(ctx, res, dias, escala_id, om, instrucoes, recomendacoes, regras, nomes_assinantes))
 
@@ -114,9 +123,10 @@ def _qr(texto: str, lado_mm: float = 17):
 
 def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
               instrucoes: str = "", recomendacoes: str = "", regras: str = "",
-              nomes_assinantes: tuple[str, str, str] = ("", "", ""), assinatura_detalhista: dict | None = None) -> bytes:
-    """`assinatura_detalhista` ({nome, nip, em, hash, url}): carimba a assinatura eletrônica (PIN) do detalhista, com o
-    código de verificação e o QR code que leva à página de verificação."""
+              nomes_assinantes: tuple = ("", "", "", ""), assinaturas: dict | None = None) -> bytes:
+    """`assinaturas`: {"detalhista": {nome, nip, em}, "auxiliar": {...}, "hash": código, "url": endereço do QR}. Cada autoridade que
+    assinou com o PIN recebe o carimbo na sua coluna; o código de verificação e o QR code (que leva à página de verificação)
+    saem uma vez, abaixo das assinaturas."""
     from reportlab.lib.styles import ParagraphStyle
     from .calendario import dia_util
     from .textorico import para_pdf, vazio
@@ -197,31 +207,33 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
         el += [Paragraph("Observações (trocas, dispensas e avanços)", sec),
                HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
                Paragraph("<br/>".join(dict.fromkeys(obs)), corpo_p)]
-    pequeno = ParagraphStyle("peq", alignment=1, leading=9, fontSize=7)
-    linha_ass = "_" * 26
-    if assinatura_detalhista:
-        a = assinatura_detalhista
-        texto = Paragraph(
-            f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>"
-            f"{' · NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}<br/>em {a['em']:%d/%m/%Y} às {a['em']:%H:%M:%S}",
-            pequeno)
-        carimbo = Table([[_qr(a.get("url") or f"SISESCALA-VERIFICAR:{a['hash']}"), texto]], colWidths=[19 * mm, 38 * mm])
-        carimbo.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 1),
-                                     ("RIGHTPADDING", (0, 0), (-1, -1), 1), ("TOPPADDING", (0, 0), (-1, -1), 0),
-                                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
-    else:
-        carimbo = linha_ass
-    ass = Table([[carimbo, linha_ass, linha_ass], [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
-                colWidths=[57 * mm] * 3, hAlign="CENTER")
-    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+    pequeno = ParagraphStyle("peq", alignment=1, leading=8.2, fontSize=6.6)
+    linha_ass = "_" * 20
+    nomes = nomes4(nomes_assinantes)
+    ass_ = assinaturas or {}
+
+    def carimbo(papel):
+        a = ass_.get(papel) if papel else None
+        if not a:
+            return linha_ass
+        return Paragraph(f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>"
+                         f"{'<br/>NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}<br/>{a['em']:%d/%m/%Y às %H:%M:%S}", pequeno)
+    larg = 43.5 * mm
+    ass = Table([[carimbo(p_) for p_ in PAPEIS], [xml_escape(n) for n in nomes], list(ASSINATURAS)],
+                colWidths=[larg] * 4, hAlign="CENTER")
+    ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 8.5),
                              ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("TEXTCOLOR", (0, 2), (-1, 2), _cor(NAVY)),
-                             ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold")]))
-    fecho = [Spacer(1, 12), ass]
-    if assinatura_detalhista:
-        fecho += [Spacer(1, 6), Paragraph(
-            f"<font size=6.5 color='{CINZA}'>Código de verificação (SHA-256): {assinatura_detalhista['hash']}<br/>"
+                             ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"), ("FONTSIZE", (0, 2), (-1, 2), 7.5)]))
+    fecho = [Spacer(1, 18), ass]
+    if ass_.get("hash"):
+        txt = Paragraph(
+            f"<font size=6.5 color='{CINZA}'><b>Código de verificação (SHA-256):</b><br/>{ass_['hash']}<br/>"
             f"Confira a autenticidade lendo o QR code ou na página “Verificar documento” do SisEscala (usuário logado).</font>",
-            ParagraphStyle("hash", alignment=1, leading=8.5))]
+            ParagraphStyle("hash", alignment=0, leading=8.5))
+        selo = Table([[_qr(ass_.get("url") or f"SISESCALA-VERIFICAR:{ass_['hash']}"), txt]], colWidths=[19 * mm, 110 * mm],
+                     hAlign="CENTER")
+        selo.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 1)]))
+        fecho += [Spacer(1, 8), selo]
     el.append(KeepTogether(fecho))
 
     def rodape(canvas, doc_):

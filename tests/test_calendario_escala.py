@@ -361,7 +361,7 @@ def test_pdf_do_detalhe_com_e_sem_assinatura_do_detalhista():
     r = gerar(c, dias[-1])
     h = hash_detalhe(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", ""))
     assert h != hash_detalhe(c, r, dias, "A", "OM", "<b>Outra</b>", "", "", ("Det", "", ""))
-    ass = {"nome": "CT Beltrano & Cia", "nip": "11.0316.11", "em": datetime(2027, 3, 1, 8, 5, 9), "hash": h}
+    ass = {"detalhista": {"nome": "CT Beltrano & Cia", "nip": "11.0316.11", "em": datetime(2027, 3, 1, 8, 5, 9)}, "hash": h}
     txt = lambda b: "".join(p.extract_text() for p in PdfReader(io.BytesIO(b)).pages)  # noqa: E731
     com = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", ""), ass))
     sem = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", "")))

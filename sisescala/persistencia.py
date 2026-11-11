@@ -72,7 +72,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s"), ("sentido_fila", "s"),
                 ("det_instrucoes", "s"), ("det_recomendacoes", "s"), ("det_regras", "s"),
-                ("ass_detalhista", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
+                ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
     "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],
@@ -108,7 +108,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
                             ("metodo", "s"), ("referencia", "s")],
     "AssinaturasDetalhe": [("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("usuario_id", "s"),
-                           ("nome", "s"), ("nip", "s"), ("om", "s"), ("em", "dt"), ("conteudo", "s")],
+                           ("nome", "s"), ("nip", "s"), ("om", "s"), ("em", "dt"), ("conteudo", "s"), ("papel", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
 }
 ABAS = list(SCHEMA)
@@ -269,7 +269,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
-    ctx.assinaturas_detalhe = [AssinaturaDetalhe(**d) for d in _linhas_de(T, "AssinaturasDetalhe")]
+    ctx.assinaturas_detalhe = [AssinaturaDetalhe(**{**d, "papel": d["papel"] or "detalhista"}) for d in _linhas_de(T, "AssinaturasDetalhe")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
         d["tipo"] = d["tipo"] or "troca"          # planilhas antigas sem a coluna

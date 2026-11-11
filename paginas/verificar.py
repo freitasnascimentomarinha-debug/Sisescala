@@ -29,9 +29,10 @@ with st.container(border=True):
             st.success("**Assinatura autêntica.** O código confere com o registro do sistema e o conteúdo gravado não foi alterado.")
         else:
             st.error("**Registro adulterado.** O conteúdo gravado não gera mais este código. Não confie neste documento.")
-        ui.campos([("Assinado por", f"{a.nome}" + (f" · NIP {a.nip}" if a.nip else "")),
-                   ("Data e hora", f"{a.em:%d/%m/%Y às %H:%M:%S}"),
-                   ("Escala", esc.nome if esc else a.escala_id), ("Período", f"{a.inicio:%d/%m/%Y} a {a.fim:%d/%m/%Y}"),
+        todas = vf.do_codigo(ctx, a.codigo)
+        ui.campos([(f"Assinado por ({'Detalhista' if x.papel == 'detalhista' else 'Auxiliar do Detalhista'})",
+                    f"{x.nome}" + (f" · NIP {x.nip}" if x.nip else "") + f" · {x.em:%d/%m/%Y às %H:%M:%S}") for x in todas] +
+                  [("Escala", esc.nome if esc else a.escala_id), ("Período", f"{a.inicio:%d/%m/%Y} a {a.fim:%d/%m/%Y}"),
                    ("OM", a.om or "—"), ("Código completo", a.codigo)])
         d = vf.descrever(ctx, a)
         with st.expander("O que foi assinado (compare com o PDF)", expanded=True):
