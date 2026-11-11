@@ -127,6 +127,8 @@ class Escala:
     det_regras: str = ""
     ass_detalhista: str = ""
     ass_auxiliar: str = ""
+    encarregado_usuario_id: str = ""   # conta designada para assinar como Encarregado do Detalhe
+    vice_usuario_id: str = ""          # conta designada para assinar como Vice-Diretor
     ass_encarregado: str = ""
     ass_vice_diretor: str = ""
     uf: str = ""                   # UF da OM (feriados estaduais); vazio = padrão do sistema
@@ -363,6 +365,21 @@ class AssinaturaDetalhe:
 
 
 @dataclass
+class DetalheDoc:
+    """Versão congelada de um detalhe de serviço enviada para assinatura: as autoridades assinam ESTE conteúdo (`conteudo` é o
+    JSON empacotado do documento; `codigo` é o SHA-256 do JSON). Status: aberto | substituido | cancelado."""
+    id: str
+    codigo: str
+    escala_id: str
+    inicio: date
+    fim: date
+    enviado_por: str
+    enviado_em: datetime
+    status: str
+    conteudo: str
+
+
+@dataclass
 class ConviteVinculo:
     """O detalhista (ou auxiliar) convida um usuário a ser reconhecido como um militar da escala. Só vale quando o
     próprio usuário aceita, confirmando o NIP e criando o PIN dele."""
@@ -443,6 +460,7 @@ class Contexto:
     pedidos_acesso: list[PedidoAcesso] = field(default_factory=list)
     convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
     assinaturas_detalhe: list[AssinaturaDetalhe] = field(default_factory=list)
+    detalhes_docs: list[DetalheDoc] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     brasao_b64: str = ""                  # Brasão de Armas (PNG reduzido, base64) do cabeçalho dos documentos
     admin_cfg_sig: str = ""               # assinatura (NIP+senha) dos segredos já aplicada ao administrador

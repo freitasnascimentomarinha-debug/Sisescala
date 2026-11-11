@@ -1,7 +1,7 @@
 """Verificar documento: confere o código (ou QR code) impresso no detalhe de serviço assinado pelo detalhista."""
 import streamlit as st
 
-from sisescala import textorico as tr, ui
+from sisescala import assinaturas as asn, textorico as tr, ui
 from sisescala import verificacao as vf
 from sisescala.sessao import pagina
 
@@ -30,19 +30,23 @@ with st.container(border=True):
         else:
             st.error("**Registro adulterado.** O conteúdo gravado não gera mais este código. Não confie neste documento.")
         todas = vf.do_codigo(ctx, a.codigo)
-        ui.campos([(f"Assinado por ({'Detalhista' if x.papel == 'detalhista' else 'Auxiliar do Detalhista'})",
+        ui.campos([(f"Assinado por ({asn.ROTULO.get(x.papel, x.papel)})",
                     f"{x.nome}" + (f" · NIP {x.nip}" if x.nip else "") + f" · {x.em:%d/%m/%Y às %H:%M:%S}") for x in todas] +
                   [("Escala", esc.nome if esc else a.escala_id), ("Período", f"{a.inicio:%d/%m/%Y} a {a.fim:%d/%m/%Y}"),
                    ("OM", a.om or "—"), ("Código completo", a.codigo)])
         d = vf.descrever(ctx, a)
         with st.expander("O que foi assinado (compare com o PDF)", expanded=True):
             linhas = "".join(
-                f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td>{'<br>'.join(ui.esc(n + ' [' + s + ']') for n, s in itens) or '—'}</td></tr>"
-                for dd, itens in d["dias"])
-            st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados (efetivo e retém)</th></tr>{linhas}</table></div>')
+                f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td>"
+                + ("<br>".join(ui.esc(x) for x in ef) or "—") + "</td><td>" + ("<br>".join(ui.esc(x) for x in rt) or "—") + "</td></tr>"
+                if fun else f"<tr><td class='l'>{dd[8:10]}/{dd[5:7]}</td><td colspan=2><i>não guarnece</i></td></tr>"
+                for dd, ef, rt, fun in d["dias"])
+            st.html(f'<div style="overflow-x:auto"><table class="q"><tr><th>Dia</th><th>Escalados</th><th>Retém</th></tr>{linhas}</table></div>')
             for rot, txt in zip(("Instruções do serviço", "Recomendações", "Regras"), d["textos"]):
                 if not tr.vazio(txt):
                     st.markdown(f"**{rot}**")
                     st.html(f'<div style="font-size:.9rem">{tr.para_html(txt)}</div>')
+            for o in d["obs"]:
+                st.caption(o)
         st.caption("A conferência prova que o código foi emitido por este sistema, por quem e quando. Para saber se o PDF em "
                    "mãos é o mesmo, compare o conteúdo acima com o documento.")
