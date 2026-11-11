@@ -126,6 +126,7 @@ class Escala:
     det_recomendacoes: str = ""
     det_regras: str = ""
     ass_detalhista: str = ""
+    ass_auxiliar: str = ""
     ass_encarregado: str = ""
     ass_vice_diretor: str = ""
     uf: str = ""                   # UF da OM (feriados estaduais); vazio = padrão do sistema
@@ -358,6 +359,7 @@ class AssinaturaDetalhe:
     om: str
     em: datetime
     conteudo: str
+    papel: str = "detalhista"      # "detalhista" | "auxiliar" (quem assinou, no detalhe de serviço)
 
 
 @dataclass

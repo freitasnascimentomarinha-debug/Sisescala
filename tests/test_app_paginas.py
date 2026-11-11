@@ -282,3 +282,31 @@ def test_detalhe_assinatura_do_detalhista_com_pin_libera_o_pdf_assinado(app):
     app.switch_page("paginas/verificar.py").run()
     next(t for t in app.text_input if t.label == "Código").input(regs[0].codigo[:20]).run()
     assert not app.exception and any("Assinatura autêntica" in x.value for x in app.success)
+
+
+def test_detalhe_auxiliar_assina_depois_do_detalhista_e_o_pdf_assinado_traz_as_duas(app):
+    from sisescala import gestao
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.usuario("u1").pin_hash = auth.hash_pin("1234")
+    esc = ctx.escalas[0]
+    mid = next(p.militar_id for p in esc.membros if p.militar_id != esc.detalhista_id)
+    gestao.editar_escala(ctx, "u1", esc.id, auxiliares=[mid])
+    aux = auth.criar_usuario(ctx, "u1", "aux1", "Auxiliar Um", "senha-aux-123", perfil="militar", militar_id=mid,
+                             email="a@x.com", ramal="2345", celular="21988887777")
+    aux.pin_hash = auth.hash_pin("4321")
+    app.switch_page("paginas/detalhe.py").run()                      # o detalhista assina
+    next(t for t in app.text_input if t.label == "Seu PIN").input("1234")
+    next(b for b in app.button if b.label == "Confirmar e assinar").click().run()
+    assert [x.papel for x in ctx.assinaturas_detalhe] == ["detalhista"]
+    app.run()
+    del app.session_state["uid"]
+    app.run()
+    _entrar(app, "aux1", "senha-aux-123")                           # o auxiliar entra e assina o MESMO conteúdo
+    app.switch_page("paginas/detalhe.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    assert [b.proto.label for b in app.get("download_button")] == ["PDF sem assinatura", "PDF assinado"]
+    next(t for t in app.text_input if t.label == "Seu PIN").input("4321")
+    next(b for b in app.button if b.label == "Confirmar e assinar").click().run()
+    assert not app.exception
+    assert [x.papel for x in app.session_state["ctx"].assinaturas_detalhe] == ["detalhista", "auxiliar"]

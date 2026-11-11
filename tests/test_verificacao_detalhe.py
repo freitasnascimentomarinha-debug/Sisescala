@@ -46,10 +46,13 @@ def test_pdf_assinado_tem_qr_codigo_e_cabecalho_na_ordem_pedida():
     c, r, dias = mk()
     corpo = corpo_detalhe(c, r, dias, "A", "Centro de Operações", "", "", "", ("", "", ""))
     cod = codigo_do_corpo(corpo)
-    ass = {"nome": "CT Fulano", "nip": "1", "em": datetime(2027, 3, 1, 8), "hash": cod, "url": vf.url_de_verificacao("https://x.br", cod)}
-    pdf = gerar_pdf(c, r, dias, "A", "Centro de Operações", "", "", "", ("", "", ""), ass)
+    ass = {"detalhista": {"nome": "CT Fulano", "nip": "1", "em": datetime(2027, 3, 1, 8)},
+           "auxiliar": {"nome": "1T Auxiliar", "nip": "2", "em": datetime(2027, 3, 1, 9)},
+           "hash": cod, "url": vf.url_de_verificacao("https://x.br", cod)}
+    pdf = gerar_pdf(c, r, dias, "A", "Centro de Operações", "", "", "", ("", "", "", ""), ass)
     txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
-    assert cod in txt and "Verificar documento" in txt
+    assert cod in txt and "Verificar documento" in txt and "CT Fulano" in txt and "1T Auxiliar" in txt
+    assert "Auxiliar do Detalhista" in txt and txt.count("Assinado eletronicamente") == 2
     assert txt.index("MARINHA DO BRASIL") < txt.index("CENTRO DE OPERAÇÕES") < txt.index("DETALHE DE SERVIÇO DE PORTARIA")
 
 
@@ -68,10 +71,32 @@ def test_titulo_nao_repete_detalhe_de_servico_e_brasao_enviado_sai_no_pdf():
     assert 0 < len(c.brasao_b64) <= bs.LIMITE and base64.b64decode(c.brasao_b64)[:4] == b"\x89PNG"
     c2 = de_tabelas(para_tabelas(c))
     assert c2.brasao_b64 == c.brasao_b64                                  # sobrevive à gravação (Config)
-    com, sem = gerar_pdf(c2, r, dias, "A", "OM"), gerar_pdf(mk()[0], r, dias, "A", "OM")
-    assert len(com) > len(sem)                                           # a imagem entrou no PDF
+    from pathlib import Path
+    from sisescala import pdf as pdfmod
+    pdfmod.BRASAO, original = Path("/nao/existe.png"), pdfmod.BRASAO     # sem o arquivo padrão, só vale o enviado
+    try:
+        com, sem = gerar_pdf(c2, r, dias, "A", "OM"), gerar_pdf(mk()[0], r, dias, "A", "OM")
+    finally:
+        pdfmod.BRASAO = original
+    assert len(com) > len(sem) + 1000                                    # a imagem entrou no PDF
+    assert len(gerar_pdf(mk()[0], r, dias, "A", "OM")) > len(sem) + 1000  # e o brasão padrão (assets/brasao.png) também
     try:
         bs.preparar(b"nao e imagem")
         raise AssertionError("deveria recusar")
     except ValueError:
         pass
+
+
+def test_auxiliar_tambem_assina_o_mesmo_conteudo_e_as_duas_assinaturas_se_conferem_pelo_codigo():
+    c, r, dias = mk()
+    nomes = ("", "Aux", "", "")
+    corpo = corpo_detalhe(c, r, dias, "A", "OM", "", "", "", nomes)
+    cod = codigo_do_corpo(corpo)
+    a = vf.registrar(c, "u1", "A", dias, corpo, cod, "CT Det", "1", "OM", datetime(2027, 3, 1, 8), "detalhista")
+    b = vf.registrar(c, "u2", "A", dias, corpo, cod, "1T Aux", "2", "OM", datetime(2027, 3, 1, 9), "auxiliar")
+    assert [x.papel for x in vf.do_codigo(c, cod)] == ["detalhista", "auxiliar"]
+    assert vf.buscar(c, cod[:16]) in (a, b) and vf.integra(a) and vf.integra(b)
+    c2 = de_tabelas(para_tabelas(c))
+    assert [(x.papel, x.nome) for x in vf.do_codigo(c2, cod)] == [("detalhista", "CT Det"), ("auxiliar", "1T Aux")]
+    # mudar um nome de assinante muda o código: as assinaturas antigas não valem para o conteúdo novo
+    assert codigo_do_corpo(corpo_detalhe(c, r, dias, "A", "OM", "", "", "", ("", "Outro", "", ""))) != cod
