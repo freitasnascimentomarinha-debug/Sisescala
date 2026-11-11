@@ -311,3 +311,27 @@ def test_encarregado_designado_recebe_aviso_ve_o_documento_e_assina(app):
     next(t for t in app.text_input if t.label == "Seu PIN").input("4321")
     next(b for b in app.button if b.label == "Assinar como Encarregado do Detalhe").click().run()
     assert [a.papel for a in app.session_state["ctx"].assinaturas_detalhe] == ["encarregado"]
+
+
+def test_qr_code_abre_a_verificacao_publica_sem_login(app):
+    """Sem entrar, a página /verificar (a do QR code) funciona e não pede login nem mostra NIP."""
+    from sisescala import assinaturas as asn
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.usuario("u1").pin_hash = auth.hash_pin("1234")
+    app.switch_page("paginas/detalhe.py").run()
+    next(b for b in app.button if b.label == "Enviar para assinatura").click().run()
+    app.switch_page("paginas/assinar.py").run()
+    next(t for t in app.text_input if t.label == "Seu PIN").input("1234")
+    next(b for b in app.button if b.label.startswith("Assinar como")).click().run()
+    codigo = ctx.assinaturas_detalhe[0].codigo
+    del app.session_state["uid"]
+    app.run()
+    assert any(b.label == "Entrar" for b in app.button)                              # deslogado: tela de login
+    app.switch_page("publico/verificar.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    next(t for t in app.text_input if t.label == "Código").input(codigo).run()
+    assert any("Assinatura autêntica" in x.value for x in app.success)
+    nip = ctx.assinaturas_detalhe[0].nip
+    htmls = " ".join(str(e.proto) for e in app.get("html"))
+    assert "Assinado por" in htmls and f"NIP {nip}" not in htmls                      # sem login não se mostra o NIP

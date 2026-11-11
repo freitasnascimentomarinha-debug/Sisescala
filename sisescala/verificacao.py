@@ -32,9 +32,9 @@ def registrar(ctx: Contexto, usuario_id: str, escala_id: str, dias, corpo: str, 
     return a
 
 
-def buscar(ctx: Contexto, codigo: str) -> AssinaturaDetalhe | None:
+def buscar(ctx: Contexto, codigo: str, minimo: int = MIN_PREFIXO) -> AssinaturaDetalhe | None:
     c = normalizar_codigo(codigo)
-    if len(c) < MIN_PREFIXO or not re.fullmatch(r"[0-9a-f]+", c):
+    if len(c) < minimo or not re.fullmatch(r"[0-9a-f]+", c):
         return None
     achadas = [a for a in ctx.assinaturas_detalhe if a.codigo.startswith(c)]
     return achadas[0] if len({a.codigo for a in achadas}) == 1 else None

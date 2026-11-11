@@ -113,7 +113,7 @@ Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento);
 ## Assinatura do detalhista e verificação do documento
 
 - No **Detalhe de serviço**, o detalhista confirma o PIN (“Assinar com PIN”) e baixa o **PDF assinado**: carimbo com nome, NIP e data/hora, **código SHA-256** do conteúdo assinado e **QR code**. O PDF sem assinatura continua disponível.
-- A assinatura fica registrada na aba `AssinaturasDetalhe` (com o conteúdo assinado). A página **Verificar documento** (só para usuários logados) confere o código — inteiro, o começo dele (12+ caracteres) ou lido do QR code — e mostra quem assinou, quando e o que foi assinado.
+- A assinatura fica registrada na aba `AssinaturasDetalhe` (com o conteúdo assinado). A página **Verificar documento** confere o código — inteiro, o começo dele (12+ caracteres) ou lido do QR code — e mostra quem assinou, quando e o que foi assinado.
 - O QR code abre `…/verificar?codigo=…`. O endereço-base vem da própria página; para fixá-lo, defina a variável `SISESCALA_URL` (ex.: `https://meuapp.streamlit.app`).
 - **Armas Nacionais:** `assets/brasao.png` (Armas da República) sai centralizado acima de “MARINHA DO BRASIL” em todos os PDFs. O administrador pode trocar a imagem em *Detalhe de serviço → Cabeçalho*.
 - **Quatro autoridades e o fluxo de assinatura:** Detalhista, Auxiliar do Detalhista, Encarregado do Detalhe e Vice-Diretor.
@@ -121,3 +121,6 @@ Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento);
   2. Cada autoridade abre **Documentos → Assinar documentos** (o menu mostra quantos aguardam), confere o conteúdo e assina com o PIN no seu papel.
   3. O PDF pode ser baixado a qualquer momento com as assinaturas que já existem (uma, algumas ou todas). Se o detalhista mudar algo depois do envio, precisa enviar de novo; as assinaturas da versão antiga não valem para a nova.
   O vice-diretor sai centralizado abaixo das outras três assinaturas.
+
+- **Verificação pública (QR code):** o QR do PDF abre `/verificar?codigo=…`, que funciona **sem login** e mostra só o essencial (autêntico ou não, signatários e data, escala, período, OM; sem NIP e sem o conteúdo; a consulta pública exige 16+ caracteres do código). Logado, *Documentos → Verificar documento* mostra também o conteúdo assinado.
+- **PIN esquecido:** a própria pessoa cadastra outro em *Minha conta* informando a senha da conta. Se também perdeu a senha, o administrador usa *Usuários → Redefinir PIN*, que **apaga** o PIN (ele nunca define nem vê o PIN) e avisa a pessoa; as assinaturas já feitas continuam valendo.

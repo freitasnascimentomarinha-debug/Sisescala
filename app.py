@@ -138,13 +138,17 @@ if not any(u.admin for u in ctx.usuarios):
     _gravar()
 
 def _tela_unica(funcao, titulo: str, caminho: str) -> None:
-    """Mostra uma tela sem menu. Registra uma navegação oculta de uma só página: se o script só parasse (st.stop), o
-    menu lateral da execução anterior (usuário que acabou de sair) continuaria na tela."""
+    """Mostra uma tela sem menu. Registra uma navegação oculta: se o script só parasse (st.stop), o menu lateral da execução
+    anterior (usuário que acabou de sair) continuaria na tela. Além da tela, vale sempre a verificação pública de documento
+    (/verificar), que o QR code do PDF assinado abre sem pedir login."""
     def pagina():
         st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl'],"
                     "[data-testid='stExpandSidebarButton']{display:none !important}</style>", unsafe_allow_html=True)
         funcao()
-    st.navigation([st.Page(pagina, title=titulo, url_path=caminho, default=True)], position="hidden").run()
+
+    principal = st.Page(pagina, title=titulo, url_path=caminho, default=True)
+    st.navigation([principal, st.Page("publico/verificar.py", title="Verificar documento", url_path="verificar")],
+                  position="hidden").run()
 
 
 user = ctx.usuario(st.session_state.get("uid", ""))
