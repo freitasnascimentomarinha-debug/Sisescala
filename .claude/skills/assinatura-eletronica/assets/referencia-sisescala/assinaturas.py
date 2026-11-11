@@ -1,0 +1,287 @@
+"""Fluxo de assinatura do detalhe de serviço pelas quatro autoridades (Detalhista, Auxiliar do Detalhista, Encarregado do
+Detalhe e Vice-Diretor).
+
+1. O detalhista prepara o documento e o **envia para assinatura**: o conteúdo é congelado (`DetalheDoc`) e as demais
+   autoridades recebem um aviso.
+2. Cada autoridade abre **Assinar documentos**, confere o conteúdo e assina com o PIN (`AssinaturaDetalhe`, uma por papel).
+3. O PDF pode ser baixado a qualquer momento com as assinaturas que já existem (uma, algumas ou todas).
+
+Quem é cada autoridade: o detalhista é o responsável pela escala; o auxiliar é a conta ligada ao militar designado auxiliar;
+o encarregado e o vice-diretor são contas designadas pelo detalhista na própria escala."""
+from __future__ import annotations
+
+import base64
+import zlib
+from datetime import datetime
+
+from . import notificacoes as nt
+from . import verificacao as vf
+from .modelos import AssinaturaDetalhe, Contexto, DetalheConjunto, DetalheDoc, Escala
+from .permissoes import PermissaoNegada, eh_auxiliar, eh_detalhista
+
+PAPEIS = ("detalhista", "auxiliar", "encarregado", "vice_diretor")
+ROTULO = {"detalhista": "Detalhista", "auxiliar": "Auxiliar do Detalhista", "encarregado": "Encarregado do Detalhe",
+          "vice_diretor": "Vice-Diretor"}
+
+
+def empacotar(texto: str) -> str:
+    """JSON -> texto curto (zlib + base64), para caber nas células da planilha."""
+    return base64.b64encode(zlib.compress(texto.encode(), 9)).decode()
+
+
+def desempacotar(txt: str) -> str:
+    if (txt or "").lstrip().startswith("{"):                 # registros antigos guardavam o JSON puro
+        return txt
+    try:
+        return zlib.decompress(base64.b64decode(txt)).decode()
+    except Exception:                                        # noqa: BLE001
+        return ""
+
+
+def fonte_do_doc(ctx: Contexto, doc: DetalheDoc):
+    """De onde o documento vem: o conjunto (documento unificado) ou a escala. None se foi apagado."""
+    return ctx.conjunto(doc.conjunto_id) if doc.conjunto_id else ctx.escala_ou_none(doc.escala_id)
+
+
+def nome_do_doc(ctx: Contexto, doc: DetalheDoc) -> str:
+    f = fonte_do_doc(ctx, doc)
+    return f.nome if f is not None else (conteudo(doc).get("escala_nome") or "—")
+
+
+def eh_responsavel(ctx: Contexto, usuario_id: str, fonte) -> bool:
+    """Quem monta e envia o documento: o detalhista da escala ou o dono do documento unificado."""
+    return fonte.dono_id == usuario_id if isinstance(fonte, DetalheConjunto) else eh_detalhista(ctx, usuario_id, fonte)
+
+
+def papeis_do_usuario(ctx: Contexto, usuario_id: str, fonte: Escala | DetalheConjunto) -> list[str]:
+    """Em quais papéis esta conta assina o documento desta escala (ou deste documento unificado); pode ser mais de um em OM pequena."""
+    p = []
+    if eh_responsavel(ctx, usuario_id, fonte):
+        p.append("detalhista")
+    if isinstance(fonte, DetalheConjunto):
+        if fonte.auxiliar_usuario_id and fonte.auxiliar_usuario_id == usuario_id:
+            p.append("auxiliar")
+    elif eh_auxiliar(ctx, usuario_id, fonte):
+        p.append("auxiliar")
+    if fonte.encarregado_usuario_id and fonte.encarregado_usuario_id == usuario_id:
+        p.append("encarregado")
+    if fonte.vice_usuario_id and fonte.vice_usuario_id == usuario_id:
+        p.append("vice_diretor")
+    return p
+
+
+def _validar_contas(ctx: Contexto, pares) -> None:
+    for papel, uid in pares:
+        if uid:
+            u = ctx.usuario(uid)
+            if u is None or not u.ativo:
+                raise ValueError(f"{papel}: conta inexistente ou inativa")
+            if not u.pin_hash:
+                raise ValueError(f"{papel}: {u.nome} ainda não cadastrou o PIN em Minha conta (precisa dele para assinar)")
+
+
+def designar(ctx: Contexto, usuario_id: str, escala_id: str, encarregado_id: str = "", vice_id: str = "") -> None:
+    """O detalhista indica as contas do Encarregado do Detalhe e do Vice-Diretor desta escala ("" = ninguém)."""
+    esc = ctx.escala(escala_id)
+    if not eh_detalhista(ctx, usuario_id, esc):
+        raise PermissaoNegada("só o detalhista da escala designa quem assina o detalhe")
+    _validar_contas(ctx, (("Encarregado do Detalhe", encarregado_id), ("Vice-Diretor", vice_id)))
+    esc.encarregado_usuario_id, esc.vice_usuario_id = encarregado_id, vice_id
+
+
+def designar_conjunto(ctx: Contexto, usuario_id: str, conjunto: DetalheConjunto, auxiliar_id: str = "",
+                      encarregado_id: str = "", vice_id: str = "") -> None:
+    """O dono do documento unificado indica as contas do Auxiliar, do Encarregado e do Vice-Diretor."""
+    if conjunto.dono_id != usuario_id:
+        raise PermissaoNegada("só o responsável pelo documento designa quem assina")
+    _validar_contas(ctx, (("Auxiliar do Detalhista", auxiliar_id), ("Encarregado do Detalhe", encarregado_id),
+                          ("Vice-Diretor", vice_id)))
+    conjunto.auxiliar_usuario_id, conjunto.encarregado_usuario_id, conjunto.vice_usuario_id = auxiliar_id, encarregado_id, vice_id
+
+
+def _dono_da_assinatura_antiga(ctx: Contexto, a: AssinaturaDetalhe) -> DetalheDoc | None:
+    """Assinaturas feitas antes de existir `doc_id` não dizem a que envio pertencem: pertencem ao ÚLTIMO envio daquele conteúdo
+    que já existia quando foram feitas (o envio seguinte, mesmo igual, não as herda)."""
+    antes = [d for d in ctx.detalhes_docs if d.codigo == a.codigo and d.enviado_em <= a.em]
+    return max(antes, key=lambda d: (d.enviado_em, int(d.id[1:]) if d.id[1:].isdigit() else 0), default=None)
+
+
+def assinaturas_do(ctx: Contexto, doc: DetalheDoc) -> list[AssinaturaDetalhe]:
+    """Assinaturas DESTE envio. Cada assinatura pertence ao envio em que foi feita: cancelar/rejeitar e enviar de novo (com ou
+    sem mudanças) recomeça sem nenhuma assinatura, e cada autoridade assina de novo."""
+    return [a for a in vf.do_codigo(ctx, doc.codigo)
+            if (a.doc_id == doc.id) or (not a.doc_id and _dono_da_assinatura_antiga(ctx, a) is doc)]
+
+
+def carimbos(ctx: Contexto, doc: DetalheDoc, url: str = "") -> dict:
+    """Dicionário para o PDF (`renderizar_pdf`): carimbo de cada papel que já assinou + código e URL do QR."""
+    c = {"hash": doc.codigo, "url": url}
+    for a in assinaturas_do(ctx, doc):
+        c[a.papel] = {"nome": a.nome, "nip": a.nip, "em": a.em}
+    return c
+
+
+def faltam(ctx: Contexto, doc: DetalheDoc) -> list[str]:
+    feitos = {a.papel for a in assinaturas_do(ctx, doc)}
+    return [p for p in PAPEIS if p not in feitos]
+
+
+def _quem_assina(ctx: Contexto, fonte) -> list[str]:
+    """Contas que têm algum papel de assinatura nesta escala/documento."""
+    if isinstance(fonte, DetalheConjunto):
+        ids = [fonte.dono_id, fonte.auxiliar_usuario_id]
+    else:
+        ids = [fonte.dono_id]
+        ids += [u.id for u in ctx.usuarios if u.ativo and u.militar_id and u.militar_id in fonte.auxiliares]
+    ids += [fonte.encarregado_usuario_id, fonte.vice_usuario_id]
+    return [i for i in dict.fromkeys(ids) if i]
+
+
+def enviar(ctx: Contexto, usuario_id: str, fonte, dias, corpo: str, codigo: str,
+           agora: datetime | None = None) -> tuple[DetalheDoc, bool]:
+    """Congela o documento e avisa as autoridades. `fonte`: a escala (ou o id dela) ou o documento unificado. Devolve
+    (documento, novo): o mesmo conteúdo já enviado não se duplica; uma versão diferente para o mesmo período substitui as
+    abertas anteriores (as assinaturas delas não valem para a nova)."""
+    agora = agora or datetime.now()
+    if isinstance(fonte, str):
+        fonte = ctx.escala(fonte)
+    conj = isinstance(fonte, DetalheConjunto)
+    if not eh_responsavel(ctx, usuario_id, fonte):
+        raise PermissaoNegada("só o detalhista (responsável) envia o documento para assinatura")
+
+    def mesma(d: DetalheDoc) -> bool:
+        return d.conjunto_id == fonte.id if conj else (not d.conjunto_id and d.escala_id == fonte.id)
+    for d in ctx.detalhes_docs:
+        if mesma(d) and d.codigo == codigo and d.status == "aberto":
+            return d, False
+    for d in ctx.detalhes_docs:
+        if mesma(d) and d.inicio == dias[0] and d.fim == dias[-1] and d.status == "aberto":
+            d.status = "substituido"
+    n = max([int(d.id[1:]) for d in ctx.detalhes_docs if d.id[1:].isdigit()] + [0]) + 1
+    doc = DetalheDoc(f"d{n}", codigo, "" if conj else fonte.id, dias[0], dias[-1], usuario_id, agora, "aberto", empacotar(corpo),
+                     fonte.id if conj else "")
+    ctx.detalhes_docs.append(doc)
+    nt.notificar(ctx, _quem_assina(ctx, fonte), "assinatura",
+                 f"Detalhe de serviço de {fonte.nome} ({dias[0]:%d/%m} a {dias[-1]:%d/%m/%Y}) aguarda assinatura. "
+                 f"Abra Documentos → Assinar documentos.", "" if conj else fonte.id, agora, excluir=[usuario_id])
+    return doc, True
+
+
+def cancelar(ctx: Contexto, usuario_id: str, doc_id: str) -> None:
+    doc = obter(ctx, doc_id)
+    fonte = fonte_do_doc(ctx, doc)
+    if fonte is None or not eh_responsavel(ctx, usuario_id, fonte):
+        raise PermissaoNegada("só o detalhista (responsável) cancela o envio")
+    if doc.status != "aberto":
+        raise ValueError(f"documento {doc.status}")
+    doc.status, doc.encerrado_por, doc.encerrado_em = "cancelado", usuario_id, datetime.now()
+
+
+def rejeitar(ctx: Contexto, usuario_id: str, doc_id: str, motivo: str, agora: datetime | None = None) -> None:
+    """Uma autoridade recusa assinar: o envio é encerrado (status "rejeitado") e o detalhista recebe o motivo, que é obrigatório.
+    Quem enviou usa "cancelar"; quem não tem papel de assinatura nesse documento não rejeita."""
+    agora = agora or datetime.now()
+    doc = obter(ctx, doc_id)
+    fonte = fonte_do_doc(ctx, doc)
+    if fonte is None:
+        raise ValueError("a escala ou o documento deste envio não existe mais")
+    if doc.status != "aberto":
+        raise ValueError(f"documento {doc.status}")
+    papeis = papeis_do_usuario(ctx, usuario_id, fonte)
+    if not papeis:
+        raise PermissaoNegada("você não tem papel de assinatura neste documento")
+    if usuario_id == doc.enviado_por:
+        raise PermissaoNegada("quem enviou o documento usa “Cancelar envio”")
+    motivo = " ".join((motivo or "").split())
+    if len(motivo) < 5:
+        raise ValueError("informe o motivo da rejeição (obrigatório)")
+    u = ctx.usuario(usuario_id)
+    doc.status, doc.encerrado_por, doc.encerrado_em, doc.motivo = "rejeitado", usuario_id, agora, motivo
+    nt.notificar(ctx, [doc.enviado_por], "assinatura",
+                 f"{ROTULO[papeis[0]]} {u.nome} REJEITOU o detalhe de serviço de {nome_do_doc(ctx, doc)} "
+                 f"({doc.inicio:%d/%m} a {doc.fim:%d/%m/%Y}). Motivo: {motivo}", doc.escala_id, agora, excluir=[usuario_id])
+
+
+def encerrado_do_periodo(ctx: Contexto, fonte, dias) -> DetalheDoc | None:
+    """O último envio rejeitado/cancelado deste período (para o detalhista ver por que não está mais aberto)."""
+    conj = isinstance(fonte, DetalheConjunto)
+    cand = [d for d in ctx.detalhes_docs if d.status in ("rejeitado", "cancelado") and d.inicio == dias[0] and d.fim == dias[-1]
+            and ((d.conjunto_id == fonte.id) if conj else (not d.conjunto_id and d.escala_id == fonte.id))]
+    return max(cand, key=lambda d: d.enviado_em, default=None)
+
+
+def obter(ctx: Contexto, doc_id: str) -> DetalheDoc:
+    d = next((x for x in ctx.detalhes_docs if x.id == doc_id), None)
+    if d is None:
+        raise ValueError("documento não encontrado")
+    return d
+
+
+def conteudo(doc: DetalheDoc) -> dict:
+    import json
+    try:
+        return json.loads(desempacotar(doc.conteudo))
+    except ValueError:
+        return {}
+
+
+def para_assinar(ctx: Contexto, usuario_id: str) -> list[tuple[DetalheDoc, list[str]]]:
+    """Documentos abertos em que esta conta ainda tem papel a assinar: [(documento, papéis pendentes)]."""
+    out = []
+    for d in sorted((x for x in ctx.detalhes_docs if x.status == "aberto"), key=lambda x: x.enviado_em, reverse=True):
+        fonte = fonte_do_doc(ctx, d)
+        if fonte is None:
+            continue
+        feitos = {(a.usuario_id, a.papel) for a in assinaturas_do(ctx, d)}
+        pend = [p for p in papeis_do_usuario(ctx, usuario_id, fonte) if (usuario_id, p) not in feitos]
+        if pend:
+            out.append((d, pend))
+    return out
+
+
+def meus_documentos(ctx: Contexto, usuario_id: str) -> list[DetalheDoc]:
+    """Documentos abertos em que a conta tem algum papel (para acompanhar, mesmo já tendo assinado)."""
+    return [d for d in sorted((x for x in ctx.detalhes_docs if x.status == "aberto"), key=lambda x: x.enviado_em, reverse=True)
+            if fonte_do_doc(ctx, d) is not None and papeis_do_usuario(ctx, usuario_id, fonte_do_doc(ctx, d))]
+
+
+def todos_do_usuario(ctx: Contexto, usuario_id: str) -> list[DetalheDoc]:
+    """Todos os envios (abertos e encerrados) das escalas/documentos em que a conta tem algum papel, do mais novo ao mais velho."""
+    return [d for d in sorted(ctx.detalhes_docs, key=lambda x: x.enviado_em, reverse=True)
+            if fonte_do_doc(ctx, d) is not None and papeis_do_usuario(ctx, usuario_id, fonte_do_doc(ctx, d))]
+
+
+def vigente_do_codigo(ctx: Contexto, codigo: str) -> DetalheDoc | None:
+    """O envio mais recente com este código (a verificação mostra a situação dele: vigente, cancelado, rejeitado...)."""
+    return max((d for d in ctx.detalhes_docs if d.codigo == codigo),
+               key=lambda d: (d.status == "aberto", d.enviado_em, int(d.id[1:]) if d.id[1:].isdigit() else 0), default=None)
+
+
+def assinar(ctx: Contexto, usuario_id: str, doc_id: str, papel: str, pin: str, om: str = "",
+            agora: datetime | None = None) -> AssinaturaDetalhe:
+    """Assina com o PIN, no papel indicado. Erros de regra viram ValueError/PermissaoNegada/AutenticacaoErro."""
+    from . import auth
+    agora = agora or datetime.now()
+    doc = obter(ctx, doc_id)
+    if doc.status != "aberto":
+        raise ValueError("este documento não está mais aberto para assinatura (foi substituído ou cancelado)")
+    esc = fonte_do_doc(ctx, doc)
+    if esc is None:
+        raise ValueError("a escala ou o documento deste envio não existe mais")
+    if papel not in papeis_do_usuario(ctx, usuario_id, esc):
+        raise PermissaoNegada("você não tem este papel de assinatura nesta escala")
+    if any(a.papel == papel for a in assinaturas_do(ctx, doc)):
+        raise ValueError(f"o papel {ROTULO[papel]} já assinou este documento")
+    if not auth.confirmar_assinatura(ctx, usuario_id, pin, agora):
+        raise auth.AutenticacaoErro("PIN incorreto")
+    u = ctx.usuario(usuario_id)
+    mil = ctx.militar(u.militar_id) if u.militar_id else None
+    nome = " ".join(u.nome.split())                       # nome completo da conta (sem posto, especialidade nem nome de guerra)
+    nip = mil.nip if mil and mil.nip else (u.nip or u.login)
+    cont = desempacotar(doc.conteudo)
+    a = vf.registrar(ctx, usuario_id, doc.escala_id, [doc.inicio, doc.fim], cont, doc.codigo, nome, nip,
+                     om or conteudo(doc).get("om", ""), agora, papel, doc.id)
+    nt.notificar(ctx, [doc.enviado_por], "assinatura",
+                 f"{ROTULO[papel]} {nome} assinou o detalhe de serviço de {esc.nome} "
+                 f"({doc.inicio:%d/%m} a {doc.fim:%d/%m/%Y}).", doc.escala_id, agora, excluir=[usuario_id])
+    return a
