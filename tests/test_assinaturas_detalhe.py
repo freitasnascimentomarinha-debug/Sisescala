@@ -227,3 +227,20 @@ def test_verificacao_avisa_quando_o_envio_foi_cancelado_ou_rejeitado():
     assert asn.vigente_do_codigo(c, cod).status == "aberto"
     asn.rejeitar(c, "u4", d.id, "Dados desatualizados na escala.", AGORA)
     assert asn.vigente_do_codigo(c, cod).status == "rejeitado" and vf.buscar(c, cod) is not None   # a assinatura existiu...
+
+
+def test_assinatura_antiga_sem_envio_registrado_nao_passa_para_o_reenvio_do_mesmo_conteudo():
+    """Dados de antes de existir `doc_id`: a assinatura pertence ao envio que já existia quando foi feita."""
+    c, dias, corpo, cod = mk()
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA + timedelta(minutes=5))
+    for a in c.assinaturas_detalhe:
+        a.doc_id = ""                                                    # como ficou gravada antes da correção
+    assert [a.papel for a in asn.assinaturas_do(c, d)] == ["detalhista"]
+    asn.cancelar(c, "u2", d.id)
+    d2, novo = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA + timedelta(hours=1))      # reenvio do MESMO conteúdo
+    assert novo and asn.assinaturas_do(c, d2) == [] and asn.faltam(c, d2) == list(asn.PAPEIS)
+    assert [x.id for x, p in asn.para_assinar(c, "u2")] == [d2.id] and asn.para_assinar(c, "u2")[0][1] == ["detalhista"]
+    assert [a.papel for a in asn.assinaturas_do(c, d)] == ["detalhista"]                    # o cancelado guarda a dele
+    asn.assinar(c, "u2", d2.id, "detalhista", "1234", agora=AGORA + timedelta(hours=2))     # exige assinar de novo
+    assert [a.papel for a in asn.assinaturas_do(c, d2)] == ["detalhista"] and asn.faltam(c, d2)[0] == "auxiliar"

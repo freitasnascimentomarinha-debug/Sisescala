@@ -99,15 +99,18 @@ def designar_conjunto(ctx: Contexto, usuario_id: str, conjunto: DetalheConjunto,
     conjunto.auxiliar_usuario_id, conjunto.encarregado_usuario_id, conjunto.vice_usuario_id = auxiliar_id, encarregado_id, vice_id
 
 
+def _dono_da_assinatura_antiga(ctx: Contexto, a: AssinaturaDetalhe) -> DetalheDoc | None:
+    """Assinaturas feitas antes de existir `doc_id` não dizem a que envio pertencem: pertencem ao ÚLTIMO envio daquele conteúdo
+    que já existia quando foram feitas (o envio seguinte, mesmo igual, não as herda)."""
+    antes = [d for d in ctx.detalhes_docs if d.codigo == a.codigo and d.enviado_em <= a.em]
+    return max(antes, key=lambda d: (d.enviado_em, int(d.id[1:]) if d.id[1:].isdigit() else 0), default=None)
+
+
 def assinaturas_do(ctx: Contexto, doc: DetalheDoc) -> list[AssinaturaDetalhe]:
-    """Assinaturas DESTE envio. Cancelar/rejeitar e enviar de novo o mesmo conteúdo começa sem nenhuma assinatura: cada
-    assinatura pertence ao envio em que foi feita (registros antigos, sem envio, valem pelo código)."""
-    return [a for a in vf.do_codigo(ctx, doc.codigo) if a.doc_id == doc.id or (not a.doc_id and doc.status == "aberto"
-                                                                           and _unico_aberto(ctx, doc))]
-
-
-def _unico_aberto(ctx: Contexto, doc: DetalheDoc) -> bool:
-    return sum(1 for d in ctx.detalhes_docs if d.codigo == doc.codigo and d.status == "aberto") == 1
+    """Assinaturas DESTE envio. Cada assinatura pertence ao envio em que foi feita: cancelar/rejeitar e enviar de novo (com ou
+    sem mudanças) recomeça sem nenhuma assinatura, e cada autoridade assina de novo."""
+    return [a for a in vf.do_codigo(ctx, doc.codigo)
+            if (a.doc_id == doc.id) or (not a.doc_id and _dono_da_assinatura_antiga(ctx, a) is doc)]
 
 
 def carimbos(ctx: Contexto, doc: DetalheDoc, url: str = "") -> dict:
