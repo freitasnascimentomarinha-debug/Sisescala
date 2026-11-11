@@ -106,13 +106,18 @@ def exigir_escala(P: Pagina) -> Escala:
 PERIODOS = {"7 dias": 7, "15 dias": 15, "1 mês": 30}
 
 
-def barra_contexto(P: Pagina, periodo: bool = True) -> None:
+def barra_contexto(P: Pagina, periodo: bool = True, escala: bool = True) -> None:
     """Escala ativa e período, no topo das páginas que dependem deles (o estado vale para todas as páginas)."""
     if not P.visiveis:
         return
     ids = [e.id for e in P.visiveis]
     if st.session_state.get("eid") not in ids:
         st.session_state["eid"] = ids[0]
+    if not escala:                       # só o período (páginas que não dependem de uma escala só)
+        c1, c2, _ = st.columns([1.2, 1.6, 2])
+        c1.date_input("Início", date.today(), key="inicio", format="DD/MM/YYYY")
+        c2.segmented_control("Período", list(PERIODOS), default="7 dias", key="per")
+        return
     cols = st.columns([2, 1.2, 1.6] if periodo else [2])
     cols[0].selectbox("Escala", ids, format_func=lambda i: P.ctx.escala(i).nome, key="eid")
     if periodo:

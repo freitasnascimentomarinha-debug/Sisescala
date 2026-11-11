@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 from sisescala import auth
 
 RAIZ = Path(__file__).resolve().parent.parent
-PAGINAS_GESTAO = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "verificar", "escalas", "militares",
+PAGINAS_GESTAO = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "unificado", "regras", "verificar", "escalas", "militares",
                   "lancamentos", "calendario", "importar", "buscar", "acessos", "vinculos", "usuarios", "conta", "notificacoes"]
 PAGINAS_MILITAR = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "verificar", "escalas", "importar", "buscar",
                    "vinculos", "conta", "notificacoes"]
@@ -343,3 +343,34 @@ def test_app_usa_o_horario_de_brasilia(app):
     assert time.timezone == 3 * 3600                                    # UTC-3, mesmo com o servidor em UTC
     dif = datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)
     assert abs(dif.total_seconds() + 3 * 3600) < 5                      # datetime.now() é o horário de Brasília
+
+
+def test_detalhe_unificado_cria_junta_escalas_envia_e_a_autoridade_assina(app):
+    from sisescala import conjuntos as cjs
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.usuario("u1").pin_hash = auth.hash_pin("1234")
+    vice = auth.criar_usuario(ctx, "u1", "vice1", "Vice Um", "senha-vice-123", perfil="militar", email="v@x.com", ramal="2345",
+                              celular="21988887777")
+    vice.pin_hash = auth.hash_pin("4321")
+    app.switch_page("paginas/unificado.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    cj = cjs.criar(ctx, "u1", "Escala de Serviço do Dia", [e.id for e in cjs.elegiveis(ctx, "u1")][:2])
+    cj.ass_detalhista = "Fulano"
+    from sisescala import assinaturas as asn
+    asn.designar_conjunto(ctx, "u1", cj, "", "", vice.id)
+    app.run()
+    app.switch_page("paginas/unificado.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    assert [b.proto.label for b in app.get("download_button")][:1] == ["PDF sem assinatura"]
+    next(b for b in app.button if b.label == "Enviar para assinatura").click().run()
+    assert [(d.conjunto_id, d.escala_id, d.status) for d in ctx.detalhes_docs] == [(cj.id, "", "aberto")]
+    assert any(n.usuario_id == vice.id and n.tipo == "assinatura" for n in ctx.notificacoes)
+    del app.session_state["uid"]
+    app.run()
+    _entrar(app, "vice1", "senha-vice-123")
+    app.switch_page("paginas/assinar.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    next(t for t in app.text_input if t.label == "Seu PIN").input("4321")
+    next(b for b in app.button if b.label == "Assinar como Vice-Diretor").click().run()
+    assert [a.papel for a in app.session_state["ctx"].assinaturas_detalhe] == ["vice_diretor"]

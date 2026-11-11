@@ -378,6 +378,30 @@ class DetalheDoc:
     enviado_em: datetime
     status: str
     conteudo: str
+    conjunto_id: str = ""          # documento unificado (várias escalas): `escala_id` fica vazio
+
+
+@dataclass
+class DetalheConjunto:
+    """Documento de serviço que reúne várias escalas (fiscal, sentinela, contramestre...) com instruções, recomendações e regras
+    gerais, assinado pelas quatro autoridades. O detalhista (`dono_id`) o monta e envia; os papéis de assinatura seguem os
+    mesmos campos de uma escala (auxiliar, encarregado e vice-diretor são contas designadas)."""
+    id: str
+    nome: str                                   # título do documento, ex.: "Escala de Serviço do Dia"
+    dono_id: str
+    om: str = ""
+    escala_ids: list[str] = field(default_factory=list)
+    det_instrucoes: str = ""
+    det_recomendacoes: str = ""
+    det_regras: str = ""
+    ass_detalhista: str = ""
+    ass_auxiliar: str = ""
+    ass_encarregado: str = ""
+    ass_vice_diretor: str = ""
+    auxiliar_usuario_id: str = ""
+    encarregado_usuario_id: str = ""
+    vice_usuario_id: str = ""
+    brasao_b64: str = ""
 
 
 @dataclass
@@ -462,6 +486,7 @@ class Contexto:
     convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
     assinaturas_detalhe: list[AssinaturaDetalhe] = field(default_factory=list)
     detalhes_docs: list[DetalheDoc] = field(default_factory=list)
+    conjuntos: list[DetalheConjunto] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     brasao_b64: str = ""                  # Brasão de Armas (PNG reduzido, base64) do cabeçalho dos documentos
     admin_cfg_sig: str = ""               # assinatura (NIP+senha) dos segredos já aplicada ao administrador
@@ -527,3 +552,9 @@ class Contexto:
 
     def escala(self, eid: str) -> Escala:
         return next(e for e in self.escalas if e.id == eid)
+
+    def escala_ou_none(self, eid: str) -> "Escala | None":
+        return next((e for e in self.escalas if e.id == eid), None)
+
+    def conjunto(self, cid: str) -> "DetalheConjunto | None":
+        return next((c for c in self.conjuntos if c.id == cid), None)

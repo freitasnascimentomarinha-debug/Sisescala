@@ -34,7 +34,7 @@ def test_registro_se_confere_pelo_codigo_e_sobrevive_a_gravacao():
     assert vf.buscar(c, cod[:8]) is None and vf.buscar(c, "0" * 64) is None and vf.buscar(c, "") is None
     assert vf.integra(a)
     d = vf.descrever(c, a)
-    assert d["escala"] == "Portaria" and len(d["dias"]) == 3 and d["textos"][0] == "<b>X</b>"
+    assert d["escala"] == "Portaria" and len(d["secoes"][0][1]) == 3 and d["textos"][0] == "<b>X</b>"
     c2 = de_tabelas(para_tabelas(c))
     b = vf.buscar(c2, cod)
     assert b and (b.nome, b.nip, b.inicio, b.fim, b.em) == ("CT Fulano", "11.0316.11", D, dias[-1], datetime(2027, 3, 1, 8)) and vf.integra(b)
