@@ -209,8 +209,8 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .card{{border:1px solid #323D24;border-left:6px solid #7FA24A;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;background:#192012}}
 .card h3{{margin:0 0 6px;font-size:18px;color:#EFEBDD}} .card .grid{{display:flex;flex-wrap:wrap;gap:6px 22px}}
 .k span{{display:block;color:#9AA183;font-size:11px;text-transform:uppercase}} .k b{{font-size:14px}}
-.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #323D24;border-radius:12px;overflow:hidden;background:#141A0E;
-  width:100%;table-layout:fixed}}
+.prev{{border-collapse:separate;border-spacing:0;font-size:12px;border:1px solid #323D24;border-radius:12px;background:#141A0E;
+  width:100%;table-layout:fixed;overflow:clip}}
 .prev th small{{display:block;font-weight:400;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .prev.dens .t{{display:block;padding:2px 2px;font-size:10.5px;line-height:1.15;text-align:center;margin:2px auto;max-width:100%;overflow:hidden}}
 .prev.dens .t small{{display:block;font-size:9px}}
@@ -218,7 +218,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .prev th,.prev td{{border-bottom:1px solid #2A3420;border-right:1px solid #2A3420;padding:5px 6px;text-align:center;white-space:nowrap}}
 .prev th{{font-weight:700;color:#D3D0BC;background:#1F2817}} .prev th.util{{background:#1F2817}}
 .prev th.folga{{background:rgba(239,68,68,.20);color:#F0B09A}} .prev th.roxa{{background:rgba(160,130,70,.28);color:#E3D3A8}}
-.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.25}}
+.prev th.nome{{text-align:left;background:#192012;position:sticky;left:0;z-index:2;color:#EFEBDD;overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.25}}
 .prev th.nome small{{white-space:nowrap}}
 .prev td.folga{{background:rgba(239,68,68,.11)}} .prev td.roxa{{background:rgba(160,130,70,.16)}}
 .prev td.sem{{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 6px,transparent 6px 12px)}}
@@ -232,7 +232,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
-<div style="overflow-x:auto"><table class="prev{' dens' if nv > 7 else ''}" style="min-width:{larg_min}px;width:{larg}">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc, res, ancora)}</tr>{linhas}
+<div style="overflow-x:auto"><table class="prev{' dens' if nv > 7 else ''}" style="min-width:{larg_min}px;width:{larg}">{colgrupo}<tr><th class='nome'></th>{_cabecalho_dias(ctx, dias, esc, res, ancora)}</tr>{linhas}
 {extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
 <h4>Observações</h4><ul>{obs_html or '<li>Sem trocas ou ocorrências no período.</li>'}</ul>"""
