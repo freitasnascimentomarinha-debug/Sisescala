@@ -67,8 +67,11 @@ def _campos(e: Escala | None, k: str):
                                 "continua: 1 é o mais antigo.")
     st.html('<div class="secao">Detalhista e auxiliar</div>')
     dono = ctx.usuario(e.dono_id) if e and e.dono_id else user
-    st.html(f'<div class="f"><small>Detalhista (responsável pela escala)</small><b>{ui.esc(nomes_u.get(dono.id, dono.nome)) if dono else "—"}</b></div>')
-    st.caption("O responsável é quem criou a escala. Para passar a função a outra pessoa, use **Entregar o detalhe** no cartão da escala.")
+    st.html(f'<div class="f"><small>Conta do detalhista (responsável pela escala)</small><b>{ui.esc(nomes_u.get(dono.id, dono.nome)) if dono else "—"}</b></div>')
+    st.caption("O detalhista é sempre a **conta** que responde pela escala (quem a criou): ela não se remove, só passa para outra "
+               "pessoa em **Entregar o detalhe**, no cartão da escala. Abaixo você escolhe, se quiser, qual **militar da lista** é o "
+               "detalhista (vínculo opcional: só serve para ele ficar fora da escala). “Nenhum” não tira o detalhista, só diz que ele "
+               "não é um dos militares da lista.")
     opc = _militares_da_escolha(e)
     if not opc:
         st.info("Ainda não há militares cadastrados: tudo bem, você continua sendo o detalhista. Depois de cadastrar os "
@@ -76,7 +79,7 @@ def _campos(e: Escala | None, k: str):
     a, b = st.columns(2)
     ids = [""] + opc
     atual = d.detalhista_id if d.detalhista_id in ids else (gestao.militar_do_detalhista(ctx, dono) if dono else "")
-    det = a.selectbox("Militar do detalhista (fica fora da escala)", ids, ids.index(atual) if atual in ids else 0,
+    det = a.selectbox("Vínculo do detalhista com um militar (opcional; fica fora da escala)", ids, ids.index(atual) if atual in ids else 0,
                       format_func=lambda i: nomes_m.get(i, "— nenhum —"), key=f"{k}_det",
                       help="Se o detalhista também é um militar da lista, escolha-o: ele fica dispensado de serviço nesta escala "
                            "(a menos que marque que concorre). Se não for da lista, deixe “nenhum”.")
@@ -166,7 +169,7 @@ for e in minhas:
     dono = e.dono_id == uid
     with st.container(border=True):
         st.html(f'<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap"><div style="font-weight:800;font-size:1.1rem;'
-                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else nomes_u.get(e.dono_id, "—"))}{ui.chip("Auxiliares", ", ".join(nomes_m.get(a, "—") for a in e.auxiliares)) if e.auxiliares else ""}{ui.chip("Modo", MODOS[e.modo])}'
+                f'color:var(--ink)">{ui.esc(e.nome)}</div>{ui.chip(CATEGORIAS[e.categoria][0])}{ui.chip("OM", e.om or "não informada")}{ui.chip("Detalhista (conta)", nomes_u.get(e.dono_id, "—"))}{ui.chip("Vínculo militar", (nomes_m.get(e.detalhista_id, "—") + (" · concorre" if e.detalhista_escalavel else " · fora")) if e.detalhista_id else "nenhum")}{ui.chip("Auxiliares", ", ".join(nomes_m.get(a, "—") for a in e.auxiliares)) if e.auxiliares else ""}{ui.chip("Modo", MODOS[e.modo])}'
                 f'{ui.chip("Prioridade", e.prioridade)}{ui.chip(str(e.militares_dia) + " por dia")}'
                 f'{ui.chip(str(len(e.membros)) + " militares")}{ui.chip("Descanso", str(e.folgas_minimas) + "x1")}'
                 f'<div style="margin-left:auto">{ui.pill("Responsável: " + nomes_u.get(e.dono_id, e.dono_id or "—"), "azul" if dono else "cinza", False)}</div></div>')

@@ -181,6 +181,11 @@ with dir_:
             if pode and st.button("Cancelar este envio", icon=":material/block:", key=f"{K}canc"):
                 agir(lambda: asn.cancelar(ctx, P.uid, atual.id), "Envio cancelado.")
         elif pode:
+            enc_ = asn.encerrado_do_periodo(ctx, esc, dias)
+            if enc_ and enc_.status == "rejeitado":
+                quem_ = ctx.usuario(enc_.encerrado_por)
+                st.error(f"**Rejeitado** por {quem_.nome if quem_ else '—'}" + (f" em {enc_.encerrado_em:%d/%m/%Y %H:%M}" if enc_.encerrado_em else "")
+                         + f". Motivo: {enc_.motivo}. Corrija e envie de novo.")
             if enviados:
                 st.warning("Você alterou o documento depois do último envio. Envie de novo: as assinaturas da versão anterior "
                            "não valem para a nova.")

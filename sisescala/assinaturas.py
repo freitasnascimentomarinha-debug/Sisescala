@@ -100,7 +100,14 @@ def designar_conjunto(ctx: Contexto, usuario_id: str, conjunto: DetalheConjunto,
 
 
 def assinaturas_do(ctx: Contexto, doc: DetalheDoc) -> list[AssinaturaDetalhe]:
-    return vf.do_codigo(ctx, doc.codigo)
+    """Assinaturas DESTE envio. Cancelar/rejeitar e enviar de novo o mesmo conteúdo começa sem nenhuma assinatura: cada
+    assinatura pertence ao envio em que foi feita (registros antigos, sem envio, valem pelo código)."""
+    return [a for a in vf.do_codigo(ctx, doc.codigo) if a.doc_id == doc.id or (not a.doc_id and doc.status == "aberto"
+                                                                           and _unico_aberto(ctx, doc))]
+
+
+def _unico_aberto(ctx: Contexto, doc: DetalheDoc) -> bool:
+    return sum(1 for d in ctx.detalhes_docs if d.codigo == doc.codigo and d.status == "aberto") == 1
 
 
 def carimbos(ctx: Contexto, doc: DetalheDoc, url: str = "") -> dict:
@@ -164,7 +171,40 @@ def cancelar(ctx: Contexto, usuario_id: str, doc_id: str) -> None:
         raise PermissaoNegada("só o detalhista (responsável) cancela o envio")
     if doc.status != "aberto":
         raise ValueError(f"documento {doc.status}")
-    doc.status = "cancelado"
+    doc.status, doc.encerrado_por, doc.encerrado_em = "cancelado", usuario_id, datetime.now()
+
+
+def rejeitar(ctx: Contexto, usuario_id: str, doc_id: str, motivo: str, agora: datetime | None = None) -> None:
+    """Uma autoridade recusa assinar: o envio é encerrado (status "rejeitado") e o detalhista recebe o motivo, que é obrigatório.
+    Quem enviou usa "cancelar"; quem não tem papel de assinatura nesse documento não rejeita."""
+    agora = agora or datetime.now()
+    doc = obter(ctx, doc_id)
+    fonte = fonte_do_doc(ctx, doc)
+    if fonte is None:
+        raise ValueError("a escala ou o documento deste envio não existe mais")
+    if doc.status != "aberto":
+        raise ValueError(f"documento {doc.status}")
+    papeis = papeis_do_usuario(ctx, usuario_id, fonte)
+    if not papeis:
+        raise PermissaoNegada("você não tem papel de assinatura neste documento")
+    if usuario_id == doc.enviado_por:
+        raise PermissaoNegada("quem enviou o documento usa “Cancelar envio”")
+    motivo = " ".join((motivo or "").split())
+    if len(motivo) < 5:
+        raise ValueError("informe o motivo da rejeição (obrigatório)")
+    u = ctx.usuario(usuario_id)
+    doc.status, doc.encerrado_por, doc.encerrado_em, doc.motivo = "rejeitado", usuario_id, agora, motivo
+    nt.notificar(ctx, [doc.enviado_por], "assinatura",
+                 f"{ROTULO[papeis[0]]} {u.nome} REJEITOU o detalhe de serviço de {nome_do_doc(ctx, doc)} "
+                 f"({doc.inicio:%d/%m} a {doc.fim:%d/%m/%Y}). Motivo: {motivo}", doc.escala_id, agora, excluir=[usuario_id])
+
+
+def encerrado_do_periodo(ctx: Contexto, fonte, dias) -> DetalheDoc | None:
+    """O último envio rejeitado/cancelado deste período (para o detalhista ver por que não está mais aberto)."""
+    conj = isinstance(fonte, DetalheConjunto)
+    cand = [d for d in ctx.detalhes_docs if d.status in ("rejeitado", "cancelado") and d.inicio == dias[0] and d.fim == dias[-1]
+            and ((d.conjunto_id == fonte.id) if conj else (not d.conjunto_id and d.escala_id == fonte.id))]
+    return max(cand, key=lambda d: d.enviado_em, default=None)
 
 
 def obter(ctx: Contexto, doc_id: str) -> DetalheDoc:
@@ -202,6 +242,18 @@ def meus_documentos(ctx: Contexto, usuario_id: str) -> list[DetalheDoc]:
             if fonte_do_doc(ctx, d) is not None and papeis_do_usuario(ctx, usuario_id, fonte_do_doc(ctx, d))]
 
 
+def todos_do_usuario(ctx: Contexto, usuario_id: str) -> list[DetalheDoc]:
+    """Todos os envios (abertos e encerrados) das escalas/documentos em que a conta tem algum papel, do mais novo ao mais velho."""
+    return [d for d in sorted(ctx.detalhes_docs, key=lambda x: x.enviado_em, reverse=True)
+            if fonte_do_doc(ctx, d) is not None and papeis_do_usuario(ctx, usuario_id, fonte_do_doc(ctx, d))]
+
+
+def vigente_do_codigo(ctx: Contexto, codigo: str) -> DetalheDoc | None:
+    """O envio mais recente com este código (a verificação mostra a situação dele: vigente, cancelado, rejeitado...)."""
+    return max((d for d in ctx.detalhes_docs if d.codigo == codigo),
+               key=lambda d: (d.status == "aberto", d.enviado_em, int(d.id[1:]) if d.id[1:].isdigit() else 0), default=None)
+
+
 def assinar(ctx: Contexto, usuario_id: str, doc_id: str, papel: str, pin: str, om: str = "",
             agora: datetime | None = None) -> AssinaturaDetalhe:
     """Assina com o PIN, no papel indicado. Erros de regra viram ValueError/PermissaoNegada/AutenticacaoErro."""
@@ -225,7 +277,7 @@ def assinar(ctx: Contexto, usuario_id: str, doc_id: str, papel: str, pin: str, o
     nip = mil.nip if mil and mil.nip else (u.nip or u.login)
     cont = desempacotar(doc.conteudo)
     a = vf.registrar(ctx, usuario_id, doc.escala_id, [doc.inicio, doc.fim], cont, doc.codigo, nome, nip,
-                     om or conteudo(doc).get("om", ""), agora, papel)
+                     om or conteudo(doc).get("om", ""), agora, papel, doc.id)
     nt.notificar(ctx, [doc.enviado_por], "assinatura",
                  f"{ROTULO[papel]} {nome} assinou o detalhe de serviço de {esc.nome} "
                  f"({doc.inicio:%d/%m} a {doc.fim:%d/%m/%Y}).", doc.escala_id, agora, excluir=[usuario_id])

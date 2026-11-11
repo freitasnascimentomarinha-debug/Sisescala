@@ -171,3 +171,59 @@ def test_brasao_e_por_escala_so_o_detalhista_troca_e_cai_no_padrao():
         pdfmod.BRASAO = original
     assert len(proprio) > len(sem) + 500                                              # e1 leva o brasão próprio; e2 nenhum
     assert len(gerar_pdf(c, r, dias, "e2", "OM")) > len(sem) + 500                    # e2 usa o padrão (Armas Nacionais)
+
+
+def test_cancelar_e_enviar_de_novo_comeca_sem_assinaturas_e_o_cancelado_some_das_pendencias():
+    c, dias, corpo, cod = mk()
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
+    asn.assinar(c, "u4", d.id, "encarregado", "1234", agora=AGORA)
+    asn.cancelar(c, "u2", d.id)
+    assert d.status == "cancelado" and d.encerrado_por == "u2" and d.encerrado_em is not None
+    assert asn.para_assinar(c, "u4") == [] and asn.meus_documentos(c, "u4") == []         # some de "aguardando"
+    d2, novo = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)                          # mesmo conteúdo, novo envio
+    assert novo and d2.id != d.id
+    assert asn.assinaturas_do(c, d2) == [] and asn.faltam(c, d2) == list(asn.PAPEIS)       # as assinaturas do cancelado não passam
+    assert [x.id for x, _ in asn.para_assinar(c, "u4")] == [d2.id]                         # o encarregado precisa assinar de novo
+    assert [x.papel for x in asn.assinaturas_do(c, d)] == ["detalhista", "encarregado"]    # o cancelado guarda as suas (histórico)
+    assert d in asn.todos_do_usuario(c, "u4")                                              # e continua no histórico do filtro
+    assert asn.vigente_do_codigo(c, cod).id == d2.id
+
+
+def test_rejeitar_exige_motivo_encerra_o_envio_e_avisa_o_detalhista_com_o_porque():
+    c, dias, corpo, cod = mk()
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
+    with pytest.raises(ValueError, match="motivo"):
+        asn.rejeitar(c, "u4", d.id, "  ", AGORA)                                        # justificativa obrigatória
+    with pytest.raises(ValueError, match="motivo"):
+        asn.rejeitar(c, "u4", d.id, "ruim", AGORA)
+    with pytest.raises(PermissaoNegada):
+        asn.rejeitar(c, "u6", d.id, "Sem papel nenhum aqui", AGORA)                     # sem papel não rejeita
+    with pytest.raises(PermissaoNegada):
+        asn.rejeitar(c, "u2", d.id, "Eu mesmo enviei", AGORA)                           # quem enviou cancela
+    asn.rejeitar(c, "u4", d.id, "O sentinela do dia 02 está de férias.", AGORA)
+    assert (d.status, d.encerrado_por, d.motivo) == ("rejeitado", "u4", "O sentinela do dia 02 está de férias.")
+    aviso = [n for n in c.notificacoes if n.usuario_id == "u2" and "REJEITOU" in n.texto]
+    assert len(aviso) == 1 and "O sentinela do dia 02 está de férias." in aviso[0].texto and "Encarregado" in aviso[0].texto
+    assert asn.para_assinar(c, "u3") == [] and asn.para_assinar(c, "u4") == []           # ninguém mais assina esse envio
+    with pytest.raises(ValueError, match="não está mais aberto"):
+        asn.assinar(c, "u3", d.id, "auxiliar", "1234", agora=AGORA)
+    assert asn.encerrado_do_periodo(c, c.escala("e1"), dias).id == d.id
+    c2 = de_tabelas(para_tabelas(c))                                                      # tudo sobrevive à gravação
+    d2 = c2.detalhes_docs[0]
+    assert (d2.status, d2.encerrado_por, d2.motivo) == ("rejeitado", "u4", "O sentinela do dia 02 está de férias.")
+    assert d2.encerrado_em == AGORA
+    # corrigido, o detalhista envia outra versão e as autoridades assinam do zero
+    corpo2 = corpo.replace("Portaria", "Portaria v2")
+    d3, novo = asn.enviar(c, "u2", "e1", dias, corpo2, codigo_do_corpo(corpo2), AGORA)
+    assert novo and d3.status == "aberto" and [x.id for x, _ in asn.para_assinar(c, "u4")] == [d3.id]
+
+
+def test_verificacao_avisa_quando_o_envio_foi_cancelado_ou_rejeitado():
+    c, dias, corpo, cod = mk()
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
+    assert asn.vigente_do_codigo(c, cod).status == "aberto"
+    asn.rejeitar(c, "u4", d.id, "Dados desatualizados na escala.", AGORA)
+    assert asn.vigente_do_codigo(c, cod).status == "rejeitado" and vf.buscar(c, cod) is not None   # a assinatura existiu...

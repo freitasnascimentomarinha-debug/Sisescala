@@ -374,3 +374,28 @@ def test_detalhe_unificado_cria_junta_escalas_envia_e_a_autoridade_assina(app):
     next(t for t in app.text_input if t.label == "Seu PIN").input("4321")
     next(b for b in app.button if b.label == "Assinar como Vice-Diretor").click().run()
     assert [a.papel for a in app.session_state["ctx"].assinaturas_detalhe] == ["vice_diretor"]
+
+
+def test_autoridade_rejeita_com_motivo_obrigatorio_pela_pagina_e_detalhista_e_avisado(app):
+    from sisescala import assinaturas as asn
+    _criar_admin(app)
+    ctx = app.session_state["ctx"]
+    ctx.usuario("u1").pin_hash = auth.hash_pin("1234")
+    vice = auth.criar_usuario(ctx, "u1", "vice2", "Vice Dois", "senha-vice-123", perfil="militar", email="v@x.com", ramal="2345",
+                              celular="21988887777")
+    vice.pin_hash = auth.hash_pin("4321")
+    asn.designar(ctx, "u1", ctx.escalas[0].id, "", vice.id)
+    app.switch_page("paginas/detalhe.py").run()
+    next(b for b in app.button if b.label == "Enviar para assinatura").click().run()
+    del app.session_state["uid"]
+    app.run()
+    _entrar(app, "vice2", "senha-vice-123")
+    app.switch_page("paginas/assinar.py").run()
+    assert not app.exception, [e.value for e in app.exception]
+    botao = next(b for b in app.button if b.label == "Rejeitar documento")
+    assert botao.disabled                                                  # sem justificativa não rejeita
+    next(t for t in app.text_area if t.label == "Motivo da rejeição (obrigatório)").input("Falta incluir o sentinela de reforço.").run()
+    next(b for b in app.button if b.label == "Rejeitar documento").click().run()
+    ctx = app.session_state["ctx"]
+    assert [(d.status, d.motivo) for d in ctx.detalhes_docs] == [("rejeitado", "Falta incluir o sentinela de reforço.")]
+    assert any(n.usuario_id == "u1" and "REJEITOU" in n.texto and "sentinela de reforço" in n.texto for n in ctx.notificacoes)
