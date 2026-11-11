@@ -127,6 +127,7 @@ class Escala:
     det_regras: str = ""
     ass_detalhista: str = ""
     ass_auxiliar: str = ""
+    brasao_b64: str = ""               # brasão próprio da escala (PNG reduzido, base64); vazio = Armas Nacionais (padrão)
     encarregado_usuario_id: str = ""   # conta designada para assinar como Encarregado do Detalhe
     vice_usuario_id: str = ""          # conta designada para assinar como Vice-Diretor
     ass_encarregado: str = ""

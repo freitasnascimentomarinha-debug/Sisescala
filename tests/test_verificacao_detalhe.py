@@ -68,10 +68,11 @@ def test_titulo_nao_repete_detalhe_de_servico_e_brasao_enviado_sai_no_pdf():
     c, r, dias = mk()
     buf = io.BytesIO()
     Image.new("RGBA", (800, 900), (10, 35, 66, 255)).save(buf, "PNG")
-    c.brasao_b64 = bs.preparar(buf.getvalue())
-    assert 0 < len(c.brasao_b64) <= bs.LIMITE and base64.b64decode(c.brasao_b64)[:4] == b"\x89PNG"
+    c.escala('A').brasao_b64 = bs.preparar(buf.getvalue())
+    b64 = c.escala('A').brasao_b64
+    assert 0 < len(b64) <= bs.LIMITE and base64.b64decode(b64)[:4] == b"\x89PNG"
     c2 = de_tabelas(para_tabelas(c))
-    assert c2.brasao_b64 == c.brasao_b64                                  # sobrevive à gravação (Config)
+    assert c2.escala('A').brasao_b64 == b64                                  # sobrevive à gravação (Config)
     from pathlib import Path
     from sisescala import pdf as pdfmod
     pdfmod.BRASAO, original = Path("/nao/existe.png"), pdfmod.BRASAO     # sem o arquivo padrão, só vale o enviado
