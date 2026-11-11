@@ -96,7 +96,7 @@ with esq:
         if _prev:
             cb1.image(_prev, width=70)
         cb2.markdown("**Brasão:** " + ("o da OM (enviado por você)" if _proprio else "Armas Nacionais (padrão)"))
-        arq = cb2.file_uploader("Trocar pelo brasão da sua OM (PNG ou JPG)", type=["png", "jpg", "jpeg"], key=K + "brasao")
+        arq = cb2.file_uploader("Trocar pelo brasão da sua OM (PNG, JPG, WEBP, BMP, GIF, TIFF)", type=bs.FORMATOS, key=K + "brasao")
         bb1, bb2 = cb2.columns(2)
         if bb1.button("Usar este brasão", key=K + "brasao_ok", disabled=arq is None, icon=":material/image:",
                       use_container_width=True):
