@@ -36,15 +36,26 @@ for av in res.avisos:
 
 rs = resumo_escala(ctx, esc, dias)
 with st.container(border=True):
+    def _n(x):
+        return f"{x:g}"
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Descanso", f"{rs['folgas']}x1", help="Folgas mínimas entre dois serviços do mesmo militar.")
+    m1.metric("Ritmo hoje", f"{_n(rs['ritmo_hoje'])}x1", help="Quantos disponíveis hoje para cada vaga de serviço: cada um volta a "
+              "servir em, em média, esse número de dias. Já desconta quem está impedido.")
     m2.metric("Pessoas na escala", rs["militares"], help="Militares que podem ser escalados (o detalhista fora da escala não conta).")
-    m3.metric("Impedidos hoje", rs["impedidos_hoje"], f"{rs['disponiveis_hoje']} disponíveis", delta_color="off",
-              help="Férias, curso, dispensa, desembarque, destaque ou baixa em vigor hoje.")
-    m4.metric("Impedidos no período", rs["impedidos_periodo"], delta_color="off",
-              help="Quem tem algum impedimento em pelo menos um dia do período mostrado.")
+    m3.metric("Impedidos hoje", rs["impedidos_hoje"], help="Férias, curso, dispensa, desembarque, destaque ou baixa em vigor hoje.")
+    m4.metric("Disponíveis hoje", rs["disponiveis_hoje"])
+    linhas = []
+    if rs["ritmo_hoje"] < rs["minimo"]:
+        linhas.append(f":red[**Atenção:** o ritmo de hoje ({_n(rs['ritmo_hoje'])}x1) está abaixo do mínimo da escala ({rs['minimo']}x1).]")
+    if rs["pior_dia"] and rs["ritmo_pior"] < rs["ritmo_hoje"]:
+        linhas.append(f"Pior dia do período: {rs['pior_dia']:%d/%m} com {_n(rs['ritmo_pior'])}x1.")
+    if rs["proximo_retorno"]:
+        linhas.append(f"Primeiro retorno: {rs['proximo_retorno']:%d/%m} ({rs['voltam_no_dia']} volta(m) a dar serviço).")
     if rs["por_tipo"]:
-        st.caption("No período: " + " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
+        linhas.append("Impedidos no período (" + str(rs["impedidos_periodo"]) + "): " +
+                      " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
+    if linhas:
+        st.caption("  \n".join(linhas))
 with st.container(border=True):
     clique = previa_interativa(html_previa(ctx, res, dias, esc.id, abertas_, com_card=False),
                                st.session_state.get("sel"), key="previa")

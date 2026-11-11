@@ -324,4 +324,5 @@ def test_resumo_da_previa_conta_descanso_pessoas_e_impedidos():
     c.impedimentos += [Impedimento("m1", "ferias", date(2027, 3, 1), date(2027, 3, 3)),
                        Impedimento("m2", "desembarque", date(2027, 3, 5), None)]
     r = resumo_escala(c, c.escala("A"), dias, hoje=date(2027, 3, 2))
-    assert (r["folgas"], r["militares"], r["impedidos_hoje"], r["impedidos_periodo"], r["disponiveis_hoje"]) == (2, 5, 1, 2, 4)
+    assert (r["militares"], r["impedidos_hoje"], r["impedidos_periodo"], r["disponiveis_hoje"]) == (5, 1, 2, 4)
+    assert (r["ritmo_hoje"], r["ritmo_pior"], r["pior_dia"], r["proximo_retorno"]) == (4.0, 4.0, date(2027, 3, 1), date(2027, 3, 4))

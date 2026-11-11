@@ -59,21 +59,29 @@ def _sigla_imp(ctx: Contexto, mid: str, d: date) -> str | None:
 
 
 def resumo_escala(ctx: Contexto, esc: Escala, dias: list[date], hoje: date | None = None) -> dict:
-    """Números do mini painel da prévia: descanso (?x1), militares na escala e impedidos por qualquer motivo
-    (férias, curso, dispensa, desembarque, destaque...), hoje e em algum dia do período."""
+    """Saúde da escala: quantos disponíveis para cada vaga de serviço ("N x 1": cada um volta a servir a cada N dias
+    se todos os disponíveis de hoje entrarem na fila), quem está impedido (férias, curso, dispensa, desembarque,
+    destaque...) hoje e no período, e quando volta o primeiro impedido."""
     hoje = hoje or date.today()
     ids = set(ctx.escalaveis(esc))
-    hoje_ids, periodo_ids, por_tipo = set(), set(), {}
-    for i in ctx.impedimentos:
-        if i.militar_id not in ids:
-            continue
-        if i.cobre(hoje):
-            hoje_ids.add(i.militar_id)
+    vagas = max(1, esc.militares_dia)
+    imps = [i for i in ctx.impedimentos if i.militar_id in ids]
+    hoje_ids = {i.militar_id for i in imps if i.cobre(hoje)}
+    periodo_ids, por_tipo = set(), {}
+    for i in imps:
         if any(i.cobre(d) for d in dias):
             periodo_ids.add(i.militar_id)
             por_tipo.setdefault(TIPOS_IMPEDIMENTO[i.tipo], set()).add(i.militar_id)
-    return {"folgas": _folgas(esc), "militares": len(ids), "impedidos_hoje": len(hoje_ids),
-            "impedidos_periodo": len(periodo_ids), "disponiveis_hoje": len(ids - hoje_ids),
+    disp_hoje = len(ids) - len(hoje_ids)
+    # pior dia do período: menos disponíveis por vaga
+    pior_d, pior_disp = min(((d, len(ids) - len({i.militar_id for i in imps if i.cobre(d)})) for d in dias),
+                            key=lambda t: t[1], default=(None, len(ids)))
+    retornos = sorted(i.fim + timedelta(days=1) for i in imps if i.cobre(hoje) and i.fim)
+    return {"folgas": _folgas(esc), "minimo": _folgas(esc) + 1, "militares": len(ids), "vagas": vagas,
+            "impedidos_hoje": len(hoje_ids), "impedidos_periodo": len(periodo_ids), "disponiveis_hoje": disp_hoje,
+            "ritmo_hoje": round(disp_hoje / vagas, 1), "ritmo_pior": round(pior_disp / vagas, 1), "pior_dia": pior_d,
+            "proximo_retorno": retornos[0] if retornos else None,
+            "voltam_no_dia": sum(1 for r in retornos if retornos and r == retornos[0]),
             "por_tipo": {k: len(v) for k, v in sorted(por_tipo.items())}}
 
 
