@@ -122,7 +122,7 @@ def _classe_do_dia(ctx: Contexto, d: date, esc) -> str:
     return "util" if dia_util(d, ctx, esc) else "folga"
 
 
-def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None, res=None) -> str:
+def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None, res=None, ancora: date | None = None) -> str:
     cab = ""
     for d in dias:
         nome = nome_dia_nao_util(d, ctx, esc)
@@ -131,13 +131,17 @@ def _cabecalho_dias(ctx: Contexto, dias: list[date], esc=None, res=None) -> str:
         dia = res.dia(d, esc.id) if (res is not None and esc is not None) else None
         sem = res is not None and (dia is None or not dia.funciona)
         legenda = nome or ("não guarnece" if sem else "")
-        cab += (f'<th class="{classe}" title="{escape(legenda)}">{d:%d/%m}<br>{dow}'
+        marca = " data-ancora" if d == ancora else ""
+        classe += " pas" if (ancora and d < ancora) else ""
+        cab += (f'<th class="{classe}"{marca} title="{escape(legenda)}">{d:%d/%m}<br>{dow}'
                 f'{"<br><small>" + escape(legenda) + "</small>" if legenda else ""}</th>')
     return cab
 
 
 def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, abertas=None,
-                com_card: bool = True) -> str:
+                com_card: bool = True, ancora: date | None = None) -> str:
+    """`ancora`: primeiro dia "de hoje em diante". Os dias de `dias` anteriores a ele aparecem esmaecidos, à esquerda,
+    e a tabela abre rolada até a âncora; o scroll para trás mostra os dias que já passaram."""
     abertas = abertas or {}
     esc = ctx.escala(escala_id)
     ids = set(ctx.escalaveis(esc))           # detalhista não é escalado: não aparece na prévia
@@ -167,7 +171,8 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
                         tags.append(_tag(a.sigla, r.nome, "ref"))
             if not tags and (s := _sigla_imp(ctx, m.id, d)):
                 tags.append(_tag(s))
-            classe_td = _classe_do_dia(ctx, d, esc) + ("" if (dia and dia.funciona) else " sem")
+            classe_td = _classe_do_dia(ctx, d, esc) + ("" if (dia and dia.funciona) else " sem") \
+                + (" pas" if (ancora and d < ancora) else "")
             cel += f"<td class='{classe_td}' data-d='{d.isoformat()}' data-m='{m.id}'>{''.join(tags)}</td>"
         linhas += f"<tr><th class='nome'>{_nome_html(m)}</th>{cel}</tr>"
     for i in ctx.impedimentos:
@@ -191,9 +196,11 @@ def html_previa(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str,
     # larguras: a tabela ocupa a largura disponível (7, 15 ou 30 dias), colunas de dias iguais; com muitos dias ganha
     # largura mínima por dia e rola na horizontal só se não couber
     n = len(dias)
-    nome_w, dia_min = 132, (96 if n <= 7 else 48 if n <= 15 else 52)
+    nv = len([d for d in dias if not ancora or d >= ancora]) or n      # dias visíveis sem rolar
+    nome_w, dia_min = 132, (96 if nv <= 7 else 48 if nv <= 15 else 52)
     larg_min = nome_w + dia_min * n
     colgrupo = f'<colgroup><col style="width:{nome_w}px">' + f'<col style="width:calc((100% - {nome_w}px) / {n})">' * n + '</colgroup>'
+    larg = f"calc((100% - {nome_w}px) * {n} / {nv} + {nome_w}px)"
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 body,.prev,.card{{font-family:'Inter','Segoe UI',system-ui,sans-serif}}
@@ -215,6 +222,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 .prev th.nome small{{white-space:nowrap}}
 .prev td.folga{{background:rgba(239,68,68,.11)}} .prev td.roxa{{background:rgba(160,130,70,.16)}}
 .prev td.sem{{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 6px,transparent 6px 12px)}}
+.prev .pas{{opacity:.55}}
 .prev td.para{{color:#9AA183;font-style:italic}}
 .prev td[data-d]{{cursor:pointer}} .prev td[data-d]:hover{{background:rgba(127,162,74,.14)}}
 .prev td.sel{{outline:2px solid #A3C265;outline-offset:-2px;background:rgba(127,162,74,.26)}}
@@ -224,7 +232,7 @@ h4{{font-size:13px;margin:14px 0 4px;color:#EFEBDD}} ul{{margin:4px 0 0 18px;pad
 @keyframes pisca{{0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(182,243,74,.75)}}50%{{opacity:.25;box-shadow:0 0 0 5px rgba(182,243,74,0)}}}}
 </style>
 {f"""<div class="card"><h3>{escape(esc.nome)}{' · ' + escape(esc.tipo) if esc.tipo else ''}</h3><div class="grid">{card}</div></div>""" if com_card else ""}
-<div style="overflow-x:auto"><table class="prev{' dens' if len(dias) > 7 else ''}" style="min-width:{larg_min}px">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc, res)}</tr>{linhas}
+<div style="overflow-x:auto"><table class="prev{' dens' if nv > 7 else ''}" style="min-width:{larg_min}px;width:{larg}">{colgrupo}<tr><th></th>{_cabecalho_dias(ctx, dias, esc, res, ancora)}</tr>{linhas}
 {extra_desc}</table></div>
 <p>{leg}{' <i>(tag tracejada = militar de serviço numa escala de referência)</i>' if refs else ''}</p>
 <h4>Observações</h4><ul>{obs_html or '<li>Sem trocas ou ocorrências no período.</li>'}</ul>"""

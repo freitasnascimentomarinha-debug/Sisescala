@@ -35,6 +35,14 @@
       });
     });
   }
+  function rolarAteHoje() {   // abre a tabela em "hoje"; os dias passados ficam à esquerda, para rolar para trás
+    var th = root.querySelector("th[data-ancora]");
+    var caixa = root.querySelector("div[style*='overflow-x']");
+    if (th && caixa) {
+      var nome = root.querySelector("th.nome");
+      caixa.scrollLeft = Math.max(0, th.offsetLeft - (nome ? nome.offsetWidth : 0));
+    }
+  }
   var ultimo = null;
   window.addEventListener("message", function (ev) {
     if (!ev.data || ev.data.type !== "streamlit:render") return;
@@ -43,6 +51,7 @@
       root.innerHTML = a.html || "";
       ultimo = a.html;
       ligar(a.selecionada);
+      rolarAteHoje();
     } else {
       marcar(null);
       ligar(a.selecionada);
