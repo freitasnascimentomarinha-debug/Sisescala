@@ -49,8 +49,6 @@ with st.container(border=True):
         linhas.append(f":red[**Atenção:** o ritmo de hoje ({_n(rs['ritmo_hoje'])}x1) está abaixo do mínimo da escala ({rs['minimo']}x1).]")
     if rs["pior_dia"] and rs["ritmo_pior"] < rs["ritmo_hoje"]:
         linhas.append(f"Pior dia do período: {rs['pior_dia']:%d/%m} com {_n(rs['ritmo_pior'])}x1.")
-    if rs["proximo_retorno"]:
-        linhas.append(f"Primeiro retorno: {rs['proximo_retorno']:%d/%m} ({rs['voltam_no_dia']} volta(m) a dar serviço).")
     if rs["por_tipo"]:
         linhas.append("Impedidos no período (" + str(rs["impedidos_periodo"]) + "): " +
                       " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
