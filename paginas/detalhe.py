@@ -3,11 +3,13 @@ from datetime import datetime
 
 import streamlit as st
 
-from sisescala import auth, gestao, textorico as tr, ui
+import os
+
+from sisescala import auth, gestao, textorico as tr, ui, verificacao as vf
 from sisescala.componente import editor_texto
 from sisescala.modelos import rotulo_militar
 from sisescala.permissoes import eh_detalhista
-from sisescala.pdf import gerar_pdf, hash_detalhe
+from sisescala.pdf import codigo_do_corpo, corpo_detalhe, gerar_pdf
 from sisescala.sessao import barra_contexto, agir, exigir_escala, pagina
 
 P = pagina()
@@ -44,6 +46,16 @@ def _abrir_editor(campo: str):
             else:
                 st.rerun()
     _dialogo()
+
+
+def _url_base() -> str:
+    """Endereço do app (para o QR code abrir a verificação): variável SISESCALA_URL ou o da própria página."""
+    if os.environ.get("SISESCALA_URL"):
+        return os.environ["SISESCALA_URL"]
+    try:
+        return str(st.context.url)
+    except Exception:                                  # noqa: BLE001  (versões sem st.context.url)
+        return ""
 
 
 esq, dir_ = st.columns([1.2, 1], gap="large")
@@ -95,7 +107,8 @@ with dir_:
             st.caption(f"Mostrando 10 de {len(dias)} dias; o PDF traz todos.")
         trocas = sum(1 for d in dias for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else []) if a.origem in ("tf", "t"))
         ui.campos([("Cabeçalho", f"MARINHA DO BRASIL · {om or '—'}"), ("Escala", esc.nome), ("Dias no documento", str(len(dias))), ("Trocas no período", str(trocas))])
-        codigo = hash_detalhe(ctx, res, dias, esc.id, om, ins, rec, reg, ass)
+        corpo = corpo_detalhe(ctx, res, dias, esc.id, om, ins, rec, reg, ass)
+        codigo = codigo_do_corpo(corpo)
         chave_ass = f"{K}assinou"
         assinou = st.session_state.get(chave_ass)
         if assinou and assinou["hash"] != codigo:                  # o documento mudou depois da assinatura
@@ -122,9 +135,12 @@ with dir_:
                         try:
                             if auth.confirmar_assinatura(ctx, P.uid, pin):
                                 mil = ctx.militar(user.militar_id) if user.militar_id else None
-                                st.session_state[chave_ass] = {"nome": rotulo_militar(mil) if mil else user.nome,
-                                                               "nip": (mil.nip if mil and mil.nip else user.login),
-                                                               "em": datetime.now(), "hash": codigo}
+                                nome_ass = rotulo_militar(mil) if mil else user.nome
+                                nip_ass = mil.nip if mil and mil.nip else user.login
+                                agora = datetime.now()
+                                reg_ = vf.registrar(ctx, P.uid, esc.id, dias, corpo, codigo, nome_ass, nip_ass, om or esc.om, agora)
+                                st.session_state[chave_ass] = {"nome": nome_ass, "nip": nip_ass, "em": reg_.em, "hash": codigo,
+                                                               "url": vf.url_de_verificacao(_url_base(), codigo)}
                                 st.rerun()
                             else:
                                 st.error("PIN incorreto.")

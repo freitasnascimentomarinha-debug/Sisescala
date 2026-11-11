@@ -4,81 +4,137 @@ from __future__ import annotations
 from datetime import date
 from html import escape as xml_escape
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .modelos import CATEGORIAS, Contexto, horarios_curtos, rotulo_militar
 from .motor import Resultado
 
 ASSINATURAS = ("Detalhista", "Encarregado do Detalhe", "Vice-Diretor")
 
+# paleta institucional: azul-marinho, ouro e branco
+NAVY, OURO, GELO, CINZA = "#0A2342", "#B8962E", "#EAF0F7", "#5B6573"
+BRASAO = Path(__file__).resolve().parent.parent / "assets" / "brasao.png"     # Brasão de Armas (o arquivo oficial da OM)
+
+
+def _cor(h: str):
+    return colors.HexColor(h)
+
+
+def brasao_flowable(altura_mm: float = 19):
+    """Brasão de Armas centralizado, se o arquivo assets/brasao.png existir; senão, nada (o cabeçalho segue igual)."""
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image
+    if not BRASAO.exists():
+        return None
+    w, h = ImageReader(str(BRASAO)).getSize()
+    img = Image(str(BRASAO), width=altura_mm * mm * w / h, height=altura_mm * mm)
+    img.hAlign = "CENTER"
+    return img
+
 
 def cabecalho_documento(st, om: str, titulo: str = "") -> list:
-    """Cabeçalho oficial de todo documento: MARINHA DO BRASIL, a OM que gerencia a escala e o título."""
+    """Cabeçalho oficial, centralizado e em negrito: Brasão de Armas, MARINHA DO BRASIL, a OM, uma linha em branco e o título."""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import HRFlowable
-    marinha = ParagraphStyle("marinha", parent=st["Normal"], alignment=1, fontSize=14, leading=17, fontName="Helvetica-Bold")
-    orgao = ParagraphStyle("orgao", parent=st["Normal"], alignment=1, fontSize=11, leading=14)
-    tit = ParagraphStyle("tit", parent=st["Normal"], alignment=1, fontSize=13, leading=16, fontName="Helvetica-Bold", spaceBefore=6)
-    el = [Paragraph("MARINHA DO BRASIL", marinha)]
+    marinha = ParagraphStyle("marinha", parent=st["Normal"], alignment=1, fontSize=14, leading=17, fontName="Helvetica-Bold",
+                             textColor=_cor(NAVY))
+    orgao = ParagraphStyle("orgao", parent=st["Normal"], alignment=1, fontSize=11, leading=14, fontName="Helvetica-Bold",
+                           textColor=_cor(NAVY))
+    tit = ParagraphStyle("tit", parent=st["Normal"], alignment=1, fontSize=13, leading=16, fontName="Helvetica-Bold",
+                         textColor=_cor(NAVY))
+    el = []
+    if (b := brasao_flowable()) is not None:
+        el += [b, Spacer(1, 3 * mm)]
+    el.append(Paragraph("MARINHA DO BRASIL", marinha))
     if om.strip():
-        el.append(Paragraph(om.strip().upper(), orgao))
-    el.append(HRFlowable(width="100%", thickness=0.8, color=colors.black, spaceBefore=4, spaceAfter=4))
+        el.append(Paragraph(xml_escape(om.strip().upper()), orgao))
+    el.append(Spacer(1, 14))                                              # pula uma linha
     if titulo:
         el.append(Paragraph(titulo, tit))
+    el.append(HRFlowable(width="100%", thickness=1.2, color=_cor(OURO), spaceBefore=5, spaceAfter=5))
     return el
+
+
+def corpo_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
+                  instrucoes: str = "", recomendacoes: str = "", regras: str = "",
+                  nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> str:
+    """O conteúdo que a assinatura cobre, em JSON canônico: escala, período, OM, textos, assinantes e quem serve em cada dia."""
+    import json
+    esc = ctx.escala(escala_id)
+    corpo = {"escala": esc.id, "escala_nome": esc.nome, "periodo": [dias[0].isoformat(), dias[-1].isoformat()],
+             "om": om or esc.om, "textos": [instrucoes, recomendacoes, regras], "assinantes": list(nomes_assinantes),
+             "dias": [[d.isoformat(), [(a.militar_id, a.sigla) for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else [])]]
+                      for d in dias]}
+    return json.dumps(corpo, sort_keys=True, ensure_ascii=False)
+
+
+def codigo_do_corpo(corpo: str) -> str:
+    import hashlib
+    return hashlib.sha256(corpo.encode()).hexdigest()
 
 
 def hash_detalhe(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
                  instrucoes: str = "", recomendacoes: str = "", regras: str = "",
                  nomes_assinantes: tuple[str, str, str] = ("", "", "")) -> str:
     """Código de verificação (SHA-256) do conteúdo do detalhe: muda se a escala, o período ou os textos mudarem."""
-    import hashlib
-    import json
-    esc = ctx.escala(escala_id)
-    corpo = {"escala": esc.id, "periodo": [dias[0].isoformat(), dias[-1].isoformat()], "om": om or esc.om,
-             "textos": [instrucoes, recomendacoes, regras], "assinantes": list(nomes_assinantes),
-             "dias": [[d.isoformat(), [(a.militar_id, a.sigla) for a in (res.dia(d, esc.id).alocacoes if res.dia(d, esc.id) else [])]]
-                      for d in dias]}
-    return hashlib.sha256(json.dumps(corpo, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return codigo_do_corpo(corpo_detalhe(ctx, res, dias, escala_id, om, instrucoes, recomendacoes, regras, nomes_assinantes))
+
+
+def _qr(texto: str, lado_mm: float = 17):
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.graphics.shapes import Drawing
+    w = QrCodeWidget(texto, barLevel="M")
+    x0, y0, x1, y1 = w.getBounds()
+    lado = lado_mm * mm
+    d = Drawing(lado, lado, transform=[lado / (x1 - x0), 0, 0, lado / (y1 - y0), 0, 0])
+    d.add(w)
+    return d
 
 
 def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, om: str = "",
               instrucoes: str = "", recomendacoes: str = "", regras: str = "",
               nomes_assinantes: tuple[str, str, str] = ("", "", ""), assinatura_detalhista: dict | None = None) -> bytes:
-    """`assinatura_detalhista` ({nome, nip, em, hash}): carimba a assinatura eletrônica (PIN) do detalhista no documento."""
-    from .textorico import para_pdf, vazio
+    """`assinatura_detalhista` ({nome, nip, em, hash, url}): carimba a assinatura eletrônica (PIN) do detalhista, com o
+    código de verificação e o QR code que leva à página de verificação."""
     from reportlab.lib.styles import ParagraphStyle
     from .calendario import dia_util
+    from .textorico import para_pdf, vazio
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                            topMargin=14 * mm, bottomMargin=14 * mm)
+                            topMargin=12 * mm, bottomMargin=16 * mm, title=f"Detalhe de serviço – {ctx.escala(escala_id).nome}",
+                            author="SisEscala")
     st = getSampleStyleSheet()
     esc = ctx.escala(escala_id)
     cat = CATEGORIAS.get(esc.categoria, ("", ""))[0]
-    info = ParagraphStyle("info", parent=st["Normal"], alignment=1, fontSize=9.5, leading=12)
-    cel = ParagraphStyle("cel", parent=st["Normal"], alignment=1, fontSize=8.5, leading=10.5)     # texto centralizado
-    cab = ParagraphStyle("cab", parent=cel, fontName="Helvetica-Bold")
+    info = ParagraphStyle("info", parent=st["Normal"], alignment=1, fontSize=9, leading=12, textColor=_cor(CINZA))
+    cel = ParagraphStyle("cel", parent=st["Normal"], alignment=1, fontSize=8.5, leading=10.5)
+    cab = ParagraphStyle("cab", parent=cel, fontName="Helvetica-Bold", textColor=colors.white)
+    sec = ParagraphStyle("sec", parent=st["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=_cor(NAVY),
+                         spaceBefore=9, spaceAfter=2)
+    corpo_n = ParagraphStyle("corpo", parent=st["BodyText"], fontSize=9, leading=12)
+    corpo_p = ParagraphStyle("corpop", parent=st["BodyText"], fontSize=7.5, leading=9.6, textColor=_cor("#2B3440"))   # letras pequenas
     eventos = esc.modo == "eventos"
-    el = cabecalho_documento(st, om or esc.om, f"DETALHE DE SERVIÇO – {esc.nome.upper()}") + [
+    el = cabecalho_documento(st, om or esc.om, f"DETALHE DE SERVIÇO DE {xml_escape(esc.nome.upper())}") + [
           Paragraph(f"{cat}{' · ' + esc.tipo if esc.tipo else ''} · "
                     f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y} · "
                     f"{esc.militares_dia} escalado(s) por dia · retém: {esc.retem_qtd}", info),
           Spacer(1, 8)]
     linhas = [[Paragraph(t, cab) for t in ("Data", "Escalados", "Retém") + (("Evento",) if eventos else ())]]
-    sombreados: list[int] = []
+    nao_uteis: list[int] = []
     obs: list[str] = []
     for d in dias:
         dia = res.dia(d, esc.id)
         dow = "SEG TER QUA QUI SEX SÁB DOM".split()[d.weekday()]
         data_cel = Paragraph(f"<b>{d:%d/%m}</b><br/>{dow}", cel)
         if not dia_util(d, ctx, esc):
-            sombreados.append(len(linhas))                   # sáb, dom, feriado: fundo suave, como na prévia
+            nao_uteis.append(len(linhas))                     # sáb, dom, feriado: fundo suave dourado
         if not dia or not dia.funciona:
             linhas.append([data_cel, Paragraph("<i>não guarnece</i>", cel), Paragraph("-", cel)]
                           + ([Paragraph("-", cel)] if eventos else []))
@@ -86,55 +142,89 @@ def gerar_pdf(ctx: Contexto, res: Resultado, dias: list[date], escala_id: str, o
         partes = []
         for a in dia.efetivos:
             h = f" ({horarios_curtos(a.horarios)})" if a.horarios else ""
-            partes.append(f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]{h}")
+            partes.append(f"{xml_escape(rotulo_militar(ctx.militar(a.militar_id)))} [{a.sigla}]{h}")
             if a.obs and a.origem != "normal":
-                obs.append(f"{d:%d/%m}: {a.obs}")
+                obs.append(f"{d:%d/%m}: {xml_escape(a.obs)}")
         for a in dia.alocacoes:                 # dispensado do serviço escalado: Disp + justificativa do detalhista
             if a.origem == "falta":
-                partes.append(f"<i>{rotulo_militar(ctx.militar(a.militar_id))} [Disp]</i>")
-                obs.append(f"{d:%d/%m}: {ctx.militar(a.militar_id).nome} – {a.obs}")
-        rets = [f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]" for a in dia.retens]
-        obs += [f"{d:%d/%m}: {a.obs}" for a in dia.retens if a.obs]
+                partes.append(f"<i>{xml_escape(rotulo_militar(ctx.militar(a.militar_id)))} [Disp]</i>")
+                obs.append(f"{d:%d/%m}: {xml_escape(ctx.militar(a.militar_id).nome)} – {xml_escape(a.obs)}")
+        rets = [f"{xml_escape(rotulo_militar(ctx.militar(a.militar_id)))} [{a.sigla}]" for a in dia.retens]
+        obs += [f"{d:%d/%m}: {xml_escape(a.obs)}" for a in dia.retens if a.obs]
         lin = [data_cel, Paragraph("<br/>".join(partes) or "-", cel), Paragraph("<br/>".join(rets) or "-", cel)]
         if eventos:
-            lin.append(Paragraph(dia.descricao or "-", cel))
+            lin.append(Paragraph(xml_escape(dia.descricao or "-"), cel))
         linhas.append(lin)
-    # tabela mais estreita que as linhas de texto e centralizada no documento
     larguras = [17 * mm, 80 * mm, 52 * mm] + ([34 * mm] if eventos else [])
     t = Table(linhas, colWidths=larguras, repeatRows=1, hAlign="CENTER")
-    estilo = [("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+    estilo = [("BOX", (0, 0), (-1, -1), 0.8, _cor(NAVY)), ("INNERGRID", (0, 0), (-1, -1), 0.3, _cor("#B7C3D3")),
+              ("BACKGROUND", (0, 0), (-1, 0), _cor(NAVY)), ("LINEBELOW", (0, 0), (-1, 0), 1.6, _cor(OURO)),
               ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-              ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
-    estilo += [("BACKGROUND", (0, i), (-1, i), colors.Color(1, 0.94, 0.92)) for i in sombreados]
+              ("TOPPADDING", (0, 0), (-1, -1), 2.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2)]
+    estilo += [("BACKGROUND", (0, i), (-1, i), _cor(GELO)) for i in range(2, len(linhas), 2)]            # zebra
+    estilo += [("BACKGROUND", (0, i), (-1, i), _cor("#F6EBC8")) for i in nao_uteis]
     t.setStyle(TableStyle(estilo))
     el.append(t)
     for i in ctx.impedimentos:                  # dispensas por período, com a justificativa
         if i.tipo in ("dispensa", "dispensa_justificada", "baixa") and i.motivo and any(i.cobre(d) for d in dias) \
                 and any(p.militar_id == i.militar_id for p in esc.membros):
             fim = f"–{i.fim:%d/%m}" if i.fim else ""
-            obs.append(f"{max(i.inicio, dias[0]):%d/%m}: {ctx.militar(i.militar_id).nome} – Dispensado ({i.inicio:%d/%m}{fim}): {i.motivo}")
-    for titulo, texto in (("Instruções do serviço", instrucoes), ("Recomendações", recomendacoes),
-                          ("Regras (horário de parada, acumulação de trabalho etc.)", regras),
-                          ("Observações (trocas, dispensas e avanços)", "\n".join(dict.fromkeys(obs)))):
+            obs.append(f"{max(i.inicio, dias[0]):%d/%m}: {xml_escape(ctx.militar(i.militar_id).nome)} – Dispensado "
+                       f"({i.inicio:%d/%m}{fim}): {xml_escape(i.motivo)}")
+    from reportlab.platypus import HRFlowable
+    blocos = ((("Instruções do serviço", instrucoes, corpo_n)), ("Recomendações", recomendacoes, corpo_p),
+              ("Regras (horário de parada, acumulação de trabalho etc.)", regras, corpo_p))
+    for titulo, texto, estilo_txt in blocos:
         if not vazio(texto):
-            el += [Spacer(1, 8), Paragraph(f"<b>{titulo}</b>", st["Heading4"]),
-                   Paragraph(para_pdf(texto), st["BodyText"])]
-    el.append(Spacer(1, 40))
-    carimbo = "_" * 26
+            el += [Paragraph(titulo, sec), HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
+                   Paragraph(para_pdf(texto), estilo_txt)]
+    if obs:
+        el += [Paragraph("Observações (trocas, dispensas e avanços)", sec),
+               HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
+               Paragraph("<br/>".join(dict.fromkeys(obs)), corpo_p)]
+    pequeno = ParagraphStyle("peq", alignment=1, leading=9, fontSize=7)
+    linha_ass = "_" * 26
     if assinatura_detalhista:
         a = assinatura_detalhista
-        carimbo = Paragraph(
-            f"<font size=7>Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>{' · NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}"
-            f"<br/>em {a['em']:%d/%m/%Y} às {a['em']:%H:%M:%S}</font>", ParagraphStyle("carimbo", alignment=1, leading=9))
-    ass = Table([[carimbo, "_" * 26, "_" * 26], [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
+        texto = Paragraph(
+            f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>"
+            f"{' · NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}<br/>em {a['em']:%d/%m/%Y} às {a['em']:%H:%M:%S}",
+            pequeno)
+        carimbo = Table([[_qr(a.get("url") or f"SISESCALA-VERIFICAR:{a['hash']}"), texto]], colWidths=[19 * mm, 38 * mm])
+        carimbo.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 1),
+                                     ("RIGHTPADDING", (0, 0), (-1, -1), 1), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    else:
+        carimbo = linha_ass
+    ass = Table([[carimbo, linha_ass, linha_ass], [f"{nome or ''}" for nome in nomes_assinantes], list(ASSINATURAS)],
                 colWidths=[57 * mm] * 3, hAlign="CENTER")
     ass.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("FONTSIZE", (0, 0), (-1, -1), 9),
-                             ("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
-    el.append(ass)
+                             ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("TEXTCOLOR", (0, 2), (-1, 2), _cor(NAVY)),
+                             ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold")]))
+    fecho = [Spacer(1, 12), ass]
     if assinatura_detalhista:
-        el += [Spacer(1, 10), Paragraph(f"<font size=7>Código de verificação (SHA-256): {assinatura_detalhista['hash']}</font>",
-                                        ParagraphStyle("hash", alignment=1))]
-    doc.build(el)
+        fecho += [Spacer(1, 6), Paragraph(
+            f"<font size=6.5 color='{CINZA}'>Código de verificação (SHA-256): {assinatura_detalhista['hash']}<br/>"
+            f"Confira a autenticidade lendo o QR code ou na página “Verificar documento” do SisEscala (usuário logado).</font>",
+            ParagraphStyle("hash", alignment=1, leading=8.5))]
+    el.append(KeepTogether(fecho))
+
+    def rodape(canvas, doc_):
+        canvas.saveState()
+        W, H = A4
+        canvas.setFillColor(_cor(NAVY))
+        canvas.rect(0, H - 4 * mm, W, 4 * mm, fill=1, stroke=0)
+        canvas.setFillColor(_cor(OURO))
+        canvas.rect(0, H - 4.9 * mm, W, 0.9 * mm, fill=1, stroke=0)
+        canvas.setStrokeColor(_cor(OURO))
+        canvas.setLineWidth(0.6)
+        canvas.line(18 * mm, 11 * mm, W - 18 * mm, 11 * mm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(_cor(CINZA))
+        canvas.drawString(18 * mm, 7 * mm, f"MARINHA DO BRASIL · Detalhe de serviço – {esc.nome}")
+        canvas.drawRightString(W - 18 * mm, 7 * mm, f"Página {doc_.page}")
+        canvas.restoreState()
+    doc.build(el, onFirstPage=rodape, onLaterPages=rodape)
     return buf.getvalue()
 
 

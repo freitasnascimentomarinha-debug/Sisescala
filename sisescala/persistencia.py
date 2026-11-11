@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      ConviteVinculo, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      AssinaturaDetalhe, ConviteVinculo, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -107,6 +107,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                      ("lida", "b"), ("escala_id", "s")],
     "PapeletaAssinaturas": [("papeleta_id", "s"), ("militar_id", "s"), ("em", "dt"), ("hash_documento", "s"),
                             ("metodo", "s"), ("referencia", "s")],
+    "AssinaturasDetalhe": [("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("usuario_id", "s"),
+                           ("nome", "s"), ("nip", "s"), ("om", "s"), ("em", "dt"), ("conteudo", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
 }
 ABAS = list(SCHEMA)
@@ -170,6 +172,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("PedidosAcesso", pa)
     for cv in ctx.convites_vinculo:
         add("ConvitesVinculo", cv)
+    for a in ctx.assinaturas_detalhe:
+        add("AssinaturasDetalhe", a)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -265,6 +269,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
+    ctx.assinaturas_detalhe = [AssinaturaDetalhe(**d) for d in _linhas_de(T, "AssinaturasDetalhe")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):
         d["tipo"] = d["tipo"] or "troca"          # planilhas antigas sem a coluna

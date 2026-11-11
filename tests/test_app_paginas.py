@@ -8,9 +8,9 @@ from streamlit.testing.v1 import AppTest
 from sisescala import auth
 
 RAIZ = Path(__file__).resolve().parent.parent
-PAGINAS_GESTAO = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "escalas", "militares",
+PAGINAS_GESTAO = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "verificar", "escalas", "militares",
                   "lancamentos", "calendario", "importar", "buscar", "acessos", "vinculos", "usuarios", "conta", "notificacoes"]
-PAGINAS_MILITAR = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "escalas", "importar", "buscar",
+PAGINAS_MILITAR = ["painel", "escala", "papeletas", "devolucoes", "detalhe", "regras", "verificar", "escalas", "importar", "buscar",
                    "vinculos", "conta", "notificacoes"]
 
 
@@ -277,3 +277,8 @@ def test_detalhe_assinatura_do_detalhista_com_pin_libera_o_pdf_assinado(app):
     next(b for b in app.button if b.label == "Confirmar e assinar").click().run()
     assert not app.exception
     assert [b.proto.label for b in app.get("download_button")] == ["PDF sem assinatura", "PDF assinado"]
+    regs = app.session_state["ctx"].assinaturas_detalhe                 # a assinatura ficou registrada para a verificação
+    assert len(regs) == 1 and regs[0].usuario_id == "u1"
+    app.switch_page("paginas/verificar.py").run()
+    next(t for t in app.text_input if t.label == "Código").input(regs[0].codigo[:20]).run()
+    assert not app.exception and any("Assinatura autêntica" in x.value for x in app.success)
