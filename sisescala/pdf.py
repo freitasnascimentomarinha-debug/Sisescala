@@ -10,7 +10,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .modelos import CATEGORIAS, Contexto, horarios_curtos, rotulo_militar
 from .motor import Resultado
@@ -285,10 +285,11 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
               ("Regras (horário de parada, acumulação de trabalho etc.)", snap["textos"][2]))
     for titulo, texto in blocos:
         if not vazio(texto):
-            el += [Paragraph(titulo, sec), HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
+            el += [CondPageBreak(26 * mm),                       # título nunca fica sozinho no pé da página
+                   Paragraph(titulo, sec), HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
                    Paragraph(para_pdf(texto), corpo_p)]
     if snap["obs"]:
-        el += [Paragraph("Observações (trocas, dispensas e avanços)", sec),
+        el += [CondPageBreak(26 * mm), Paragraph("Observações (trocas, dispensas e avanços)", sec),
                HRFlowable(width="100%", thickness=0.5, color=_cor(OURO), spaceAfter=3),
                Paragraph("<br/>".join(xml_escape(o) for o in snap["obs"]), corpo_p)]
 
