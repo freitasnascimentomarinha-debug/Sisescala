@@ -116,4 +116,8 @@ Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento);
 - A assinatura fica registrada na aba `AssinaturasDetalhe` (com o conteúdo assinado). A página **Verificar documento** (só para usuários logados) confere o código — inteiro, o começo dele (12+ caracteres) ou lido do QR code — e mostra quem assinou, quando e o que foi assinado.
 - O QR code abre `…/verificar?codigo=…`. O endereço-base vem da própria página; para fixá-lo, defina a variável `SISESCALA_URL` (ex.: `https://meuapp.streamlit.app`).
 - **Armas Nacionais:** `assets/brasao.png` (Armas da República) sai centralizado acima de “MARINHA DO BRASIL” em todos os PDFs. O administrador pode trocar a imagem em *Detalhe de serviço → Cabeçalho*.
-- **Quatro autoridades:** Detalhista, Auxiliar do Detalhista, Encarregado do Detalhe e Vice-Diretor. O detalhista e o auxiliar podem assinar eletronicamente (PIN); o “PDF assinado” traz o carimbo de quem já assinou aquele conteúdo.
+- **Quatro autoridades e o fluxo de assinatura:** Detalhista, Auxiliar do Detalhista, Encarregado do Detalhe e Vice-Diretor.
+  1. O detalhista prepara o documento (*Documentos → Detalhe de serviço*), indica as contas do Encarregado e do Vice-Diretor (card *Quem assina com PIN*) e clica **Enviar para assinatura**: o conteúdo é congelado e as demais autoridades recebem um aviso.
+  2. Cada autoridade abre **Documentos → Assinar documentos** (o menu mostra quantos aguardam), confere o conteúdo e assina com o PIN no seu papel.
+  3. O PDF pode ser baixado a qualquer momento com as assinaturas que já existem (uma, algumas ou todas). Se o detalhista mudar algo depois do envio, precisa enviar de novo; as assinaturas da versão antiga não valem para a nova.
+  O vice-diretor sai centralizado abaixo das outras três assinaturas.

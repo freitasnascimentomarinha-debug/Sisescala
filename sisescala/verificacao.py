@@ -22,11 +22,12 @@ def normalizar_codigo(txt: str) -> str:
 def registrar(ctx: Contexto, usuario_id: str, escala_id: str, dias, corpo: str, codigo: str, nome: str, nip: str, om: str,
               agora: datetime | None = None, papel: str = "detalhista") -> AssinaturaDetalhe:
     """Grava a assinatura do detalhista (uma por código e usuário: assinar de novo o mesmo conteúdo não duplica)."""
+    from .assinaturas import empacotar
     agora = agora or datetime.now()
     for a in ctx.assinaturas_detalhe:
-        if a.codigo == codigo and a.usuario_id == usuario_id:
+        if a.codigo == codigo and a.usuario_id == usuario_id and a.papel == papel:
             return a
-    a = AssinaturaDetalhe(codigo, escala_id, dias[0], dias[-1], usuario_id, nome, nip, om, agora, corpo, papel)
+    a = AssinaturaDetalhe(codigo, escala_id, dias[0], dias[-1], usuario_id, nome, nip, om, agora, empacotar(corpo), papel)
     ctx.assinaturas_detalhe.append(a)
     return a
 
@@ -47,22 +48,21 @@ def do_codigo(ctx: Contexto, codigo: str) -> list[AssinaturaDetalhe]:
 def integra(a: AssinaturaDetalhe) -> bool:
     """O conteúdo gravado ainda gera o código assinado (o registro não foi alterado)."""
     import hashlib
-    return hashlib.sha256(a.conteudo.encode()).hexdigest() == a.codigo
+    from .assinaturas import desempacotar
+    return hashlib.sha256(desempacotar(a.conteudo).encode()).hexdigest() == a.codigo
 
 
 def descrever(ctx: Contexto, a: AssinaturaDetalhe) -> dict:
-    """O que foi assinado, em forma legível: escala, período, textos e, por dia, quem estava escalado (com a sigla)."""
+    """O que foi assinado, em forma legível: escala, período, textos e, por dia, quem estava escalado."""
+    from .assinaturas import desempacotar
     try:
-        c = json.loads(a.conteudo)
+        c = json.loads(desempacotar(a.conteudo))
     except ValueError:
-        return {"dias": [], "textos": ["", "", ""], "om": a.om, "assinantes": []}
-
-    def nome(mid):
-        m = ctx.militar(mid)
-        return m.nome if m else mid
-    dias = [(d, [(nome(mid), sig) for mid, sig in itens]) for d, itens in c.get("dias", [])]
+        c = {}
+    dias = [(ln["data"], [x.lstrip("~") for x in ln.get("efetivos", [])], list(ln.get("retens", [])), ln.get("funciona", True))
+            for ln in c.get("linhas", [])]
     return {"escala": c.get("escala_nome", ""), "om": c.get("om", ""), "textos": c.get("textos", ["", "", ""]),
-            "assinantes": c.get("assinantes", []), "dias": dias}
+            "obs": c.get("obs", []), "assinantes": c.get("nomes", []), "dias": dias}
 
 
 def url_de_verificacao(base: str, codigo: str) -> str:

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .modelos import (Assinatura, Contexto, DiaEspecial, Disponibilidade, Escala, Evento, Guarnecimento,
-                      AssinaturaDetalhe, ConviteVinculo, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
+                      AssinaturaDetalhe, ConviteVinculo, DetalheDoc, Impedimento, Militar, Notificacao, Ocorrencia, Papeleta, PedidoAcesso, PeriodoRoxa, Pertinencia, Quarto, Troca,
                       Usuario, Vinculo)
 
 
@@ -72,7 +72,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s"), ("sentido_fila", "s"),
                 ("det_instrucoes", "s"), ("det_recomendacoes", "s"), ("det_regras", "s"),
-                ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
+                ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
     "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],
@@ -109,6 +109,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                             ("metodo", "s"), ("referencia", "s")],
     "AssinaturasDetalhe": [("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("usuario_id", "s"),
                            ("nome", "s"), ("nip", "s"), ("om", "s"), ("em", "dt"), ("conteudo", "s"), ("papel", "s")],
+    "DetalhesParaAssinar": [("id", "s"), ("codigo", "s"), ("escala_id", "s"), ("inicio", "d"), ("fim", "d"), ("enviado_por", "s"),
+                            ("enviado_em", "dt"), ("status", "s"), ("conteudo", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
 }
 ABAS = list(SCHEMA)
@@ -174,6 +176,8 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("ConvitesVinculo", cv)
     for a in ctx.assinaturas_detalhe:
         add("AssinaturasDetalhe", a)
+    for dd in ctx.detalhes_docs:
+        add("DetalhesParaAssinar", dd)
     for p in ctx.papeletas:
         add("Papeletas", p)
         for a in p.assinaturas.values():
@@ -269,6 +273,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.notificacoes = [Notificacao(**d) for d in _linhas_de(T, "Notificacoes")]
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
+    ctx.detalhes_docs = [DetalheDoc(**d) for d in _linhas_de(T, "DetalhesParaAssinar")]
     ctx.assinaturas_detalhe = [AssinaturaDetalhe(**{**d, "papel": d["papel"] or "detalhista"}) for d in _linhas_de(T, "AssinaturasDetalhe")]
     papeletas = {}
     for d in _linhas_de(T, "Papeletas"):

@@ -11,7 +11,7 @@ novas = nt.nao_lidas(ctx, uid)
 ui.cabecalho("Notificações", "Pedidos, decisões, assinaturas e avisos das suas escalas.", "bell",
              [ui.pill(f"{novas} nova(s)", "azul")] if novas else None)
 TIPO = {"papeleta": ("Papeleta", "violeta"), "disponibilidade": ("Disponibilidade", "verde"), "vinculo": ("Vínculo", "azul"),
-        "devolucao": ("Devolução", "ambar")}
+        "devolucao": ("Devolução", "ambar"), "assinatura": ("Assinatura", "verde")}
 if novas and st.button("Marcar todas como lidas", icon=":material/done_all:"):
     nt.marcar_lidas(ctx, uid)
     st.rerun()

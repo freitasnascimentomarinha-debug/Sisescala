@@ -38,7 +38,8 @@ def test_registro_se_confere_pelo_codigo_e_sobrevive_a_gravacao():
     c2 = de_tabelas(para_tabelas(c))
     b = vf.buscar(c2, cod)
     assert b and (b.nome, b.nip, b.inicio, b.fim, b.em) == ("CT Fulano", "11.0316.11", D, dias[-1], datetime(2027, 3, 1, 8)) and vf.integra(b)
-    b.conteudo = b.conteudo.replace("Portaria", "Outra")
+    from sisescala.assinaturas import desempacotar, empacotar
+    b.conteudo = empacotar(desempacotar(b.conteudo).replace("Portaria", "Outra"))
     assert not vf.integra(b)                                            # registro adulterado deixa de conferir
 
 

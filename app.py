@@ -25,6 +25,7 @@ st.session_state["_assinatura_codigo"] = _ASSINATURA
 from sisescala import auth, ui  # noqa: E402
 
 from sisescala import acessos as ac
+from sisescala import assinaturas as asn
 from sisescala import notificacoes as nt
 from sisescala import papeletas as pp
 from sisescala import permissoes as pm
@@ -166,6 +167,7 @@ visiveis = pm.escalas_visiveis(ctx, uid)
 n_pend, n_vinc, n_novas = len(pp.pedidos_pendentes(ctx, uid)), len(vc.pendentes_para(ctx, uid)), nt.nao_lidas(ctx, uid)
 n_acessos = len(ac.pendentes_para(ctx, uid))
 n_convites = len(vc.convites_do_usuario(ctx, uid))
+n_assinar = len(asn.para_assinar(ctx, uid))
 n_cad = len(auth.pendentes(ctx)) if user.admin else 0
 e_detalhista = any(pm.eh_detalhista(ctx, uid, e) for e in ctx.escalas)
 e_auxiliar = bool(user.militar_id) and any(user.militar_id in e.auxiliares for e in ctx.escalas)
@@ -187,6 +189,7 @@ menu = {
                  _pg("vinculos", "Vínculos" + _c(n_vinc + n_convites), "link", "vinculos")],
     "Documentos": [_pg("detalhe", "Detalhe de serviço", "description", "detalhe"),
                    _pg("regras", "Regras da escala", "menu_book", "regras"),
+                   _pg("assinar", "Assinar documentos" + _c(n_assinar), "draw", "assinar"),
                    _pg("verificar", "Verificar documento", "verified", "verificar")],
     # todo usuário aprovado cria ou importa escalas (e vira o detalhista delas) e busca as de outros
     "Minhas escalas": [_pg("escalas", "Gerenciar escalas", "tune", "escalas"),

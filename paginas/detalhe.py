@@ -5,12 +5,12 @@ import streamlit as st
 
 import os
 
-from sisescala import auth, brasao as bs, gestao, textorico as tr, ui, verificacao as vf
+from sisescala import assinaturas as asn, brasao as bs, gestao, textorico as tr, ui, verificacao as vf
 from sisescala.componente import editor_texto
 from sisescala.modelos import rotulo_militar
 from sisescala import permissoes as pm
 from sisescala.permissoes import eh_detalhista
-from sisescala.pdf import codigo_do_corpo, corpo_detalhe, gerar_pdf
+from sisescala.pdf import codigo_do_corpo, corpo_detalhe, gerar_pdf, renderizar_pdf
 from sisescala.sessao import barra_contexto, agir, exigir_escala, pagina
 
 P = pagina()
@@ -106,12 +106,29 @@ with esq:
         a2, a3 = st.columns(2)
         ass = (a1.text_input("Detalhista", key=K + "a1"), a4.text_input("Auxiliar do Detalhista", key=K + "a4"),
                a2.text_input("Encarregado do Detalhe", key=K + "a2"), a3.text_input("Vice-Diretor", key=K + "a3"))
+    with st.container(border=True):
+        ui.secao("Quem assina com PIN")
+        st.caption("O detalhista (você) e o auxiliar do detalhista da escala assinam automaticamente. Indique as **contas** do "
+                   "Encarregado do Detalhe e do Vice-Diretor: elas passam a ver este documento em *Assinar documentos* "
+                   "e recebem um aviso a cada envio. Cada uma precisa ter o PIN cadastrado em Minha conta.")
+        contas = [""] + [u.id for u in sorted(ctx.usuarios, key=lambda u: u.nome.lower()) if u.ativo]
+        nome_conta = lambda i: "— ninguém (assina à mão) —" if not i else f"{ctx.usuario(i).nome} · OM {ctx.usuario(i).om or '—'}"  # noqa: E731
+        q1, q2 = st.columns(2)
+        enc_id = q1.selectbox("Encarregado do Detalhe", contas, contas.index(esc.encarregado_usuario_id)
+                              if esc.encarregado_usuario_id in contas else 0, format_func=nome_conta, key=K + "enc", disabled=not pode)
+        vice_id = q2.selectbox("Vice-Diretor", contas, contas.index(esc.vice_usuario_id) if esc.vice_usuario_id in contas else 0,
+                               format_func=nome_conta, key=K + "vice", disabled=not pode)
+        aux_nomes = [ctx.militar(m).nome for m in esc.auxiliares if ctx.militar(m)]
+        st.caption("Auxiliar(es) do detalhista: " + (", ".join(aux_nomes) if aux_nomes else "nenhum (defina em Gerenciar escalas)"))
     ins, rec, reg = (st.session_state[K + c] for c in ("ins", "rec", "reg"))
-    if st.button("Salvar OM e assinaturas", type="primary", icon=":material/save:",
+    if st.button("Salvar OM, nomes e quem assina", type="primary", icon=":material/save:",
                  disabled=not pode, use_container_width=True,
                  help=None if pode else "Só o detalhista da escala salva estes dados."):
-        agir(lambda: gestao.editar_escala(ctx, P.uid, esc.id, om=om.strip(), ass_detalhista=ass[0], ass_auxiliar=ass[1],
-                                          ass_encarregado=ass[2], ass_vice_diretor=ass[3]), "Detalhe de serviço salvo.")
+        def _salvar():
+            asn.designar(ctx, P.uid, esc.id, enc_id, vice_id)
+            gestao.editar_escala(ctx, P.uid, esc.id, om=om.strip(), ass_detalhista=ass[0], ass_auxiliar=ass[1],
+                                 ass_encarregado=ass[2], ass_vice_diretor=ass[3])
+        agir(_salvar, "Detalhe de serviço salvo.")
     st.caption("O que for salvo sai sempre preenchido no documento desta escala." if pode else
                "Somente o detalhista da escala pode salvar; você pode editar e gerar o PDF normalmente.")
 with dir_:
@@ -135,43 +152,41 @@ with dir_:
         ui.campos([("Cabeçalho", f"MARINHA DO BRASIL · {om or '—'}"), ("Escala", esc.nome), ("Dias no documento", str(len(dias))), ("Trocas no período", str(trocas))])
         corpo = corpo_detalhe(ctx, res, dias, esc.id, om, ins, rec, reg, ass)
         codigo = codigo_do_corpo(corpo)
-        papel = "detalhista" if pode else ("auxiliar" if pm.eh_auxiliar(ctx, P.uid, esc) else "")
-        feitas = vf.do_codigo(ctx, codigo)                         # assinaturas que cobrem exatamente este conteúdo
-        carimbos = {"hash": codigo, "url": vf.url_de_verificacao(_url_base(), codigo)}
-        for a_ in feitas:
-            carimbos[a_.papel] = {"nome": a_.nome, "nip": a_.nip, "em": a_.em}
-        d1, d2 = st.columns(2)
         nome_arq = f"detalhe_{esc.id}_{dias[0]:%Y%m%d}"
-        d1.download_button("PDF sem assinatura", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass),
+        enviados = [d for d in ctx.detalhes_docs if d.escala_id == esc.id and d.status == "aberto"
+                    and d.inicio == dias[0] and d.fim == dias[-1]]
+        atual = next((d for d in enviados if d.codigo == codigo), None)       # o enviado é igual ao que está na tela
+        st.download_button("PDF sem assinatura", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass),
                            f"{nome_arq}.pdf", "application/pdf", icon=":material/download:", use_container_width=True,
-                           type="secondary" if feitas else "primary", key="dl_det_sem")
-        if feitas:
-            d2.download_button("PDF assinado", gerar_pdf(ctx, res, dias, esc.id, om, ins, rec, reg, ass, carimbos),
-                               f"{nome_arq}_assinado.pdf", "application/pdf", icon=":material/verified:", type="primary",
-                               use_container_width=True, key="dl_det_com")
-        if papel and not any(a_.usuario_id == P.uid for a_ in feitas):
-            with (st.popover("Assinar com PIN", icon=":material/draw:", use_container_width=True) if not feitas
-                  else st.expander("Assinar também com PIN", icon=":material/draw:")):
-                if not user.pin_hash:
-                    st.warning("Cadastre o seu PIN em Minha conta para assinar.")
-                else:
-                    st.caption(f"Você assina como **{'Detalhista' if papel == 'detalhista' else 'Auxiliar do Detalhista'}**.")
-                    pin = st.text_input("Seu PIN", type="password", key=f"{K}pin")
-                    if st.button("Confirmar e assinar", key=f"{K}pin_ok", type="primary"):
-                        try:
-                            if auth.confirmar_assinatura(ctx, P.uid, pin):
-                                mil = ctx.militar(user.militar_id) if user.militar_id else None
-                                vf.registrar(ctx, P.uid, esc.id, dias, corpo, codigo, rotulo_militar(mil) if mil else user.nome,
-                                             mil.nip if mil and mil.nip else user.login, om or esc.om, datetime.now(), papel)
-                                st.rerun()
-                            else:
-                                st.error("PIN incorreto.")
-                        except auth.AutenticacaoErro as ex:
-                            st.error(str(ex))
-        if feitas:
-            st.caption("Assinado eletronicamente: " + " · ".join(
-                f"{'Detalhista' if a_.papel == 'detalhista' else 'Auxiliar'} {a_.nome} ({a_.em:%d/%m %H:%M})" for a_ in feitas))
-        elif papel:
-            st.caption("Qualquer mudança na escala, no período ou nos textos pede nova assinatura.")
-        st.caption("Ajuste a escala e o período acima. O PDF inclui as observações de trocas e dispensas e as três assinaturas."
-                   + (" As assinaturas eletrônicas (detalhista e auxiliar) vêm no “PDF assinado”, depois de confirmarem o PIN." if papel else ""))
+                           type="secondary" if atual else "primary", key="dl_det_sem")
+        ui.secao("Assinatura das autoridades")
+        if atual:
+            feitos = {a_.papel: a_ for a_ in asn.assinaturas_do(ctx, atual)}
+            st.html('<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem">' + "".join(
+                ui.pill(f"{asn.ROTULO[p_]} ✓" if p_ in feitos else f"{asn.ROTULO[p_]} · pendente", "verde" if p_ in feitos else "ambar")
+                for p_ in asn.PAPEIS) + "</div>")
+            st.caption(f"Enviado em {atual.enviado_em:%d/%m/%Y %H:%M}. As autoridades assinam em **Documentos → Assinar documentos**.")
+            if feitos:
+                st.download_button(f"PDF com as assinaturas já feitas ({len(feitos)} de 4)",
+                                   renderizar_pdf(asn.conteudo(atual), asn.carimbos(ctx, atual, vf.url_de_verificacao(_url_base(), atual.codigo)), ctx),
+                                   f"{nome_arq}_assinado.pdf", "application/pdf", icon=":material/verified:", type="primary",
+                                   use_container_width=True, key="dl_det_com",
+                                   help="Pode baixar a qualquer momento, mesmo que só algumas autoridades tenham assinado.")
+            if pode and st.button("Cancelar este envio", icon=":material/block:", key=f"{K}canc"):
+                agir(lambda: asn.cancelar(ctx, P.uid, atual.id), "Envio cancelado.")
+        elif pode:
+            if enviados:
+                st.warning("Você alterou o documento depois do último envio. Envie de novo: as assinaturas da versão anterior "
+                           "não valem para a nova.")
+            st.caption("Envie o documento para as autoridades assinarem. O conteúdo é congelado no envio: o que elas assinam é "
+                       "exatamente o que está nesta tela agora.")
+            if st.button("Enviar para assinatura", icon=":material/send:", type="primary", use_container_width=True,
+                         key=f"{K}enviar"):
+                def _enviar():
+                    asn.enviar(ctx, P.uid, esc.id, dias, corpo, codigo)
+                agir(_enviar, "Documento enviado para assinatura.")
+        else:
+            st.caption("Só o detalhista da escala envia o documento para assinatura.")
+        if asn.papeis_do_usuario(ctx, P.uid, esc) and (atual or enviados):
+            st.page_link("paginas/assinar.py", label="Assinar documentos", icon=":material/draw:", use_container_width=True)
+        st.caption("Ajuste a escala e o período acima. O PDF inclui as observações de trocas e dispensas e as quatro assinaturas.")
