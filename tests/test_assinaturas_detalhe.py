@@ -244,3 +244,19 @@ def test_assinatura_antiga_sem_envio_registrado_nao_passa_para_o_reenvio_do_mesm
     assert [a.papel for a in asn.assinaturas_do(c, d)] == ["detalhista"]                    # o cancelado guarda a dele
     asn.assinar(c, "u2", d2.id, "detalhista", "1234", agora=AGORA + timedelta(hours=2))     # exige assinar de novo
     assert [a.papel for a in asn.assinaturas_do(c, d2)] == ["detalhista"] and asn.faltam(c, d2)[0] == "auxiliar"
+
+
+def test_titulo_de_secao_nunca_fica_sozinho_no_pe_da_pagina():
+    """Instruções de tamanhos variados empurram "Recomendações"/"Regras" para o pé da página: o título vai junto com o texto."""
+    c, dias, _, _ = mk()
+    titulos = ("Instruções do serviço", "Recomendações", "Regras (horário de parada, acumulação de trabalho etc.)",
+               "Observações (trocas, dispensas e avanços)")
+    for n in range(20, 75, 3):
+        ins = "".join(f"<div>- Instrução número {i} do serviço de portaria que ocupa uma linha inteira ou quase.</div>" for i in range(n))
+        corpo = corpo_detalhe(c, gerar(c, dias[-1]), dias, "e1", "OM", ins, "<div>Recomendação um</div>" * 6, "<div>Regra um</div>" * 8, ("", "", "", ""))
+        pdf = renderizar_pdf(__import__("json").loads(corpo), None, c)
+        for pag in PdfReader(io.BytesIO(pdf)).pages:
+            linhas = [x.strip() for x in pag.extract_text().splitlines() if x.strip()]
+            conteudo = [x for x in linhas if not x.startswith("MARINHA DO BRASIL ·") and not x.startswith("Página")]
+            assert not conteudo or conteudo[-1] not in titulos, (n, conteudo[-3:])
+
