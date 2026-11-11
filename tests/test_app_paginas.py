@@ -49,12 +49,12 @@ def test_admin_automatico_entra_e_abre_todas_as_paginas(app):
         assert not app.exception, (p, [e.value for e in app.exception])
 
 
-def test_pagina_da_previa_mostra_o_botao_do_pdf_antes_do_painel(app):
+def test_pagina_da_previa_mostra_o_botao_pdf_no_topo(app):
     _criar_admin(app)
     app.switch_page("paginas/escala.py").run()
     assert not app.exception
     botoes = app.get("download_button")
-    assert botoes and botoes[0].proto.label == "Baixar PDF da prévia"
+    assert botoes and botoes[0].proto.label == "PDF"
     assert not any("PDF da prévia" in w.value for w in app.warning)
 
 

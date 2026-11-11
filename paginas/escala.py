@@ -29,23 +29,30 @@ chips = [ui.chip("Prioridade", esc.prioridade), ui.chip("Escalados/dia", esc.mil
          ui.chip("Retém", esc.retem_qtd), ui.chip("Descanso", f"{esc.folgas_minimas}x1")]
 if esc.quartos:
     chips.append(ui.chip("Quartos", f"{len(esc.quartos)}"))
-ui.cabecalho(esc.nome, f"{CATEGORIAS[esc.categoria][0]}{' · ' + esc.tipo if esc.tipo else ''} · "
-                       f"{dias[0]:%d/%m} a {dias[-1]:%d/%m/%Y}", "calendar", chips)
+try:                                                  # o PDF nunca derruba a página
+    _pdf_previa = pdf_previa(ctx, res, list(dias), esc.id)
+except Exception as ex:                               # noqa: BLE001
+    _pdf_previa, _erro_pdf = None, str(ex)
+# topo: título | botão PDF | chips (o botão fica ao lado esquerdo dos chips)
+c_tit, c_pdf, c_chips = st.columns([3.3, 1.1, 5.6], vertical_alignment="center")
+with c_tit:
+    ui.cabecalho(esc.nome, f"{CATEGORIAS[esc.categoria][0]}{' · ' + esc.tipo if esc.tipo else ''} · "
+                           f"{dias[0]:%d/%m} a {dias[-1]:%d/%m/%Y}", "calendar")
+with c_pdf:
+    if _pdf_previa:
+        st.download_button("PDF", _pdf_previa, f"previa_{esc.id}_{dias[0]:%Y%m%d}.pdf", "application/pdf",
+                           icon=":material/picture_as_pdf:", type="primary", key="dl_previa", use_container_width=True,
+                           help="Baixar a prévia da escala em PDF")
+with c_chips:
+    st.html(f'<div class="ph-ch" style="justify-content:flex-start;margin:0 0 1rem">{"".join(chips)}</div>')
+if not _pdf_previa:
+    st.warning(f"Não foi possível gerar o PDF da prévia: {_erro_pdf}")
 barra_contexto(P, periodo=True)
 for av in res.avisos:
     if av.startswith("CONFLITO"):
         st.error(av)
 
 rs = resumo_escala(ctx, esc, dias)
-try:                                                  # o PDF nunca derruba a página
-    _pdf_previa = pdf_previa(ctx, res, list(dias), esc.id)
-except Exception as ex:                               # noqa: BLE001
-    _pdf_previa, _erro_pdf = None, str(ex)
-if _pdf_previa:
-    st.download_button("Baixar PDF da prévia", _pdf_previa, f"previa_{esc.id}_{dias[0]:%Y%m%d}.pdf", "application/pdf",
-                       icon=":material/picture_as_pdf:", type="primary", key="dl_previa")
-else:
-    st.warning(f"Não foi possível gerar o PDF da prévia: {_erro_pdf}")
 with st.container(border=True):
     def _n(x):
         return f"{x:g}"
