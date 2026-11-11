@@ -10,6 +10,7 @@ from sisescala import ui
 from sisescala.componente import previa_interativa
 from sisescala.modelos import CATEGORIAS
 from sisescala.pdf import pdf_papeleta
+from sisescala.pdf_previa import pdf_previa
 from sisescala.previa import html_previa, resumo_escala
 from sisescala.sessao import barra_contexto, exigir_escala, fmt_dia, pagina
 
@@ -55,6 +56,8 @@ with st.container(border=True):
                       " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
     if linhas:
         st.caption("  \n".join(linhas))
+    st.download_button("Baixar PDF da prévia", pdf_previa(ctx, res, list(dias), esc.id), f"previa_{esc.id}_{dias[0]:%Y%m%d}.pdf",
+                       "application/pdf", icon=":material/picture_as_pdf:", key="dl_previa")
 with st.container(border=True):
     passados = [dias[0] - timedelta(days=k) for k in range(DIAS_PASSADOS, 0, -1) if dias[0] - timedelta(days=k) >= ctx.base_de(esc)]
     clique = previa_interativa(html_previa(ctx, res, passados + list(dias), esc.id, abertas_, com_card=False, ancora=dias[0]),
