@@ -71,6 +71,8 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("sigla_evento", "s"), ("tipo", "s"), ("prioridade", "i"), ("modo", "s"), ("funciona_em", "s"),
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s"), ("sentido_fila", "s"),
+                ("avancada", "b"), ("adv_dias_semana", "b"), ("dias_semana", "s"), ("adv_qtd_semana", "b"), ("qtd_semana", "s"),
+                ("adv_turnos", "b"), ("distribuicao", "s"), ("rodizio_turnos", "b"),
                 ("det_instrucoes", "s"), ("det_recomendacoes", "s"), ("det_regras", "s"),
                 ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("brasao_b64", "s"), ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
@@ -115,7 +117,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
     "DetalhesConjuntos": [("id", "s"), ("nome", "s"), ("dono_id", "s"), ("om", "s"), ("escala_ids", "s"), ("det_instrucoes", "s"),
                           ("det_recomendacoes", "s"), ("det_regras", "s"), ("ass_detalhista", "s"), ("ass_auxiliar", "s"),
                           ("ass_encarregado", "s"), ("ass_vice_diretor", "s"), ("auxiliar_usuario_id", "s"),
-                          ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("brasao_b64", "s")],
+                          ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("brasao_b64", "s"), ("orientacao", "s")],
     "PapeletaHistorico": [("papeleta_id", "s"), ("em", "dt"), ("quem", "s"), ("texto", "s")],
 }
 ABAS = list(SCHEMA)
@@ -149,7 +151,7 @@ def para_tabelas(ctx: Contexto) -> dict[str, list[list[str]]]:
         add("Usuarios", u)
     for e in ctx.escalas:
         d = {c: getattr(e, c) for c, _ in SCHEMA["Escalas"] if c != "quartos"}
-        d["quartos"] = json.dumps([[q.inicio, q.fim] for q in e.quartos])
+        d["quartos"] = json.dumps([[q.inicio, q.fim, q.nome, q.pessoas, q.retem, q.proximo_dia] for q in e.quartos])
         add("Escalas", d)
         for p in e.membros:
             add("EscalaMembros", {"escala_id": e.id, "militar_id": p.militar_id, "inicio": p.inicio, "fim": p.fim,
@@ -246,7 +248,9 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
         u.nip = u.nip or u.login
     escalas = {}
     for d in _linhas_de(T, "Escalas"):
-        quartos = [Quarto(a, b) for a, b in json.loads(d.pop("quartos") or "[]")]
+        quartos = [Quarto(r[0], r[1], r[2] if len(r) > 2 else "", int(r[3]) if len(r) > 3 else 1, int(r[4]) if len(r) > 4 else 0,
+                          bool(r[5]) if len(r) > 5 else False) for r in json.loads(d.pop("quartos") or "[]")]
+        d["distribuicao"] = d.get("distribuicao") or "intercalado"
         d["sentido_fila"] = d.get("sentido_fila") or "moderno_antigo"          # planilha antiga: padrão atual
         e = Escala(**d, quartos=quartos)
         escalas[e.id] = e
@@ -281,7 +285,7 @@ def de_tabelas(T: dict[str, list[list[str]]]) -> Contexto:
     ctx.pedidos_acesso = [PedidoAcesso(**d) for d in _linhas_de(T, "PedidosAcesso")]
     ctx.convites_vinculo = [ConviteVinculo(**d) for d in _linhas_de(T, "ConvitesVinculo")]
     ctx.detalhes_docs = [DetalheDoc(**d) for d in _linhas_de(T, "DetalhesParaAssinar")]
-    ctx.conjuntos = [DetalheConjunto(**{**d, "escala_ids": [x for x in d["escala_ids"].split(",") if x]})
+    ctx.conjuntos = [DetalheConjunto(**{**d, "escala_ids": [x for x in d["escala_ids"].split(",") if x], "orientacao": d.get("orientacao") or "auto"})
                      for d in _linhas_de(T, "DetalhesConjuntos")]
     ctx.assinaturas_detalhe = [AssinaturaDetalhe(**{**d, "papel": d["papel"] or "detalhista"}) for d in _linhas_de(T, "AssinaturasDetalhe")]
     papeletas = {}

@@ -27,7 +27,9 @@ abertas_ = dp.abertas(ctx, res, esc.id)
 
 chips = [ui.chip("Prioridade", esc.prioridade), ui.chip("Escalados/dia", esc.militares_dia),
          ui.chip("Retém", esc.retem_qtd), ui.chip("Descanso", f"{esc.folgas_minimas}x1")]
-if esc.quartos:
+if esc.turnos_livres():
+    chips.append(ui.chip("Turnos", f"{len(esc.quartos)}"))
+elif esc.quartos:
     chips.append(ui.chip("Quartos", f"{len(esc.quartos)}"))
 try:                                                  # o PDF nunca derruba a página
     _pdf_previa = pdf_previa(ctx, res, list(dias), esc.id)

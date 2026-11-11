@@ -93,8 +93,15 @@ def _impedido(ctx: Contexto, mid: str, d: date) -> bool:
     return any(i.militar_id == mid and i.cobre(d) for i in ctx.impedimentos)
 
 
+def _tem_turno_no_dia_seguinte(esc: Escala) -> bool:
+    return esc.turnos_livres() and any(q.proximo_dia for q in esc.quartos)
+
+
 def _folgas(esc: Escala) -> int:
-    return 0 if esc.modo == "eventos" else max(0, esc.folgas_minimas)
+    base = 0 if esc.modo == "eventos" else max(0, esc.folgas_minimas)
+    # o turno do dia seguinte já ocupa o militar no dia depois do serviço: nunca menos de 1 folga, para não escalar o mesmo
+    # militar de novo no dia em que ele ainda está terminando o serviço anterior
+    return max(base, 1) if (base == 0 and esc.modo != "eventos" and _tem_turno_no_dia_seguinte(esc)) else base
 
 
 def _eventos(ctx: Contexto, esc: Escala, d: date):
@@ -109,6 +116,8 @@ def funciona(ctx: Contexto, esc: Escala, d: date) -> bool:
         return manual.guarnece
     if esc.participa_roxa and roxa_do_dia(d, ctx, esc):
         return True
+    if esc.avancada and esc.adv_dias_semana and esc.dias_semana_lista():       # personalização: dias da semana escolhidos
+        return d.weekday() in esc.dias_semana_lista()
     return esc.funciona_em == "todos" or dia_util(d, ctx, esc)
 
 
@@ -131,7 +140,8 @@ def _sequencia(ctx: Contexto, esc: Escala, d: date, ultimo: str | None) -> list[
                     key=lambda m: rodada[m])
     ref = rodada.get(ultimo, -1) if ultimo else -1
     ordem = [m for m in ativos if rodada[m] > ref] + [m for m in ativos if rodada[m] <= ref]
-    return [m for m in ordem if not _impedido(ctx, m, d)]
+    seguinte = _tem_turno_no_dia_seguinte(esc)
+    return [m for m in ordem if not _impedido(ctx, m, d) and not (seguinte and _impedido(ctx, m, d + timedelta(days=1)))]
 
 
 def filas_da_escala(esc: Escala) -> list[str]:
@@ -145,13 +155,77 @@ def proximo_da_fila(ctx: Contexto, esc: Escala, fila: str, d: date) -> str | Non
     return seq[0] if seq else None
 
 
-def _distribuir_quartos(quartos: list[Quarto], efetivos: list[str]) -> dict[str, list[str]]:
-    """Quarto i fica com o efetivo i % n (intercala os militares)."""
+def _quantos(esc: Escala, d: date, evs=()) -> int:
+    """Quantos efetivos o dia pede: eventos, soma das pessoas por turno, quantidade do dia da semana ou o padrão."""
+    if esc.modo == "eventos":
+        return sum((e.vagas if e.vagas is not None else esc.militares_dia) for e in evs)
+    if esc.turnos_livres() and esc.distribuicao == "um_por_turno":
+        return sum(max(1, q.pessoas) for q in esc.quartos)
+    if esc.avancada and esc.adv_qtd_semana:
+        return max(0, esc.qtd_semana_lista()[d.weekday()])
+    return esc.militares_dia
+
+
+def _quantos_retem(esc: Escala) -> int:
+    if esc.turnos_livres() and esc.distribuicao == "um_por_turno":
+        return sum(max(0, q.retem) for q in esc.quartos)        # no modo "um por turno" o retém é definido turno a turno
+    return esc.retem_qtd
+
+
+def _grupos(esc: Escala, n_efetivos: int) -> list[list[Quarto]]:
+    """Blocos de turnos que cada efetivo assume: intercalado (padrão), um por turno ou cada um com todos."""
+    qs = esc.quartos
+    modo = esc.distribuicao if esc.turnos_livres() else "intercalado"
+    if modo == "um_por_turno":
+        return [[q] for q in qs for _ in range(max(1, q.pessoas))]
+    if modo == "todos":
+        return [list(qs)]
+    n = max(1, n_efetivos)
+    return [[q for i, q in enumerate(qs) if i % n == g] for g in range(n)]
+
+
+def _distribuir_turnos(esc: Escala, efetivos: list[str], ultimo_grupo: dict[tuple[str, str], int]) -> dict[str, list[str]]:
+    """Horários de cada efetivo. Sem rodízio, o k-ésimo da fila assume o k-ésimo bloco (como sempre foi); com rodízio ligado,
+    cada militar passa para o bloco seguinte ao que fez da última vez (e os conflitos se resolvem na ordem da fila)."""
     h: dict[str, list[str]] = {m: [] for m in efetivos}
-    if efetivos:
-        for i, q in enumerate(quartos):
-            h[efetivos[i % len(efetivos)]].append(str(q))
+    if not efetivos or not esc.quartos:
+        return h
+    modo = esc.distribuicao if esc.turnos_livres() else "intercalado"
+    if modo == "todos":
+        return {m: [str(q) for q in esc.quartos] for m in efetivos}
+    grupos = _grupos(esc, len(efetivos))
+    livres = list(range(len(grupos)))
+    rodizio = esc.avancada and esc.rodizio_turnos
+    for m in efetivos:
+        if not livres:
+            break
+        escolha = livres[0]
+        if rodizio and (esc.id, m) in ultimo_grupo:
+            pref = (ultimo_grupo[(esc.id, m)] + 1) % len(grupos)
+            escolha = next(((pref + j) % len(grupos) for j in range(len(grupos)) if (pref + j) % len(grupos) in livres), livres[0])
+        livres.remove(escolha)
+        h[m] = [str(q) for q in grupos[escolha]]
+        ultimo_grupo[(esc.id, m)] = escolha
     return h
+
+
+def _turnos_do_retem(esc: Escala, n: int) -> list[list[str]]:
+    """No modo "um militar por turno", cada retém cobre um turno (na ordem dos turnos); nos demais, sem horário."""
+    if esc.turnos_livres() and esc.distribuicao == "um_por_turno":
+        return [[str(q)] for q in esc.quartos for _ in range(max(0, q.retem))][:n]
+    return [[] for _ in range(n)]
+
+
+def exemplo_do_dia(esc: Escala, nomes: list[str] | None = None) -> dict:
+    """Um dia de exemplo (com militares fictícios) para o formulário da escala mostrar o efeito da configuração."""
+    n = _quantos(esc, date(2026, 1, 5)) or esc.militares_dia          # uma segunda-feira qualquer
+    nomes = nomes or [f"Militar {i + 1}" for i in range(n)]
+    efet = nomes[:n]
+    h = _distribuir_turnos(esc, efet, {})
+    nr = _quantos_retem(esc)
+    ret = [f"Retém {i + 1}" for i in range(nr)]
+    th = _turnos_do_retem(esc, nr)
+    return {"efetivos": [(m, h[m]) for m in efet], "retens": list(zip(ret, th))}
 
 
 def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
@@ -166,6 +240,45 @@ def validar_escala(ctx: Contexto, esc: Escala) -> list[str]:
         erros.append(f"{esc.nome}: auxiliar repetido.")
     if esc.categoria not in CATEGORIAS:
         erros.append(f"{esc.nome}: categoria inválida.")
+    if esc.avancada:
+        erros += _validar_avancada(esc)
+    return erros
+
+
+def _hora_ok(t: str) -> bool:
+    import re
+    return bool(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t or ""))
+
+
+def _validar_avancada(esc: Escala) -> list[str]:
+    erros = []
+    if esc.distribuicao not in ("intercalado", "um_por_turno", "todos"):
+        erros.append(f"{esc.nome}: forma de distribuir os turnos inválida.")
+    if esc.adv_dias_semana and not esc.dias_semana_lista():
+        erros.append(f"{esc.nome}: escolha ao menos um dia da semana em que a escala funciona.")
+    if esc.adv_dias_semana and any(x not in range(7) for x in esc.dias_semana_lista()):
+        erros.append(f"{esc.nome}: dia da semana inválido.")
+    if esc.adv_qtd_semana:
+        vals = [x for x in esc.qtd_semana.split(",") if x.strip()]
+        if len(vals) != 7 or not all(x.strip().isdigit() for x in vals):
+            erros.append(f"{esc.nome}: informe a quantidade de militares para os sete dias da semana.")
+    if esc.adv_turnos:
+        if not esc.quartos:
+            erros.append(f"{esc.nome}: cadastre ao menos um turno.")
+        for i, q in enumerate(esc.quartos, 1):
+            if not (_hora_ok(q.inicio) and _hora_ok(q.fim)):
+                erros.append(f"{esc.nome}: turno {i} com horário inválido (use HH:MM).")
+            elif q.inicio == q.fim:
+                erros.append(f"{esc.nome}: turno {i} começa e termina na mesma hora.")
+            if q.pessoas < 1:
+                erros.append(f"{esc.nome}: turno {i} precisa de ao menos 1 pessoa.")
+        if not erros:
+            ivs = sorted((q.intervalo(), i) for i, q in enumerate(esc.quartos, 1))
+            for ((i1, f1), a), ((i2, f2), b) in zip(ivs, ivs[1:]):
+                if i2 < f1:
+                    erros.append(f"{esc.nome}: os turnos {a} e {b} se sobrepõem.")
+            if ivs and ivs[-1][0][1] - ivs[0][0][0] > 2880:
+                erros.append(f"{esc.nome}: os turnos ocupam mais de dois dias seguidos.")
     return erros
 
 
@@ -173,13 +286,14 @@ def avisos_escala(ctx: Contexto, esc: Escala) -> list[str]:
     """Avisos que NÃO impedem criar ou editar: a escala pode nascer vazia e receber os militares depois (cadastro,
     importação de planilha ou vínculo). Enquanto faltar gente, ela apenas não funciona direito."""
     n = len(ctx.escalaveis(esc))             # detalhista fora da escala não conta
-    precisa = esc.militares_dia * (_folgas(esc) + 1)
+    nmax = max([_quantos(esc, date(2026, 1, 5) + timedelta(days=i)) for i in range(7)] + [0]) if esc.modo != "eventos" else esc.militares_dia
+    precisa = nmax * (_folgas(esc) + 1)
     if esc.modo == "eventos" or n >= precisa:
         return []
     if n == 0:
         return [f"{esc.nome} ainda não tem militares: cadastre-os em Militares ou importe uma planilha. "
                 f"Ela só gera serviços quando tiver pelo menos {precisa} (por dia e descanso configurados)."]
-    return [f"{esc.nome} tem {n} militar(es) para {esc.militares_dia} por dia e {_folgas(esc)} folga(s) entre serviços: "
+    return [f"{esc.nome} tem {n} militar(es) para {nmax} por dia e {_folgas(esc)} folga(s) entre serviços: "
             f"precisa de pelo menos {precisa} para respeitar o descanso."]
 
 
@@ -227,6 +341,7 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
     ultimo: dict[tuple[str, str], str | None] = {
         (e.id, f): m for e in ctx.escalas for f, m in e.ultimo_servico.items()}
     ultimo_dia: dict[tuple[str, str], date] = {}
+    ultimo_grupo: dict[tuple[str, str], int] = {}          # rodízio de turnos: último bloco de turnos de cada militar
     pendentes: dict[tuple[str, str], list[str]] = {}
     d = _inicio(ctx)
     while d <= fim:
@@ -242,9 +357,11 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
             faltas = {o.militar_id: o for o in ctx.ocorrencias
                       if o.data == d and o.escala_id == esc.id}
             seq_full = _sequencia(ctx, esc, d, ultimo.get(chave))
-            n = (sum((e.vagas if e.vagas is not None else esc.militares_dia) for e in evs)
-                 if esc.modo == "eventos" else esc.militares_dia)
+            n = _quantos(esc, d, evs)
             folgas = _folgas(esc)
+            if n == 0 and esc.modo != "eventos":                       # quantidade zero neste dia da semana: não guarnece
+                res.dias[(d, esc.id)] = DiaEscala(esc.id, d, False)
+                continue
 
             def descansando(m: str) -> bool:
                 u = ultimo_dia.get((esc.id, m))
@@ -272,15 +389,16 @@ def _gerar_base(ctx: Contexto, fim: date) -> Resultado:
                 else:
                     efet.append((m, pos))
                 pos += 1
-            horarios = _distribuir_quartos(esc.quartos, [m for m, _ in efet])
+            horarios = _distribuir_turnos(esc, [m for m, _ in efet], ultimo_grupo)
             for m, p in efet:
                 obs = "Avanço de retém (escalado anterior não deu o serviço)." if p >= n else ""
                 dia.alocacoes.append(Alocacao(
                     m, esc.id, d, "efetivo", sigla_de(esc, "efetivo"), horarios[m], obs))
             usados = {m for m, _ in efet}
-            retens = [m for m in cands[pos:] if m not in faltas and m not in usados][:esc.retem_qtd]
-            for m in retens:
-                dia.alocacoes.append(Alocacao(m, esc.id, d, "retem", sigla_de(esc, "retem")))
+            retens = [m for m in cands[pos:] if m not in faltas and m not in usados][:_quantos_retem(esc)]
+            h_ret = _turnos_do_retem(esc, len(retens))
+            for m, hr in zip(retens, h_ret):
+                dia.alocacoes.append(Alocacao(m, esc.id, d, "retem", sigla_de(esc, "retem"), hr))
             if len(efet) < n:
                 res.avisos.append(
                     f"{d:%d/%m}: {esc.nome} com {len(efet)} de {n} escalados "

@@ -97,7 +97,7 @@ def _secao(ctx: Contexto, res: Resultado, dias: list[date], esc) -> tuple[list[d
                "descricao": ""}
         if dia and dia.funciona:
             for a in dia.efetivos:
-                h = f" ({horarios_curtos(a.horarios)})" if a.horarios else ""
+                h = f" ({horarios_curtos(a.horarios, esc.turnos_livres())})" if a.horarios else ""
                 lin["efetivos"].append(f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]{h}")
                 if a.obs and a.origem != "normal":
                     obs.append(f"{d:%d/%m}: {a.obs}")
@@ -105,7 +105,8 @@ def _secao(ctx: Contexto, res: Resultado, dias: list[date], esc) -> tuple[list[d
                 if a.origem == "falta":
                     lin["efetivos"].append(f"~{rotulo_militar(ctx.militar(a.militar_id))} [Disp]")      # "~" = em itálico
                     obs.append(f"{d:%d/%m}: {ctx.militar(a.militar_id).nome} – {a.obs}")
-            lin["retens"] = [f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]" for a in dia.retens]
+            lin["retens"] = [f"{rotulo_militar(ctx.militar(a.militar_id))} [{a.sigla}]"
+                             + (f" ({horarios_curtos(a.horarios, True)})" if a.horarios else "") for a in dia.retens]
             obs += [f"{d:%d/%m}: {a.obs}" for a in dia.retens if a.obs]
             lin["descricao"] = dia.descricao or ""
         linhas.append(lin)
@@ -147,7 +148,9 @@ def montar_snapshot_conjunto(ctx: Contexto, res: Resultado, dias: list[date], cj
         obs += [f"{esc.nome} – {x}" for x in o]
     nomes = nomes_assinantes if nomes_assinantes is not None else (cj.ass_detalhista, cj.ass_auxiliar, cj.ass_encarregado,
                                                                   cj.ass_vice_diretor)
+    paisagem = cj.orientacao == "paisagem" or (cj.orientacao != "retrato" and len(dias) > 1)       # "auto": paisagem se há vários dias
     return {"versao": 3, "conjunto_id": cj.id, "escala_id": "", "escala_nome": cj.nome, "om": cj.om, "titulo": cj.nome.upper(),
+            "orientacao": "paisagem" if paisagem else "retrato",
             "subtitulo": (f"Dia {dias[0]:%d/%m/%Y}" if len(dias) == 1 else f"Período: {dias[0]:%d/%m/%Y} a {dias[-1]:%d/%m/%Y}")
                          + f" · {len(secoes)} escala(s)",
             "periodo": [dias[0].isoformat(), dias[-1].isoformat()], "secoes": secoes,
@@ -213,8 +216,11 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
     from reportlab.platypus import HRFlowable
     from .textorico import para_pdf, vazio
 
+    paisagem = snap.get("orientacao") == "paisagem" and snap.get("secoes") is not None        # só o documento unificado
+    pagina = landscape(A4) if paisagem else A4
+    util = pagina[0] - 36 * mm                                                                 # largura útil
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=pagina, leftMargin=18 * mm, rightMargin=18 * mm,
                             topMargin=12 * mm, bottomMargin=16 * mm, title=f"{snap['titulo'].title()} – {snap['escala_nome']}",
                             author="SisEscala")
     st = getSampleStyleSheet()
@@ -275,9 +281,48 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
             tabela.append([Paragraph(f"<b>{xml_escape(sc['nome'])}</b>", cel),
                            Paragraph(_efet(ln) if ln["funciona"] else "<i>não guarnece</i>", cel),
                            Paragraph(_rets(ln) if ln["funciona"] else "-", cel)])
-        t_ = Table(tabela, colWidths=[46 * mm, 76 * mm, 52 * mm], repeatRows=1, hAlign="CENTER")
+        larg = [util * 0.265, util * 0.44, util * 0.295] if paisagem else [46 * mm, 76 * mm, 52 * mm]
+        t_ = Table(tabela, colWidths=larg, repeatRows=1, hAlign="CENTER")
         t_.setStyle(TableStyle(list(base_estilo) + [("BACKGROUND", (0, i), (-1, i), _cor(GELO)) for i in range(2, len(tabela), 2)]))
         el.append(t_)
+    elif paisagem:                                           # vários dias em paisagem: serviços nas linhas, dias nas colunas
+        celm = ParagraphStyle("celm", parent=cel, fontSize=7.4, leading=8.8)
+        retm = ParagraphStyle("retm", parent=celm, textColor=_cor(CINZA), fontSize=6.8, leading=8.2)
+        dias_ = [ln["data"] for ln in secoes[0]["linhas"]]
+        por_tabela = 7
+        for ini in range(0, len(dias_), por_tabela):
+            idx = range(ini, min(ini + por_tabela, len(dias_)))
+            cab_l = [Paragraph("Serviço", cab)]
+            for i in idx:
+                ln0 = secoes[0]["linhas"][i]
+                d = _date.fromisoformat(ln0["data"])
+                cab_l.append(Paragraph(f"{d:%d/%m/%Y}<br/>{ln0['dow']}", cab))
+            tabela = [cab_l]
+            nao_util: list[tuple[int, int]] = []
+            for r, sc in enumerate(secoes, 1):
+                lin = [Paragraph(f"<b>{xml_escape(sc['nome'])}</b>", ParagraphStyle("nm", parent=celm, alignment=0))]
+                for c_, i in enumerate(idx, 1):
+                    ln = sc["linhas"][i]
+                    if not ln["funciona"]:
+                        lin.append(Paragraph("<i>—</i>", celm))
+                        continue
+                    cel_ = []
+                    if ln["efetivos"]:
+                        cel_.append(Paragraph(_efet(ln), celm))
+                    if ln["retens"]:
+                        cel_.append(Paragraph("Retém: " + _rets(ln), retm))
+                    lin.append(cel_ or Paragraph("-", celm))
+                    if not ln["util"]:
+                        nao_util.append((c_, r))
+                tabela.append(lin)
+            w1 = 34 * mm
+            larg = [w1] + [(util - w1) / len(idx)] * len(idx)
+            t_ = Table(tabela, colWidths=larg, repeatRows=1, hAlign="CENTER")
+            est = list(base_estilo) + [("BACKGROUND", (0, i), (0, i), _cor(GELO)) for i in range(1, len(tabela))]
+            est += [("BACKGROUND", (c_, r), (c_, r), _cor("#F6EBC8")) for c_, r in nao_util]
+            est += [("VALIGN", (0, 1), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]
+            t_.setStyle(TableStyle(est))
+            el += [t_, Spacer(1, 6)]
     else:                                                    # vários dias: uma tabela por escala, com o nome em destaque
         for sc in secoes or []:
             el += [Paragraph(xml_escape(sc["nome"].upper()), sec), tabela_dias(sc["linhas"], sc["eventos"]), Spacer(1, 4)]
@@ -324,8 +369,9 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
                                 ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("TEXTCOLOR", (0, 2), (-1, 2), _cor(NAVY)),
                                 ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"), ("FONTSIZE", (0, 2), (-1, 2), 7.5)]))
         return tb
-    fecho = [Spacer(1, 16), bloco(PAPEIS[:3], ASSINATURAS[:3], nomes[:3], 58 * mm), Spacer(1, 14),
-             bloco(PAPEIS[3:], ASSINATURAS[3:], nomes[3:], 58 * mm)]
+    col_ass = 80 * mm if paisagem else 58 * mm
+    fecho = [Spacer(1, 16), bloco(PAPEIS[:3], ASSINATURAS[:3], nomes[:3], col_ass), Spacer(1, 14),
+             bloco(PAPEIS[3:], ASSINATURAS[3:], nomes[3:], col_ass)]
     if ass_.get("hash"):
         txt = Paragraph(
             f"<font size=6.5 color='{CINZA}'><b>Código de verificação (SHA-256):</b><br/>{ass_['hash']}<br/>"
@@ -341,7 +387,7 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
 
     def rodape(canvas, doc_):
         canvas.saveState()
-        W, H = A4
+        W, H = pagina
         canvas.setFillColor(_cor(NAVY))
         canvas.rect(0, H - 4 * mm, W, 4 * mm, fill=1, stroke=0)
         canvas.setFillColor(_cor(OURO))

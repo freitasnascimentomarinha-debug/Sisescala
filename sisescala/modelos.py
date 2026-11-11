@@ -92,11 +92,31 @@ class Pertinencia:
 
 @dataclass
 class Quarto:
+    """Um turno (quarto) do dia de serviço. No modo padrão são blocos iguais a partir de 00h; na personalização avançada o
+    turno tem início/fim livres, quantas pessoas e quantos reténs, e pode acontecer no DIA SEGUINTE ao do serviço."""
     inicio: str  # "00:00"
     fim: str     # "04:00"
+    nome: str = ""
+    pessoas: int = 1             # quantos militares fazem este turno (modo "um militar por turno")
+    retem: int = 0               # quantos reténs cobrem este turno (modo "um militar por turno")
+    proximo_dia: bool = False    # o turno acontece no dia seguinte ao do serviço (o dia de serviço "continua")
 
     def __str__(self) -> str:
-        return f"{self.inicio}-{self.fim}"
+        return f"{self.inicio}-{self.fim}" + ("+1" if self.proximo_dia else "")
+
+    def intervalo(self) -> tuple[int, int]:
+        """(início, fim) em minutos desde 00:00 do dia do serviço; vira o dia quando o fim é menor que o início."""
+        i = int(self.inicio[:2]) * 60 + int(self.inicio[3:5])
+        f = int(self.fim[:2]) * 60 + int(self.fim[3:5])
+        if self.proximo_dia:
+            i, f = i + 1440, f + 1440
+        if f <= i:
+            f += 1440
+        return i, f
+
+    def duracao_min(self) -> int:
+        i, f = self.intervalo()
+        return f - i
 
 
 def hora_curta(hhmm: str) -> str:
@@ -104,9 +124,14 @@ def hora_curta(hhmm: str) -> str:
     return f"{int(h)}h" + (m if m != "00" else "")
 
 
-def horarios_curtos(horarios: list[str]) -> str:
-    """["04:00-08:00", "16:00-20:00"] -> "4h/16h" (hora de início de cada quarto)."""
-    return "/".join(hora_curta(h.split("-")[0]) for h in horarios)
+def horarios_curtos(horarios: list[str], intervalos: bool = False) -> str:
+    """["04:00-08:00", "16:00-20:00"] -> "4h/16h" (hora de início de cada quarto). Com `intervalos`: "4h–8h/16h–20h"
+    (turnos livres); um "+1" no fim indica que o turno é do dia seguinte."""
+    def um(h: str) -> str:
+        proximo = h.endswith("+1")
+        a, b = h.removesuffix("+1").split("-")
+        return (f"{hora_curta(a)}–{hora_curta(b)}" if intervalos else hora_curta(a)) + ("+1" if proximo else "")
+    return "/".join(um(h) for h in horarios)
 
 
 def quartos_padrao(horas: int = 4) -> list[Quarto]:
@@ -157,6 +182,25 @@ class Escala:
     ultimo_servico: dict[str, str] = field(default_factory=dict)
     # sentido da fila: "moderno_antigo" (padrão: começa pelo mais moderno e vai subindo até o mais antigo) ou "antigo_moderno"
     sentido_fila: str = "moderno_antigo"
+    # ---- personalização avançada: cada grupo tem a sua chave e só vale quando `avancada` e a chave estão ligadas
+    avancada: bool = False
+    adv_dias_semana: bool = False   # funciona só em certos dias da semana
+    dias_semana: str = ""           # "0,1,2,3,4" (0 = segunda ... 6 = domingo)
+    adv_qtd_semana: bool = False    # quantidade de militares por dia da semana
+    qtd_semana: str = ""            # sete números (seg..dom), ex.: "5,5,5,5,5,3,3"
+    adv_turnos: bool = False        # turnos livres (usa `quartos` como lista de turnos)
+    distribuicao: str = "intercalado"   # "intercalado" | "um_por_turno" | "todos"
+    rodizio_turnos: bool = False    # a cada serviço o militar passa para o turno seguinte
+
+    def turnos_livres(self) -> bool:
+        return self.avancada and self.adv_turnos and bool(self.quartos)
+
+    def dias_semana_lista(self) -> list[int]:
+        return [int(x) for x in self.dias_semana.split(",") if x.strip().isdigit()]
+
+    def qtd_semana_lista(self) -> list[int]:
+        v = [int(x) for x in self.qtd_semana.split(",") if x.strip().lstrip("-").isdigit()]
+        return v if len(v) == 7 else [self.militares_dia] * 7
 
     def membros_ativos(self, d: date) -> list[str]:
         return [p.militar_id for p in self.membros if p.ativo(d)]
@@ -406,6 +450,7 @@ class DetalheConjunto:
     encarregado_usuario_id: str = ""
     vice_usuario_id: str = ""
     brasao_b64: str = ""
+    orientacao: str = "auto"                    # "auto" (paisagem se há vários dias) | "retrato" | "paisagem"
 
 
 @dataclass

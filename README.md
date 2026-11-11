@@ -128,3 +128,16 @@ Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento);
 - **Detalhe unificado:** em *Documentos → Detalhe unificado* o detalhista (ou auxiliar) monta **um só documento com várias escalas** (ex.: fiscal, sentinela, contramestre), com título, OM, brasão, **instruções, recomendações e regras gerais** do documento e as quatro autoridades (contas designadas para auxiliar, encarregado e vice-diretor). Num dia só, o PDF traz uma linha por escala; em vários dias, uma tabela por escala. O envio, a assinatura com PIN, o PDF parcial/assinado, o QR code e a verificação funcionam como no detalhe de uma escala. Só se juntam escalas em que o responsável decide (detalhista ou auxiliar).
 
 - **Assinar documentos — filtros, rejeição e cancelamento:** a página filtra por *Aguardando minha assinatura* (padrão), *Assinados por mim*, *Com as 4 assinaturas*, *Cancelados / rejeitados* e *Todos*, além de escala/documento e busca. Qualquer autoridade (menos quem enviou) pode **rejeitar** um documento com **justificativa obrigatória**: o envio é encerrado e o detalhista recebe a notificação com o motivo (que também aparece na página dele). Quando o detalhista **cancela** o envio, o documento sai de “aguardando” e as assinaturas daquele envio não passam para um novo envio do mesmo conteúdo; a verificação pelo QR avisa que o envio foi cancelado/rejeitado.
+
+## Personalização avançada da escala
+
+Em *Gerenciar escalas → Nova escala / Editar*, a caixa **Personalização avançada da escala** libera um bloco de opções **independentes** (cada uma tem a sua chave; desligada, vale o comportamento padrão):
+
+- **Dias da semana em que funciona** (marca Seg…Dom, em vez de “todos” ou “só dias úteis”).
+- **Turnos com horários livres:** tabela com nome, início, fim, **dia seguinte**, **pessoas** e **retém** por turno (ex.: 06–08, 12–16, 16–18; o turno que “continua” no dia seguinte leva “+1”). O sistema valida sobreposição e horário, mostra a duração de cada turno e um **exemplo de um dia**.
+  - **Distribuição:** *intercalado* (padrão: cada militar assume turnos alternados), *um militar por turno* (a quantidade vem de “Pessoas” e o retém é por turno) ou *os mesmos fazem todos os turnos*.
+  - **Rodízio de turnos:** a cada serviço o militar passa para o turno seguinte ao que fez da última vez.
+- **Quantidade de militares por dia da semana** (ex.: 5 de segunda a sexta e 3 no fim de semana; zero = não guarnece).
+- **Descanso/folga:** continua em *Folgas mínimas* (0 = sem folga). Com turno no dia seguinte, o descanso nunca é menor que 1 folga.
+
+A Prévia, o detalhe, o PDF da prévia e a página *Regras da escala* mostram os horários de cada militar. No **Detalhe unificado** há a opção **Orientação do PDF**: em **paisagem** (automática quando o período tem mais de um dia) os serviços ficam nas linhas e os dias nas colunas.
