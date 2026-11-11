@@ -326,3 +326,15 @@ def test_resumo_da_previa_conta_descanso_pessoas_e_impedidos():
     r = resumo_escala(c, c.escala("A"), dias, hoje=date(2027, 3, 2))
     assert (r["militares"], r["impedidos_hoje"], r["impedidos_periodo"], r["disponiveis_hoje"]) == (5, 1, 2, 4)
     assert (r["ritmo_hoje"], r["ritmo_pior"], r["pior_dia"], r["proximo_retorno"]) == (4.0, 4.0, date(2027, 3, 1), date(2027, 3, 4))
+
+
+def test_pdf_da_previa_gera_paginas_com_escala_nome_e_periodo():
+    import io
+    from pypdf import PdfReader
+    from sisescala.pdf_previa import pdf_previa
+    c = Contexto([Militar(f"m{i}", f"Fulano{i}", "CB", i) for i in range(1, 6)],
+                 [Escala("A", "Portaria", membros=[Pertinencia(f"m{i}") for i in range(1, 6)])], date(2027, 3, 1))
+    dias = [date(2027, 3, 1) + timedelta(days=i) for i in range(30)]
+    pdf = pdf_previa(c, gerar(c, dias[-1]), dias, "A")
+    txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
+    assert pdf.startswith(b"%PDF") and "Portaria" in txt and "Fulano1" in txt and "01/03/2027" in txt and "30/03/2027" in txt
