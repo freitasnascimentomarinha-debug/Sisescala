@@ -217,6 +217,10 @@ with st.sidebar:
 
 # escala ativa e período vêm dos controles do topo das páginas (sessao.barra_contexto); os valores
 # sobrevivem à navegação reatribuindo-os a cada execução
+if st.session_state.get("_hoje") != date.today():      # virou o dia: o início que era "hoje" acompanha
+    if st.session_state.get("inicio") == st.session_state.get("_hoje"):
+        st.session_state["inicio"] = date.today()
+    st.session_state["_hoje"] = date.today()
 for _k in ("eid", "inicio", "per"):
     if _k in st.session_state:
         st.session_state[_k] = st.session_state[_k]

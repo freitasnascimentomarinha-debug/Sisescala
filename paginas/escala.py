@@ -1,5 +1,5 @@
 """Escala: prévia clicável, pedido de troca (papeleta) e disponibilidade de troca."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 
@@ -13,6 +13,7 @@ from sisescala.pdf import pdf_papeleta
 from sisescala.previa import html_previa, resumo_escala
 from sisescala.sessao import barra_contexto, exigir_escala, fmt_dia, pagina
 
+DIAS_PASSADOS = 14        # quantos dias para trás a tabela deixa rolar
 P = pagina()
 ctx, user, uid, res, dias = P.ctx, P.user, P.uid, P.res, P.dias
 esc = exigir_escala(P)
@@ -55,7 +56,8 @@ with st.container(border=True):
     if linhas:
         st.caption("  \n".join(linhas))
 with st.container(border=True):
-    clique = previa_interativa(html_previa(ctx, res, dias, esc.id, abertas_, com_card=False),
+    passados = [dias[0] - timedelta(days=k) for k in range(DIAS_PASSADOS, 0, -1) if dias[0] - timedelta(days=k) >= ctx.base_de(esc)]
+    clique = previa_interativa(html_previa(ctx, res, passados + list(dias), esc.id, abertas_, com_card=False, ancora=dias[0]),
                                st.session_state.get("sel"), key="previa")
     if clique and clique.get("ts") != st.session_state.get("_ult_ts"):
         st.session_state["_ult_ts"] = clique["ts"]
