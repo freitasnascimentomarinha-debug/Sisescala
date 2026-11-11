@@ -37,6 +37,15 @@ for av in res.avisos:
         st.error(av)
 
 rs = resumo_escala(ctx, esc, dias)
+try:                                                  # o PDF nunca derruba a página
+    _pdf_previa = pdf_previa(ctx, res, list(dias), esc.id)
+except Exception as ex:                               # noqa: BLE001
+    _pdf_previa, _erro_pdf = None, str(ex)
+if _pdf_previa:
+    st.download_button("Baixar PDF da prévia", _pdf_previa, f"previa_{esc.id}_{dias[0]:%Y%m%d}.pdf", "application/pdf",
+                       icon=":material/picture_as_pdf:", type="primary", key="dl_previa")
+else:
+    st.warning(f"Não foi possível gerar o PDF da prévia: {_erro_pdf}")
 with st.container(border=True):
     def _n(x):
         return f"{x:g}"
@@ -56,8 +65,6 @@ with st.container(border=True):
                       " · ".join(f"{k} {v}" for k, v in rs["por_tipo"].items()))
     if linhas:
         st.caption("  \n".join(linhas))
-    st.download_button("Baixar PDF da prévia", pdf_previa(ctx, res, list(dias), esc.id), f"previa_{esc.id}_{dias[0]:%Y%m%d}.pdf",
-                       "application/pdf", icon=":material/picture_as_pdf:", key="dl_previa")
 with st.container(border=True):
     passados = [dias[0] - timedelta(days=k) for k in range(DIAS_PASSADOS, 0, -1) if dias[0] - timedelta(days=k) >= ctx.base_de(esc)]
     clique = previa_interativa(html_previa(ctx, res, passados + list(dias), esc.id, abertas_, com_card=False, ancora=dias[0]),
