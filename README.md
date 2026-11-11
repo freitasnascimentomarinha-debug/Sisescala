@@ -109,3 +109,10 @@ A prévia é um componente Streamlit próprio (`componentes/previa/index.html`, 
 
 ## Pendente
 Backend PostgreSQL (a camada `Backend`/`Repositorio` já isola o armazenamento); envio de aviso por e-mail; assinatura qualificada (ICP-Brasil/gov.br) integrada.
+
+## Assinatura do detalhista e verificação do documento
+
+- No **Detalhe de serviço**, o detalhista confirma o PIN (“Assinar com PIN”) e baixa o **PDF assinado**: carimbo com nome, NIP e data/hora, **código SHA-256** do conteúdo assinado e **QR code**. O PDF sem assinatura continua disponível.
+- A assinatura fica registrada na aba `AssinaturasDetalhe` (com o conteúdo assinado). A página **Verificar documento** (só para usuários logados) confere o código — inteiro, o começo dele (12+ caracteres) ou lido do QR code — e mostra quem assinou, quando e o que foi assinado.
+- O QR code abre `…/verificar?codigo=…`. O endereço-base vem da própria página; para fixá-lo, defina a variável `SISESCALA_URL` (ex.: `https://meuapp.streamlit.app`).
+- **Brasão de Armas:** coloque o arquivo oficial em `assets/brasao.png`; ele sai centralizado acima de “MARINHA DO BRASIL” em todos os documentos em PDF. Sem o arquivo, o cabeçalho sai sem o brasão.

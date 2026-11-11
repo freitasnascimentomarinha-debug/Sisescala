@@ -345,6 +345,22 @@ class PedidoAcesso:
 
 
 @dataclass
+class AssinaturaDetalhe:
+    """Assinatura eletrônica (PIN) do detalhista num detalhe de serviço. `codigo` é o SHA-256 do `conteudo` (o JSON do que foi
+    assinado: escala, período, textos e quem estava escalado), de modo que o registro se confere sozinho."""
+    codigo: str
+    escala_id: str
+    inicio: date
+    fim: date
+    usuario_id: str
+    nome: str
+    nip: str
+    om: str
+    em: datetime
+    conteudo: str
+
+
+@dataclass
 class ConviteVinculo:
     """O detalhista (ou auxiliar) convida um usuário a ser reconhecido como um militar da escala. Só vale quando o
     próprio usuário aceita, confirmando o NIP e criando o PIN dele."""
@@ -424,6 +440,7 @@ class Contexto:
     notificacoes: list[Notificacao] = field(default_factory=list)
     pedidos_acesso: list[PedidoAcesso] = field(default_factory=list)
     convites_vinculo: list[ConviteVinculo] = field(default_factory=list)
+    assinaturas_detalhe: list[AssinaturaDetalhe] = field(default_factory=list)
     cadastro_aberto: bool = True          # permite que militares criem a própria conta
     admin_cfg_sig: str = ""               # assinatura (NIP+senha) dos segredos já aplicada ao administrador
     janela_devolucao_dias: int = 30       # configurável
