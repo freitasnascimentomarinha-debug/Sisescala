@@ -72,7 +72,7 @@ SCHEMA: dict[str, list[tuple[str, str]]] = {
                 ("militares_dia", "i"), ("retem_qtd", "i"), ("folgas_minimas", "i"), ("antecedencia_horas", "i"),
                 ("respeita_servicos", "b"), ("participa_roxa", "b"), ("quartos", "s"), ("sentido_fila", "s"),
                 ("det_instrucoes", "s"), ("det_recomendacoes", "s"), ("det_regras", "s"),
-                ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
+                ("ass_detalhista", "s"), ("ass_auxiliar", "s"), ("brasao_b64", "s"), ("encarregado_usuario_id", "s"), ("vice_usuario_id", "s"), ("ass_encarregado", "s"), ("ass_vice_diretor", "s")],
     "EscalaMembros": [("escala_id", "s"), ("militar_id", "s"), ("inicio", "d"), ("fim", "d"), ("antiguidade", "i")],
     "EscalaAuxiliares": [("escala_id", "s"), ("militar_id", "s")],
     "EscalaUltimo": [("escala_id", "s"), ("fila", "s"), ("militar_id", "s")],

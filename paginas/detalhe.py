@@ -66,30 +66,36 @@ with esq:
         om = st.text_input("OM que gerencia a escala (cabeçalho do documento)", key=K + "om")
         if not esc.om:
             st.caption("Dica: cadastre a OM em Gerenciar escalas para ela sair sempre no cabeçalho.")
-        if user.admin:
-            _bytes = bs.bytes_de(ctx.brasao_b64)
-            cb1, cb2 = st.columns([1, 3], vertical_alignment="center")
-            if _bytes:
-                cb1.image(_bytes, width=70)
-            else:
-                cb1.caption("Sem brasão")
-            arq = cb2.file_uploader("Brasão de Armas do cabeçalho (PNG ou JPG)", type=["png", "jpg", "jpeg"], key="det_brasao",
-                                    help="Sai centralizado acima de MARINHA DO BRASIL em todos os documentos em PDF. Use o arquivo "
-                                         "oficial, de preferência PNG com fundo transparente.")
-            if arq is not None and st.session_state.get("_brasao_id") != arq.file_id:
-                st.session_state["_brasao_id"] = arq.file_id
-                try:
-                    ctx.brasao_b64 = bs.preparar(arq.getvalue())
-                    st.session_state["toast"] = "Brasão de Armas atualizado."
-                    st.rerun()
-                except ValueError as ex:
-                    st.error(str(ex))
-            if _bytes and cb2.button("Remover brasão", key="det_brasao_rm"):
-                ctx.brasao_b64 = ""
-                st.session_state["_brasao_id"] = None
-                st.rerun()
-        elif not ctx.brasao_b64:
-            st.caption("O Brasão de Armas do cabeçalho é cadastrado pelo administrador.")
+        _proprio = bs.bytes_de(esc.brasao_b64)
+        cb1, cb2 = st.columns([1, 3], vertical_alignment="top")
+        _padrao = (ui.RAIZ / "assets" / "brasao.png")
+        _prev = _proprio or (_padrao.read_bytes() if _padrao.exists() else None)
+        if _prev:
+            cb1.image(_prev, width=78)
+        cb2.markdown("**Brasão do documento:** " + ("o brasão da OM (enviado por você)" if _proprio else "Armas Nacionais (padrão)"))
+        if pode:
+            arq = cb2.file_uploader("Trocar pelo brasão da sua OM (PNG ou JPG)", type=["png", "jpg", "jpeg"], key=K + "brasao",
+                                    help="Sai centralizado acima de MARINHA DO BRASIL nos PDFs deste detalhe. Prefira PNG com fundo "
+                                         "transparente.")
+            outras = [e.id for e in ctx.escalas if e.id != esc.id and eh_detalhista(ctx, P.uid, e)]
+            tambem = cb2.multiselect("Usar também nestes detalhes meus", outras, format_func=lambda i: ctx.escala(i).nome,
+                                     key=K + "brasao_tb", placeholder="Só neste detalhe") if outras else []
+            bb1, bb2 = cb2.columns(2)
+            if bb1.button("Usar este brasão", key=K + "brasao_ok", disabled=arq is None, icon=":material/image:",
+                          use_container_width=True):
+                def _brasao():
+                    novo_b64 = bs.preparar(arq.getvalue())
+                    for eid in [esc.id, *tambem]:
+                        gestao.editar_escala(ctx, P.uid, eid, brasao_b64=novo_b64)
+                agir(_brasao, "Brasão atualizado.")
+            if _proprio and bb2.button("Voltar ao padrão", key=K + "brasao_rm", icon=":material/restart_alt:",
+                                       use_container_width=True):
+                def _padrao_():
+                    for eid in [esc.id, *tambem]:
+                        gestao.editar_escala(ctx, P.uid, eid, brasao_b64="")
+                agir(_padrao_, "Voltou ao brasão padrão (Armas Nacionais).")
+        else:
+            cb2.caption("Só o detalhista da escala troca o brasão.")
     with st.container(border=True):
         ui.secao("Textos do documento")
         st.caption("Clique para escrever com negrito, itálico, sublinhado e listas; o botão Salvar fica dentro da janela.")

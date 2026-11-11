@@ -1,5 +1,6 @@
 """Fluxo de assinatura do detalhe pelas quatro autoridades: designação, envio, aviso, assinatura por papel e PDF parcial."""
 import io
+from pathlib import Path
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -143,3 +144,30 @@ def test_assinatura_leva_o_nome_completo_da_conta_e_nao_o_rotulo_militar():
     assert a.nome == "Beltrano de Tal Souza"
     txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(renderizar_pdf(asn.conteudo(d), asn.carimbos(c, d), c))).pages)
     assert "BELTRANO DE TAL SOUZA" in txt and "(Brasília)" in txt and "1ºTEN" not in txt
+
+
+def test_brasao_e_por_escala_so_o_detalhista_troca_e_cai_no_padrao():
+    import io as _io
+    from PIL import Image
+    from sisescala import brasao as bs
+    from sisescala import pdf as pdfmod
+    c, dias, corpo, cod = mk()
+    gestao.criar_escala(c, "u2", Escala("e2", "Outra", membros=[Pertinencia(f"m{i}") for i in range(2, 9)]))
+    buf = _io.BytesIO()
+    Image.new("RGBA", (500, 600), (200, 30, 30, 255)).save(buf, "PNG")
+    b64 = bs.preparar(buf.getvalue())
+    with pytest.raises(PermissaoNegada):
+        gestao.editar_escala(c, "u3", "e1", brasao_b64=b64)                           # o auxiliar não troca
+    gestao.editar_escala(c, "u2", "e1", brasao_b64=b64)                               # o detalhista troca só a escala dele
+    assert c.escala("e1").brasao_b64 == b64 and c.escala("e2").brasao_b64 == ""
+    c2 = de_tabelas(para_tabelas(c))
+    assert c2.escala("e1").brasao_b64 == b64
+    r = gerar(c, dias[-1])
+    from sisescala.pdf import gerar_pdf
+    pdfmod.BRASAO, original = Path("/nao/existe.png"), pdfmod.BRASAO
+    try:
+        proprio, sem = gerar_pdf(c, r, dias, "e1", "OM"), gerar_pdf(c, r, dias, "e2", "OM")
+    finally:
+        pdfmod.BRASAO = original
+    assert len(proprio) > len(sem) + 500                                              # e1 leva o brasão próprio; e2 nenhum
+    assert len(gerar_pdf(c, r, dias, "e2", "OM")) > len(sem) + 500                    # e2 usa o padrão (Armas Nacionais)

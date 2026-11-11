@@ -35,26 +35,26 @@ def _cor(h: str):
     return colors.HexColor(h)
 
 
-def brasao_flowable(ctx: Contexto | None = None, altura_mm: float = 19):
-    """Brasão de Armas centralizado: o enviado pelo administrador (guardado no sistema) ou o arquivo assets/brasao.png;
-    sem nenhum dos dois, nada (o cabeçalho segue igual)."""
+def brasao_flowable(escala=None, altura_mm: float = 19):
+    """Brasão centralizado acima de MARINHA DO BRASIL: o próprio da escala (enviado pelo detalhista, o brasão da OM dele) ou,
+    na falta, as Armas Nacionais (assets/brasao.png). Sem nenhum dos dois, nada (o cabeçalho segue igual)."""
     from .brasao import bytes_de
     from reportlab.lib.utils import ImageReader
     from reportlab.platypus import Image
-    dados = bytes_de(getattr(ctx, "brasao_b64", "")) if ctx is not None else None
+    dados = bytes_de(getattr(escala, "brasao_b64", "")) if escala is not None else None
     if dados:
-        fonte = BytesIO(dados)
+        fonte = lambda: BytesIO(dados)                 # noqa: E731
     elif BRASAO.exists():
-        fonte = str(BRASAO)
+        fonte = lambda: str(BRASAO)                    # noqa: E731
     else:
         return None
-    w, h = ImageReader(fonte if isinstance(fonte, str) else BytesIO(dados)).getSize()
-    img = Image(fonte if isinstance(fonte, str) else BytesIO(dados), width=altura_mm * mm * w / h, height=altura_mm * mm)
+    w, h = ImageReader(fonte()).getSize()
+    img = Image(fonte(), width=altura_mm * mm * w / h, height=altura_mm * mm)
     img.hAlign = "CENTER"
     return img
 
 
-def cabecalho_documento(st, om: str, titulo: str = "", ctx: Contexto | None = None) -> list:
+def cabecalho_documento(st, om: str, titulo: str = "", escala=None) -> list:
     """Cabeçalho oficial, centralizado e em negrito: Brasão de Armas, MARINHA DO BRASIL, a OM, uma linha em branco e o título."""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import HRFlowable
@@ -65,7 +65,7 @@ def cabecalho_documento(st, om: str, titulo: str = "", ctx: Contexto | None = No
     tit = ParagraphStyle("tit", parent=st["Normal"], alignment=1, fontSize=13, leading=16, fontName="Helvetica-Bold",
                          textColor=_cor(NAVY))
     el = []
-    if (b := brasao_flowable(ctx)) is not None:
+    if (b := brasao_flowable(escala)) is not None:
         el += [b, Spacer(1, 3 * mm)]
     el.append(Paragraph("MARINHA DO BRASIL", marinha))
     if om.strip():
@@ -189,7 +189,7 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
                          spaceBefore=9, spaceAfter=2)
     corpo_p = ParagraphStyle("corpop", parent=st["BodyText"], fontSize=7.5, leading=9.6, textColor=_cor("#2B3440"))   # letras pequenas
     eventos = snap["eventos"]
-    el = cabecalho_documento(st, snap["om"], xml_escape(snap["titulo"]), ctx) + [Paragraph(xml_escape(snap["subtitulo"]), info),
+    el = cabecalho_documento(st, snap["om"], xml_escape(snap["titulo"]), ctx.escala(snap["escala_id"]) if ctx else None) + [Paragraph(xml_escape(snap["subtitulo"]), info),
                                                                                   Spacer(1, 8)]
     tabela = [[Paragraph(t, cab) for t in ("Data", "Escalados", "Retém") + (("Evento",) if eventos else ())]]
     nao_uteis: list[int] = []
@@ -234,13 +234,24 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
     ass_ = assinaturas or {}
     nomes = snap["nomes"]
 
+    assinados = [p_ for p_ in PAPEIS if ass_.get(p_)]
+    qr_ao_lado = len(assinados) == 1 and bool(ass_.get("hash"))          # uma só assinatura: o QR fica do lado do carimbo
+    url_qr = ass_.get("url") or f"SISESCALA-VERIFICAR:{ass_.get('hash', '')}"
+
     def carimbo(papel):
         a = ass_.get(papel)
         if not a:
             return "_" * 26
-        return Paragraph(f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'].upper())}</b>"
-                         f"<br/>{'NIP ' + xml_escape(a['nip']) + ' · ' if a.get('nip') else ''}{a['em']:%d/%m/%Y %H:%M:%S} (Brasília)",
-                         pequeno)
+        texto = Paragraph(f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'].upper())}</b>"
+                          f"<br/>{'NIP ' + xml_escape(a['nip']) + ' · ' if a.get('nip') else ''}{a['em']:%d/%m/%Y %H:%M:%S} (Brasília)",
+                          pequeno)
+        if not (qr_ao_lado and papel == assinados[0]):
+            return texto
+        t_ = Table([[_qr(url_qr, 14), texto]], colWidths=[15 * mm, 43 * mm])
+        t_.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        return t_
 
     def bloco(papeis, rotulos, nomes_, largura):
         tb = Table([[carimbo(p_) for p_ in papeis], [xml_escape(n) for n in nomes_], list(rotulos)],
@@ -255,11 +266,13 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
         txt = Paragraph(
             f"<font size=6.5 color='{CINZA}'><b>Código de verificação (SHA-256):</b><br/>{ass_['hash']}<br/>"
             f"Confira a autenticidade lendo o QR code ou na página “Verificar documento” do SisEscala (não precisa de login).</font>",
-            ParagraphStyle("hash", alignment=0, leading=8.5))
-        selo = Table([[_qr(ass_.get("url") or f"SISESCALA-VERIFICAR:{ass_['hash']}"), txt]], colWidths=[19 * mm, 110 * mm],
-                     hAlign="CENTER")
-        selo.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 1)]))
-        fecho += [Spacer(1, 10), selo]
+            ParagraphStyle("hash", alignment=0 if not qr_ao_lado else 1, leading=8.5))
+        if qr_ao_lado:                                       # o QR já está do lado do carimbo: só o código, centralizado
+            fecho += [Spacer(1, 10), txt]
+        else:
+            selo = Table([[_qr(url_qr), txt]], colWidths=[19 * mm, 110 * mm], hAlign="CENTER")
+            selo.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 1)]))
+            fecho += [Spacer(1, 10), selo]
     el.append(KeepTogether(fecho))
 
     def rodape(canvas, doc_):
@@ -294,7 +307,7 @@ def pdf_papeleta(ctx: Contexto, p, om: str = "", nomes_assinantes: tuple[str, st
     P = lambda t, s="BodyText": Paragraph(t, st[s])  # noqa: E731
     dado = rotulo_militar
     titulo = "PAPELETA DE DEVOLUÇÃO DE SERVIÇO" if devolucao else "PAPELETA DE TROCA DE SERVIÇO"
-    el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}", ctx)
+    el = cabecalho_documento(st, om or esc.om, f"{titulo} Nº {p.numero:04d}", esc)
     dados = [
         ["Escala", esc.nome + (f" ({esc.tipo})" if esc.tipo else "")],
         ["Pedido em", f"{p.criado_em:%d/%m/%Y} às {p.criado_em:%H:%M:%S}"],
