@@ -1,14 +1,28 @@
 ---
 name: assinatura-eletronica
 description: >-
-  Implementa assinatura eletrônica com PIN, fluxo de assinatura por várias autoridades, PDF assinado com carimbo, QR code e verificação pública de autenticidade em qualquer sistema (Streamlit/Python, Django, Flask, Node, Sheets/SQL). Use SEMPRE que o usuário quiser colocar assinatura eletrônica, assinar documentos dentro de um sistema, fluxo de aprovação ou assinatura por várias pessoas (detalhista, auxiliar, encarregado, vice-diretor, chefe, comandante), enviar documento para assinatura, rejeitar ou cancelar assinatura, carimbo de assinatura no PDF, código de verificação (hash SHA-256), QR code de autenticidade, página pública para conferir documento, reset de PIN, ou pedir para fazer como no SisEscala. Também use ao revisar um fluxo de assinatura existente, mesmo que o usuário não diga assinatura eletrônica, por exemplo quando disser que o chefe precisa assinar o relatório no sistema ou que quer validar se um documento é verdadeiro.
+  Antes de executar, estuda o sistema do usuário e apresenta um plano detalhado para aprovação; depois implementa assinatura eletrônica com PIN, fluxo de assinatura por várias autoridades, PDF com carimbo, QR code e verificação pública de autenticidade (Streamlit, Django, Flask, Node, Sheets/SQL). Use SEMPRE que o usuário quiser colocar assinatura eletrônica ou assinar documentos dentro de um sistema, fluxo de aprovação por várias pessoas (detalhista, encarregado, vice-diretor, chefe, comandante), enviar documento para assinatura, rejeitar ou cancelar assinatura, carimbo no PDF, código de verificação (SHA-256), QR code de autenticidade, página pública para conferir documento, reset de PIN, ou pedir para fazer como no SisEscala. Também ao revisar um fluxo existente, mesmo sem dizer assinatura eletrônica (ex.: o chefe precisa assinar o relatório no sistema).
 ---
 
 # Assinatura eletrônica em sistemas internos
 
+> **Antes de qualquer código: Fase 0.** Entenda o sistema do usuário, escolha a melhor solução (fácil e intuitiva), **apresente um plano detalhado e aguarde a aprovação explícita**. Só depois execute, por fases. Roteiro completo em `references/00-descoberta-e-plano.md`.
+
 Esta skill reúne o que foi construído e **aprendido com erros reais** no SisEscala (detalhe de serviço da Marinha) para colocar assinatura eletrônica em qualquer sistema: um **documento congelado**, **assinado com PIN por várias autoridades**, **PDF com carimbo + QR code** e **verificação pública** de autenticidade.
 
 Há uma implementação de referência funcionando e testada em `assets/referencia-sisescala/` (Python/Streamlit; 280+ testes). Use-a como modelo de lógica e de testes; adapte nomes, persistência e telas à stack do usuário. Os detalhes vivem em `references/` — leia o arquivo indicado quando chegar na etapa.
+
+## Fase 0 — Entender o sistema e propor o plano (obrigatória)
+
+Esta skill **não sai codando**. Ao ser acionada, faça nesta ordem:
+
+1. **Mapear o sistema** lendo o código (não pergunte o que o código responde): stack e entrada, usuários e permissões, camada de dados, como os documentos/PDF são gerados, navegação e tema, notificações, fuso/URL pública/variáveis, testes e fluxo de deploy. Termine com "o que já existe e posso reaproveitar" × "o que falta".
+2. **Desenhar para ser fácil e intuitivo** (12 princípios na referência 00): o pendente vai até a pessoa (contador no menu + aviso), conferir o conteúdo na mesma tela, um botão principal claro, status sempre visível, linguagem do usuário, recuperação de PIN sem fricção, verificação pública em segundos, mesmo visual do sistema, funcionando no celular.
+3. **Escolher a melhor solução** comparando alternativas (tabela da referência 00 §4), com recomendação e motivo.
+4. **Apresentar o plano detalhado** no modelo da referência 00 §5: o que entendi · objetivo e papéis · como funciona para cada usuário (caminho feliz, rejeição, cancelamento, esqueci o PIN, QR) · decisões e alternativas · mudanças técnicas e migração · segurança/LGPD/jurídico · riscos · testes e critérios de aceite · **fases** entregáveis · fora do escopo · perguntas em aberto.
+5. **Parar e pedir aprovação** ("Posso executar este plano? sim / ajustar X"). Use perguntas de múltipla escolha para as decisões, com a opção recomendada primeiro. **Não implemente nada antes do "sim".** Pedidos de ajuste → revise o plano e peça de novo.
+
+Se o usuário tiver pressa, o plano pode ser curto (uma tela com as decisões que mudam o resultado), mas o portão de aprovação continua. Depois do "sim": execute **por fases**, com testes antes das telas, confira no navegador ao fim de cada fase e declare o que não foi testado com dados reais.
 
 ## Primeiro: alinhe o nível jurídico (não pule)
 
@@ -61,7 +75,7 @@ Máquina de estados do envio: `aberto → {cancelado | rejeitado | substituido}`
 7. **Rejeição exige justificativa e avisa o responsável** (a notificação traz o motivo). Sem motivo, sem rejeição.
 8. **Horário é o do local, não o do servidor** (Brasília). Fixe o fuso do processo; carimbo e notificações usam o mesmo relógio. E mostre o fuso no carimbo ("(Brasília)").
 
-## Receita de implementação (ordem sugerida)
+## Receita de implementação (só depois do plano aprovado; ordem sugerida)
 
 1. **Modelo de dados** (`references/02-modelo-de-dados.md`): envio, assinatura, designação de papéis, notificação, campos de PIN no usuário. Planeje migração e o limite de célula se usar planilha.
 2. **Núcleo de domínio sem UI** (copie a lógica de `assets/referencia-sisescala/assinaturas.py` e `verificacao.py`): `enviar`, `assinar`, `rejeitar`, `cancelar`, `para_assinar`, `assinaturas_do(envio)`, `faltam`, `papeis_do_usuario`, `designar`. **Teste cada regra antes de fazer tela** (veja `assets/referencia-sisescala/tests/`).
@@ -91,6 +105,7 @@ Máquina de estados do envio: `aberto → {cancelado | rejeitado | substituido}`
 
 | Arquivo | Quando ler |
 |---|---|
+| `references/00-descoberta-e-plano.md` | **Sempre primeiro**: mapa do sistema, princípios de usabilidade, modelo do plano, portão de aprovação |
 | `references/01-fluxo-de-trabalho.md` | Papéis, estados, telas, notificações, filtros, cancelar × rejeitar × substituir |
 | `references/02-modelo-de-dados.md` | Tabelas/campos, migração de dados antigos, limite de célula, compactação |
 | `references/03-conteudo-hash-pdf.md` | Snapshot, JSON canônico, hash, carimbo, QR, paginação, texto rico |
