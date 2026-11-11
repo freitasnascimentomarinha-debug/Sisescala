@@ -313,3 +313,15 @@ def test_edicao_persiste_com_alterado_por_e_em():
     c2 = de_tabelas(para_tabelas(c))
     i = c2.impedimentos[0]
     assert (i.fim, i.criado_em, i.alterado_por, i.alterado_em) == (D + timedelta(days=9), AGORA, det.id, datetime(2027, 3, 1, 8, 0))
+
+
+def test_resumo_da_previa_conta_descanso_pessoas_e_impedidos():
+    from sisescala.previa import resumo_escala
+    from sisescala.modelos import Impedimento
+    c = Contexto([Militar(f"m{i}", f"M{i}", "CB", i) for i in range(1, 6)],
+                 [Escala("A", "A", folgas_minimas=2, membros=[Pertinencia(f"m{i}") for i in range(1, 6)])], date(2027, 3, 1))
+    dias = [date(2027, 3, 1) + timedelta(days=i) for i in range(7)]
+    c.impedimentos += [Impedimento("m1", "ferias", date(2027, 3, 1), date(2027, 3, 3)),
+                       Impedimento("m2", "desembarque", date(2027, 3, 5), None)]
+    r = resumo_escala(c, c.escala("A"), dias, hoje=date(2027, 3, 2))
+    assert (r["folgas"], r["militares"], r["impedidos_hoje"], r["impedidos_periodo"], r["disponiveis_hoje"]) == (2, 5, 1, 2, 4)
