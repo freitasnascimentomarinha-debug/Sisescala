@@ -230,7 +230,7 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
                Paragraph("<br/>".join(xml_escape(o) for o in snap["obs"]), corpo_p)]
 
     # ---- assinaturas: detalhista, auxiliar e encarregado em linha; o vice-diretor centralizado abaixo
-    pequeno = ParagraphStyle("peq", alignment=1, leading=8.2, fontSize=6.6)
+    pequeno = ParagraphStyle("peq", alignment=1, leading=6.6, fontSize=5.6)
     ass_ = assinaturas or {}
     nomes = snap["nomes"]
 
@@ -238,8 +238,9 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
         a = ass_.get(papel)
         if not a:
             return "_" * 26
-        return Paragraph(f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'])}</b>"
-                         f"{'<br/>NIP ' + xml_escape(a['nip']) if a.get('nip') else ''}<br/>{a['em']:%d/%m/%Y às %H:%M:%S}", pequeno)
+        return Paragraph(f"Assinado eletronicamente com PIN<br/><b>{xml_escape(a['nome'].upper())}</b>"
+                         f"<br/>{'NIP ' + xml_escape(a['nip']) + ' · ' if a.get('nip') else ''}{a['em']:%d/%m/%Y %H:%M:%S} (Brasília)",
+                         pequeno)
 
     def bloco(papeis, rotulos, nomes_, largura):
         tb = Table([[carimbo(p_) for p_ in papeis], [xml_escape(n) for n in nomes_], list(rotulos)],
@@ -253,7 +254,7 @@ def renderizar_pdf(snap: dict, assinaturas: dict | None = None, ctx: Contexto | 
     if ass_.get("hash"):
         txt = Paragraph(
             f"<font size=6.5 color='{CINZA}'><b>Código de verificação (SHA-256):</b><br/>{ass_['hash']}<br/>"
-            f"Confira a autenticidade lendo o QR code ou na página “Verificar documento” do SisEscala (usuário logado).</font>",
+            f"Confira a autenticidade lendo o QR code ou na página “Verificar documento” do SisEscala (não precisa de login).</font>",
             ParagraphStyle("hash", alignment=0, leading=8.5))
         selo = Table([[_qr(ass_.get("url") or f"SISESCALA-VERIFICAR:{ass_['hash']}"), txt]], colWidths=[19 * mm, 110 * mm],
                      hAlign="CENTER")

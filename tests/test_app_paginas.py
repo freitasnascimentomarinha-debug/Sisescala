@@ -335,3 +335,11 @@ def test_qr_code_abre_a_verificacao_publica_sem_login(app):
     nip = ctx.assinaturas_detalhe[0].nip
     htmls = " ".join(str(e.proto) for e in app.get("html"))
     assert "Assinado por" in htmls and f"NIP {nip}" not in htmls                      # sem login não se mostra o NIP
+
+
+def test_app_usa_o_horario_de_brasilia(app):
+    import time
+    from datetime import datetime, timezone
+    assert time.timezone == 3 * 3600                                    # UTC-3, mesmo com o servidor em UTC
+    dif = datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)
+    assert abs(dif.total_seconds() + 3 * 3600) < 5                      # datetime.now() é o horário de Brasília

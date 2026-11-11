@@ -4,10 +4,17 @@ Rodar: streamlit run app.py
 """
 import os
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
+
+# Fuso horário: o servidor costuma rodar em UTC, mas todo horário e "hoje" do sistema são os de Brasília (assinaturas,
+# papeletas, notificações, prévia). Vale para datetime.now() e date.today() em todo o processo; mude com SISESCALA_TZ.
+os.environ["TZ"] = os.environ.get("SISESCALA_TZ", "America/Sao_Paulo")
+if hasattr(time, "tzset"):
+    time.tzset()
 
 # O servidor do Streamlit continua rodando depois de um deploy novo e mantém em memória os módulos antigos de
 # `sisescala/` (o app.py é reexecutado, o pacote não). Isso gera ImportError ("cannot import name ...") e objetos de

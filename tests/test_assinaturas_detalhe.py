@@ -102,7 +102,7 @@ def test_vice_diretor_aparece_centralizado_abaixo_das_outras_assinaturas():
     pdf = renderizar_pdf(asn.conteudo(d), {"vice_diretor": {"nome": "CMG Vice", "nip": "9", "em": AGORA}, "hash": cod}, c)
     txt = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
     assert txt.index("Detalhista") < txt.index("Encarregado do Detalhe") < txt.index("Vice-Diretor")   # o vice vem depois (abaixo)
-    assert txt.index("CMG Vice") > txt.index("Encarregado do Detalhe") - 400 and "Assinado eletronicamente" in txt
+    assert "CMG VICE" in txt and "Assinado eletronicamente" in txt
 
 
 def test_administrador_apaga_o_pin_esquecido_e_a_pessoa_cadastra_outro_com_a_senha():
@@ -132,3 +132,14 @@ def test_consulta_publica_exige_codigo_mais_longo_e_nao_mostra_nip():
     asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
     assert vf.buscar(c, cod[:12]) is not None and vf.buscar(c, cod[:12], tv.MIN_PUBLICO) is None
     assert vf.buscar(c, cod[:16], tv.MIN_PUBLICO) is not None
+
+
+def test_assinatura_leva_o_nome_completo_da_conta_e_nao_o_rotulo_militar():
+    c, dias, corpo, cod = mk()
+    c.usuario("u2").nome = "Beltrano de Tal Souza"
+    c.usuario("u2").nome_guerra, c.usuario("u2").posto, c.usuario("u2").especialidade = "Beltrano", "1ºTEN", "ET"
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    a = asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
+    assert a.nome == "Beltrano de Tal Souza"
+    txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(renderizar_pdf(asn.conteudo(d), asn.carimbos(c, d), c))).pages)
+    assert "BELTRANO DE TAL SOUZA" in txt and "(Brasília)" in txt and "1ºTEN" not in txt

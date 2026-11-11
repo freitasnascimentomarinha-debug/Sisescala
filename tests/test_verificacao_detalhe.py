@@ -52,7 +52,7 @@ def test_pdf_assinado_tem_qr_codigo_e_cabecalho_na_ordem_pedida():
            "hash": cod, "url": vf.url_de_verificacao("https://x.br", cod)}
     pdf = gerar_pdf(c, r, dias, "A", "Centro de Operações", "", "", "", ("", "", "", ""), ass)
     txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
-    assert cod in txt and "Verificar documento" in txt and "CT Fulano" in txt and "1T Auxiliar" in txt
+    assert cod in txt and "Verificar documento" in txt and "CT FULANO" in txt and "1T AUXILIAR" in txt
     assert "Auxiliar do Detalhista" in txt and txt.count("Assinado eletronicamente") == 2
     assert txt.index("MARINHA DO BRASIL") < txt.index("CENTRO DE OPERAÇÕES") < txt.index("DETALHE DE SERVIÇO DE PORTARIA")
 

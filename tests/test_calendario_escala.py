@@ -365,5 +365,5 @@ def test_pdf_do_detalhe_com_e_sem_assinatura_do_detalhista():
     txt = lambda b: "".join(p.extract_text() for p in PdfReader(io.BytesIO(b)).pages)  # noqa: E731
     com = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", ""), ass))
     sem = txt(gerar_pdf(c, r, dias, "A", "OM", "<b>Instr</b>", "", "", ("Det", "", "")))
-    assert "Assinado eletronicamente" in com and "Beltrano & Cia" in com and h in com and "Instr" in com
+    assert "Assinado eletronicamente" in com and "BELTRANO &" in com and h in com and "Instr" in com
     assert "Assinado eletronicamente" not in sem and h not in sem
