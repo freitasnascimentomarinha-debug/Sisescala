@@ -39,7 +39,15 @@ def mostrar(ctx, completo: bool) -> None:
         else:
             st.error("**Registro adulterado.** O conteúdo gravado não gera mais este código. Não confie neste documento.")
         nome_doc = asn_nome_doc(a)
-        todas = vf.do_codigo(ctx, a.codigo)
+        envio = asn.vigente_do_codigo(ctx, a.codigo)
+        todas = asn.assinaturas_do(ctx, envio) if envio is not None else vf.do_codigo(ctx, a.codigo)
+        if envio is not None and envio.status != "aberto":
+            quem = ctx.usuario(envio.encerrado_por)
+            motivo = {"cancelado": "CANCELADO pelo detalhista", "rejeitado": "REJEITADO por uma autoridade",
+                      "substituido": "SUBSTITUÍDO por uma versão nova"}.get(envio.status, envio.status)
+            st.warning(f"**Atenção: este envio foi {motivo}"
+                       + (f" em {envio.encerrado_em:%d/%m/%Y %H:%M}" if envio.encerrado_em else "") + ".** O documento não vale mais"
+                       + (f" (motivo: {envio.motivo})" if completo and envio.motivo else "") + ".")
         # sem login não se mostra o NIP (dado pessoal): só nome, papel e quando assinou
         ui.campos([(f"Assinado por ({asn.ROTULO.get(x.papel, x.papel)})",
                     f"{x.nome}" + (f" · NIP {x.nip}" if completo and x.nip else "") + f" · {x.em:%d/%m/%Y às %H:%M:%S}")

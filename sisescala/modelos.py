@@ -362,13 +362,14 @@ class AssinaturaDetalhe:
     om: str
     em: datetime
     conteudo: str
-    papel: str = "detalhista"      # "detalhista" | "auxiliar" (quem assinou, no detalhe de serviço)
+    papel: str = "detalhista"      # "detalhista" | "auxiliar" | "encarregado" | "vice_diretor" (quem assinou)
+    doc_id: str = ""               # envio (DetalheDoc) a que esta assinatura pertence; vazio = registros antigos (valem pelo código)
 
 
 @dataclass
 class DetalheDoc:
     """Versão congelada de um detalhe de serviço enviada para assinatura: as autoridades assinam ESTE conteúdo (`conteudo` é o
-    JSON empacotado do documento; `codigo` é o SHA-256 do JSON). Status: aberto | substituido | cancelado."""
+    JSON empacotado do documento; `codigo` é o SHA-256 do JSON). Status: aberto | substituido | cancelado | rejeitado."""
     id: str
     codigo: str
     escala_id: str
@@ -379,6 +380,9 @@ class DetalheDoc:
     status: str
     conteudo: str
     conjunto_id: str = ""          # documento unificado (várias escalas): `escala_id` fica vazio
+    encerrado_por: str = ""        # quem cancelou (detalhista) ou rejeitou (autoridade)
+    encerrado_em: datetime | None = None
+    motivo: str = ""               # justificativa obrigatória da rejeição
 
 
 @dataclass

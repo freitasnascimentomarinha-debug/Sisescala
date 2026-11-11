@@ -20,14 +20,14 @@ def normalizar_codigo(txt: str) -> str:
 
 
 def registrar(ctx: Contexto, usuario_id: str, escala_id: str, dias, corpo: str, codigo: str, nome: str, nip: str, om: str,
-              agora: datetime | None = None, papel: str = "detalhista") -> AssinaturaDetalhe:
+              agora: datetime | None = None, papel: str = "detalhista", doc_id: str = "") -> AssinaturaDetalhe:
     """Grava a assinatura do detalhista (uma por código e usuário: assinar de novo o mesmo conteúdo não duplica)."""
     from .assinaturas import empacotar
     agora = agora or datetime.now()
     for a in ctx.assinaturas_detalhe:
-        if a.codigo == codigo and a.usuario_id == usuario_id and a.papel == papel:
+        if a.codigo == codigo and a.usuario_id == usuario_id and a.papel == papel and a.doc_id == doc_id:
             return a
-    a = AssinaturaDetalhe(codigo, escala_id, dias[0], dias[-1], usuario_id, nome, nip, om, agora, empacotar(corpo), papel)
+    a = AssinaturaDetalhe(codigo, escala_id, dias[0], dias[-1], usuario_id, nome, nip, om, agora, empacotar(corpo), papel, doc_id)
     ctx.assinaturas_detalhe.append(a)
     return a
 
