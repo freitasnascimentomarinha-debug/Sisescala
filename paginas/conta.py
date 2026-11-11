@@ -48,7 +48,9 @@ with dir_:
     with st.container(border=True):
         ui.secao("PIN de assinatura")
         st.caption("O PIN (4 a 6 dígitos) confirma os pedidos de troca e devolução e assina as papeletas. "
-                   "Fica guardado só como hash; 5 erros seguidos bloqueiam a conta por 5 minutos.")
+                   "Fica guardado só como hash; 5 erros seguidos bloqueiam a conta por 5 minutos. "
+                   "**Esqueceu o PIN?** Basta informar a senha da conta e escolher um novo; se também perdeu a senha, "
+                   "peça ao administrador.")
         with st.form("meu_pin", clear_on_submit=True, border=False):
             ps = st.text_input("Senha da conta", type="password")
             pn = st.text_input("Novo PIN" if user.pin_hash else "PIN", type="password")

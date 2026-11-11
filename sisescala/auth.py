@@ -389,6 +389,19 @@ def redefinir_senha(ctx: Contexto, admin_id: str, alvo_id: str, nova: str) -> No
     alvo.trocar_senha = alvo.id != admin_id
 
 
+def redefinir_pin(ctx: Contexto, admin_id: str, alvo_id: str, agora: datetime | None = None) -> None:
+    """Esqueceu o PIN? O administrador APAGA o PIN da conta (e zera as tentativas/bloqueio). Ele nunca define um PIN: quem escolhe
+    o novo é a própria pessoa, em Minha conta, confirmando com a senha. Até lá a conta não assina nem pede trocas."""
+    from . import notificacoes as nt
+    _exigir_admin(ctx, admin_id)
+    alvo = _alvo(ctx, alvo_id)
+    if not alvo.pin_hash:
+        raise ValueError("esta conta não tem PIN cadastrado")
+    alvo.pin_hash, alvo.tentativas, alvo.bloqueado_ate = "", 0, None
+    nt.notificar(ctx, [alvo.id], "conta", "O administrador apagou o seu PIN. Cadastre um novo em Minha conta (você confirma com a "
+                 "sua senha). Enquanto isso você não consegue assinar documentos nem pedir trocas.", "", agora, excluir=[admin_id])
+
+
 def editar_usuario(ctx: Contexto, admin_id: str, alvo_id: str, *, nome: str | None = None, nip: str | None = None,
                    om: str | None = None, email: str | None = None, ramal: str | None = None,
                    celular: str | None = None, admin: bool | None = None, nome_guerra: str | None = None,

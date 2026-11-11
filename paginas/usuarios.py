@@ -84,6 +84,13 @@ with st.container(border=True):
                 st.write("**Tem certeza?**")
                 if st.button("Sim, desvincular", key=f"dv_{alvo_id}", type="primary"):
                     agir(lambda: auth.desvincular_usuario(ctx, uid, alvo_id), "Conta desvinculada do militar.")
+        if al.pin_hash:
+            with st.popover("Redefinir PIN (esqueceu)", icon=":material/key_off:", use_container_width=True):
+                st.write(f"Apaga o PIN de **{al.nome}**. A pessoa cadastra um novo em *Minha conta*, confirmando com a senha dela; "
+                         "você não escolhe nem vê o PIN. Até lá ela não assina documentos nem pede trocas. As assinaturas já "
+                         "feitas continuam valendo.")
+                if st.button("Sim, apagar o PIN", key=f"rpin_{alvo_id}", type="primary"):
+                    agir(lambda: auth.redefinir_pin(ctx, uid, alvo_id), "PIN apagado; a pessoa cadastra um novo em Minha conta.")
         nova = st.text_input("Senha provisória (8+)", type="password", key=f"rs_{alvo_id}")
         if st.button("Redefinir senha", use_container_width=True):
             agir(lambda: auth.redefinir_senha(ctx, uid, alvo_id, nova), "Senha redefinida; a pessoa troca no próximo acesso.")

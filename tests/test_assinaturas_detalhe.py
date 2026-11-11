@@ -103,3 +103,32 @@ def test_vice_diretor_aparece_centralizado_abaixo_das_outras_assinaturas():
     txt = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
     assert txt.index("Detalhista") < txt.index("Encarregado do Detalhe") < txt.index("Vice-Diretor")   # o vice vem depois (abaixo)
     assert txt.index("CMG Vice") > txt.index("Encarregado do Detalhe") - 400 and "Assinado eletronicamente" in txt
+
+
+def test_administrador_apaga_o_pin_esquecido_e_a_pessoa_cadastra_outro_com_a_senha():
+    c, dias, corpo, cod = mk()
+    u = c.usuario("u4")
+    u.tentativas = 3
+    with pytest.raises(PermissionError):
+        auth.redefinir_pin(c, "u2", "u4")                                          # só o administrador
+    auth.redefinir_pin(c, "u1", "u4", AGORA)
+    assert u.pin_hash == "" and u.tentativas == 0 and u.bloqueado_ate is None
+    assert any(n.usuario_id == "u4" and "apagou o seu PIN" in n.texto for n in c.notificacoes)
+    with pytest.raises(ValueError, match="não tem PIN"):
+        auth.redefinir_pin(c, "u1", "u4")
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    with pytest.raises(auth.AutenticacaoErro, match="cadastre"):
+        asn.assinar(c, "u4", d.id, "encarregado", "1234", agora=AGORA)             # sem PIN não assina
+    with pytest.raises(auth.AutenticacaoErro):
+        auth.alterar_pin(c, "u4", "senha-errada", "5678")                          # novo PIN exige a senha da conta
+    auth.alterar_pin(c, "u4", SENHA, "5678")
+    assert asn.assinar(c, "u4", d.id, "encarregado", "5678", agora=AGORA).papel == "encarregado"
+
+
+def test_consulta_publica_exige_codigo_mais_longo_e_nao_mostra_nip():
+    from sisescala import tela_verificacao as tv
+    c, dias, corpo, cod = mk()
+    d, _ = asn.enviar(c, "u2", "e1", dias, corpo, cod, AGORA)
+    asn.assinar(c, "u2", d.id, "detalhista", "1234", agora=AGORA)
+    assert vf.buscar(c, cod[:12]) is not None and vf.buscar(c, cod[:12], tv.MIN_PUBLICO) is None
+    assert vf.buscar(c, cod[:16], tv.MIN_PUBLICO) is not None
