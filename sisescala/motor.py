@@ -448,6 +448,16 @@ def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
         a.militar_id, a.origem = t.entrando, "t"
         a.sigla = sigla_de(esc, a.papel, "t")
         a.obs = (t.observacao or "Troca de serviço por papeleta") + f" ({nome(t.saindo)} → {nome(t.entrando)})."
+        # quem entra já era retém neste dia: o retém passa ao próximo da fila (refeito a cada geração,
+        # então desfazer/cancelar a troca devolve o retém original sozinho)
+        for r in [x for x in res.alocacoes_do_dia(t.data)
+                  if x is not a and x.escala_id == esc.id and x.papel == "retem" and x.militar_id == t.entrando]:
+            sub = _substituto_retem(ctx, res, esc, t.data, r)
+            if sub:
+                r.militar_id, r.origem = sub, "tf"
+                r.sigla = sigla_de(esc, "retem", "tf")
+                r.obs = (f"Retém ajustado automaticamente: {nome(t.entrando)} assumiu o serviço "
+                         f"por troca; retém passou a {nome(sub)}.")
 
 
 def _livre(ctx: Contexto, res: Resultado, mid: str, d: date, esc: Escala) -> bool:

@@ -79,8 +79,12 @@ def validar_troca(ctx: Contexto, esc: Escala, x: str, dx: date, y: str, dy: date
             erros.append(f"{nome(m)} não faz parte da escala em {d:%d/%m/%Y}")
         if _impedido(ctx, m, d):
             erros.append(f"{nome(m)} está impedido (férias, curso, destaque etc.) em {d:%d/%m/%Y}")
-        if any(a.militar_id == m for a in res.alocacoes_do_dia(d)):
+        no_dia = [a for a in res.alocacoes_do_dia(d) if a.militar_id == m]
+        if any(not (a.papel == "retem" and a.escala_id == esc.id) for a in no_dia):
             erros.append(f"{nome(m)} já está escalado em {d:%d/%m/%Y}")
+        elif no_dia:
+            avisos.append(f"{nome(m)} é retém em {d:%d/%m/%Y}: o retém passará automaticamente ao próximo da fila "
+                          f"(volta ao normal se a troca for desfeita)")
         elif not _descansado(res, esc, m, d, ignorar=d_orig):
             avisos.append(f"{nome(m)} ficará com menos de {esc.folgas_minimas} folga(s) em torno de {d:%d/%m/%Y}")
     return erros, avisos, res
