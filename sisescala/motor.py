@@ -430,7 +430,33 @@ def _achar(res: Resultado, d: date, escala_id: str, mid: str) -> Alocacao | None
 def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
     def nome(m):
         return ctx.militar(m).nome
+    grupos: dict[str, list] = {}
     for t in ctx.trocas:
+        grupos.setdefault(t.papeleta_id or f"_{id(t)}", []).append(t)
+    desfeitas: dict[str, str] = {}
+    for gid, g in grupos.items():
+        if not all(t.valida for t in g):
+            continue
+        datas = [t.data for t in g]
+        for t in g:
+            if any(o.escala_id == t.escala_id and o.data == t.data and o.militar_id == t.entrando
+                   for o in ctx.ocorrencias):
+                desfeitas[gid] = (f"{nome(t.entrando)} não deu o serviço de {t.data:%d/%m}: "
+                                  f"a troca foi desfeita e {nome(t.saindo)} reassume.")
+                break
+            avancou = next((a for dia in res.dias.values() for a in dia.alocacoes if a.escala_id == t.escala_id and a.papel == "efetivo"
+                            and a.militar_id in (t.saindo, t.entrando) and a.origem == "normal"
+                            and a.obs.startswith("Avanço de retém")
+                            and max(datas) - timedelta(days=ctx.janela_troca_dias) <= a.data < max(datas)), None)
+            if avancou:
+                desfeitas[gid] = (f"{nome(avancou.militar_id)} avançou do retém em {avancou.data:%d/%m}: "
+                                  f"a troca foi desfeita automaticamente.")
+                break
+    for gid, motivo in desfeitas.items():
+        res.avisos.append(f"Papeleta em {grupos[gid][0].data:%d/%m}: {motivo}")
+    for t in ctx.trocas:
+        if (t.papeleta_id or f"_{id(t)}") in desfeitas:
+            continue
         if not t.valida:
             res.avisos.append(
                 f"Papeleta de {nome(t.saindo)} ↔ {nome(t.entrando)} em {t.data:%d/%m} sem os dois aceites: ignorada.")
@@ -448,11 +474,12 @@ def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
         a.militar_id, a.origem = t.entrando, "t"
         a.sigla = sigla_de(esc, a.papel, "t")
         a.obs = (t.observacao or "Troca de serviço por papeleta") + f" ({nome(t.saindo)} → {nome(t.entrando)})."
-        # quem entra já era retém neste dia: o retém passa ao próximo da fila (refeito a cada geração,
-        # então desfazer/cancelar a troca devolve o retém original sozinho)
+        # quem entra já era retém neste dia: quem saiu do serviço assume o retém (o "próprio" da fila);
+        # tudo é refeito a cada geração, então desfazer/cancelar a troca devolve o original sozinho
         for r in [x for x in res.alocacoes_do_dia(t.data)
                   if x is not a and x.escala_id == esc.id and x.papel == "retem" and x.militar_id == t.entrando]:
-            sub = _substituto_retem(ctx, res, esc, t.data, r)
+            ocupados = {x.militar_id for x in res.alocacoes_do_dia(t.data)}
+            sub = t.saindo if t.saindo not in ocupados else _substituto_retem(ctx, res, esc, t.data, r)
             if sub:
                 r.militar_id, r.origem = sub, "tf"
                 r.sigla = sigla_de(esc, "retem", "tf")

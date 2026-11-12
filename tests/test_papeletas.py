@@ -266,8 +266,35 @@ def test_troca_com_retem_em_conflito_ajusta_retem_e_desfaz_ao_cancelar():
     res = gerar(c, dy)
     dia = res.dia(dx, "A")
     assert dia.efetivos[0].militar_id == y
-    assert dia.retens[0].militar_id not in (y, x)
+    assert dia.retens[0].militar_id == x
     assert dia.retens[0].origem == "tf"
     pp.cancelar(c, "u1", p.id, "desfeita", AGORA)
     dia2 = gerar(c, dy).dia(dx, "A")
     assert dia2.efetivos[0].militar_id == x and dia2.retens[0].militar_id == y
+
+
+def test_troca_desfeita_se_quem_entra_falta_e_quem_saiu_reassume():
+    c = mk(n=10, retem_qtd=1)
+    esc, x, dx, y, dy, _ = _par_retem(c)
+    p = pp.criar(c, "u1", "A", x, dx, y, dy, "motivo", AGORA, pin=PIN)
+    pp.aprovar(c, "u1", p.id, AGORA)
+    c.ocorrencias.append(Ocorrencia(dx, "A", y, "doente"))
+    res = gerar(c, dy)
+    assert res.dia(dx, "A").efetivos[0].militar_id == x
+    assert any("desfeita" in a for a in res.avisos)
+
+
+def test_troca_desfeita_se_saindo_avanca_do_retem_antes():
+    c = mk(n=10, retem_qtd=1)
+    esc, x, dx, y, dy, _ = _par_retem(c)
+    p = pp.criar(c, "u1", "A", x, dx, y, dy, "motivo", AGORA, pin=PIN)
+    pp.aprovar(c, "u1", p.id, AGORA)
+    base = gerar(c, dy)
+    # dia anterior à troca em que x é retém: o efetivo daquele dia falta e x avança
+    d0 = next((d for d in (dx - timedelta(days=k) for k in range(1, 6))
+               if base.dia(d, "A") and any(r.militar_id == x for r in base.dia(d, "A").retens)), None)
+    if d0 is None:
+        pytest.skip("x não é retém antes")
+    c.ocorrencias.append(Ocorrencia(d0, "A", base.dia(d0, "A").efetivos[0].militar_id, "doente"))
+    res = gerar(c, dy)
+    assert res.dia(dx, "A").efetivos[0].militar_id != y or any("desfeita" in a for a in res.avisos)
