@@ -267,7 +267,7 @@ def test_troca_com_retem_em_conflito_ajusta_retem_e_desfaz_ao_cancelar():
     dia = res.dia(dx, "A")
     assert dia.efetivos[0].militar_id == y
     assert dia.retens[0].militar_id == x
-    assert dia.retens[0].origem == "tf"
+    assert dia.retens[0].origem == "t"
     pp.cancelar(c, "u1", p.id, "desfeita", AGORA)
     dia2 = gerar(c, dy).dia(dx, "A")
     assert dia2.efetivos[0].militar_id == x and dia2.retens[0].militar_id == y

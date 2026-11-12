@@ -481,8 +481,8 @@ def _aplicar_trocas_consensuais(ctx: Contexto, res: Resultado) -> None:
             ocupados = {x.militar_id for x in res.alocacoes_do_dia(t.data)}
             sub = t.saindo if t.saindo not in ocupados else _substituto_retem(ctx, res, esc, t.data, r)
             if sub:
-                r.militar_id, r.origem = sub, "tf"
-                r.sigla = sigla_de(esc, "retem", "tf")
+                r.militar_id, r.origem = sub, "t"
+                r.sigla = sigla_de(esc, "retem", "t")
                 r.obs = (f"Retém ajustado automaticamente: {nome(t.entrando)} assumiu o serviço "
                          f"por troca; retém passou a {nome(sub)}.")
 

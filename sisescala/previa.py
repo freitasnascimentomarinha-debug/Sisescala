@@ -18,10 +18,12 @@ CORES = {  # sigla base -> (fundo, texto)
     DTQ: ("#7A5C86", "#fff"),
 }
 COR_TF, COR_T = ("#C9992F", "#1B1405"), ("#8B6B3F", "#fff")
+COR_RT_TF, COR_RT_T = ("#D9822B", "#1B1405"), ("#A04668", "#fff")      # retém trocado: cores próprias, distintas do serviço
 
 LEGENDA_FIXA = [
     ("SVÇ", "Serviço"), ("SVÇ (TF)", "Serviço por troca forçada"), ("SVÇ (T)", "Serviço por troca consensual"),
-    ("RT", "Retém"), ("RT (TF)", "Troca forçada de retém"), (FERIAS, "Férias"), (DISP, "Dispensado (baixa, falta ou dispensa)"),
+    ("RT", "Retém"), ("RT (TF)", "Troca forçada de retém"),
+    ("RT (T)", "Retém ajustado por troca consensual"), (FERIAS, "Férias"), (DISP, "Dispensado (baixa, falta ou dispensa)"),
     (DBQ, "Desembarque"), (CURSO, "Curso"), (DTQ, "Destaque"),
 ]
 
@@ -31,6 +33,10 @@ def periodo(inicio: date, dias: int) -> list[date]:
 
 
 def cor_da_sigla(sigla: str) -> tuple[str, str]:
+    if sigla.startswith("RT ") and sigla.endswith("(TF)"):
+        return COR_RT_TF
+    if sigla.startswith("RT ") and sigla.endswith("(T)"):
+        return COR_RT_T
     if sigla.endswith("(TF)"):
         return COR_TF
     if sigla.endswith("(T)"):
