@@ -237,3 +237,37 @@ def test_documento_pdf_e_hash_muda_com_o_conteudo():
     assert pdf_papeleta(c, p, "COPAB").startswith(b"%PDF")
     p.motivo = "outro"
     assert pp.hash_documento(c, p) != h
+
+
+def _par_retem(c):
+    """Acha X (efetivo em dx) e Y (efetivo em dy) onde Y é retém em dx."""
+    esc = c.escala("A")
+    res = gerar(c, D + timedelta(days=12))
+    for dx in (D + timedelta(days=k) for k in range(2, 10)):
+        dia = res.dia(dx, "A")
+        if not dia or not dia.funciona or not dia.efetivos or not dia.retens:
+            continue
+        x, y = dia.efetivos[0].militar_id, dia.retens[0].militar_id
+        for dy in (dx + timedelta(days=k) for k in (1, 2, 3)):
+            a = res.dia(dy, "A")
+            if a and a.funciona and any(e.militar_id == y and e.origem == "normal" for e in a.efetivos):
+                return esc, x, dx, y, dy, dia.retens[0].militar_id
+    pytest.skip("sem par com retém")
+
+
+def test_troca_com_retem_em_conflito_ajusta_retem_e_desfaz_ao_cancelar():
+    c = mk(n=10, retem_qtd=1)
+    esc, x, dx, y, dy, ret = _par_retem(c)
+    erros, avisos, _ = pp.validar_troca(c, esc, x, dx, y, dy)
+    assert not erros, erros
+    assert any("retém" in a for a in avisos)
+    p = pp.criar(c, "u1", "A", x, dx, y, dy, "motivo", AGORA, pin=PIN)
+    pp.aprovar(c, "u1", p.id, AGORA)
+    res = gerar(c, dy)
+    dia = res.dia(dx, "A")
+    assert dia.efetivos[0].militar_id == y
+    assert dia.retens[0].militar_id not in (y, x)
+    assert dia.retens[0].origem == "tf"
+    pp.cancelar(c, "u1", p.id, "desfeita", AGORA)
+    dia2 = gerar(c, dy).dia(dx, "A")
+    assert dia2.efetivos[0].militar_id == x and dia2.retens[0].militar_id == y
